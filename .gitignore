@@ -13,3 +13,4 @@ sessions/
 .mypy_cache/
 .ruff_cache/
 tmp/
+.code-review/
