@@ -3,7 +3,7 @@
 import json
 from unittest.mock import patch, MagicMock
 
-from claude_storm.agents import invoke_agent, _extract_text, AgentResponse
+from claude_storm.agents import invoke_agent, _extract_text, _build_allowed_tools, AgentResponse
 from claude_storm.config import SessionConfig
 
 
@@ -42,9 +42,34 @@ class TestInvokeAgent:
         assert "sess-a" in cmd
         assert "--system-prompt" in cmd
         assert "--model" in cmd
+        assert "--allowedTools" in cmd
         assert response.text == "Hello from agent A"
         assert response.cmd is not None
         assert "claude" in response.cmd
+
+    def test_first_turn_has_path_scoped_tools(self, tmp_path, monkeypatch):
+        config = _make_config(tmp_path, monkeypatch)
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = json.dumps({"result": "ok"})
+        mock_result.stderr = ""
+
+        with patch("claude_storm.agents.subprocess.run", return_value=mock_result) as mock_run:
+            invoke_agent(config, "a", "prompt", system_prompt="sys")
+
+        cmd = mock_run.call_args[0][0]
+        session_path = str(config.session_dir().resolve()).lstrip("/")
+        # Write/Edit scoped to session dir only
+        assert f"Write(//{session_path}/**)" in cmd
+        assert f"Edit(//{session_path}/**)" in cmd
+        # Read/Glob/Grep scoped to session dir
+        assert f"Read(//{session_path}/**)" in cmd
+        assert f"Glob(//{session_path}/**)" in cmd
+        assert f"Grep(//{session_path}/**)" in cmd
+        # No bare tool names
+        for arg in cmd:
+            if arg in ("Read", "Write", "Edit", "Glob", "Grep"):
+                raise AssertionError(f"Found unscoped tool: {arg}")
 
     def test_subsequent_turn_uses_resume(self, tmp_path, monkeypatch):
         config = _make_config(tmp_path, monkeypatch)
@@ -112,6 +137,34 @@ class TestInvokeAgent:
 
         assert response.text == "Plain text response"
         assert not response.is_error
+
+
+class TestBuildAllowedTools:
+    def test_session_dir_only(self, tmp_path, monkeypatch):
+        config = _make_config(tmp_path, monkeypatch)
+        tools = _build_allowed_tools(config)
+        session_path = str(config.session_dir().resolve()).lstrip("/")
+        assert f"Read(//{session_path}/**)" in tools
+        assert f"Glob(//{session_path}/**)" in tools
+        assert f"Grep(//{session_path}/**)" in tools
+        assert f"Write(//{session_path}/**)" in tools
+        assert f"Edit(//{session_path}/**)" in tools
+        # Only 5 tool entries when no reference dir
+        assert len(tools) == 5
+
+    def test_with_reference_dir(self, tmp_path, monkeypatch):
+        config = _make_config(tmp_path, monkeypatch)
+        config.reference_dir = "/some/ref/dir"
+        tools = _build_allowed_tools(config)
+        # Read tools for both dirs
+        assert "Read(//some/ref/dir/**)" in tools
+        assert "Glob(//some/ref/dir/**)" in tools
+        assert "Grep(//some/ref/dir/**)" in tools
+        # Write/Edit only for session dir
+        assert not any("Write" in t and "some/ref" in t for t in tools)
+        assert not any("Edit" in t and "some/ref" in t for t in tools)
+        # 8 total: 3 read tools * 2 dirs + 2 write tools * 1 dir
+        assert len(tools) == 8
 
 
 class TestExtractText:

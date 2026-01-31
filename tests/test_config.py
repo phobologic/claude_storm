@@ -113,3 +113,17 @@ class TestSessionConfig:
     def test_deliverables_default_empty(self):
         config = SessionConfig.create(topic="Test")
         assert config.deliverables == []
+
+    def test_reference_dir_default_empty(self):
+        config = SessionConfig.create(topic="Test")
+        assert config.reference_dir == ""
+
+    def test_create_with_reference_dir(self, tmp_storms):
+        config = SessionConfig.create(
+            topic="Test",
+            reference_dir="/some/path",
+            storms_dir=str(tmp_storms),
+        )
+        config.save()
+        loaded = SessionConfig.load(config.session_id, storms_dir=str(tmp_storms))
+        assert loaded.reference_dir == "/some/path"

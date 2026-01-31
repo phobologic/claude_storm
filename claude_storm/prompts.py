@@ -25,11 +25,12 @@ def build_system_prompt(config: SessionConfig, agent: str) -> str:
         persona = "You are a brainstorming partner in a structured two-agent discussion."
 
     parts = [
+        "# Role and Context\n",
         persona,
-        f"\n**Topic**: {config.topic}",
+        f"\n**Topic:** {config.topic}",
     ]
     if config.goal:
-        parts.append(f"**Goal**: {config.goal}")
+        parts.append(f"**Goal:** {config.goal}")
 
     parts.append(
         f"\nYou are having a conversation with another agent ({other}). "
@@ -37,7 +38,7 @@ def build_system_prompt(config: SessionConfig, agent: str) -> str:
     )
 
     parts.append(
-        "\n## Directives\n"
+        "\n# Directives\n"
         "You may use these special directives in your responses:\n\n"
         '- `[MEMORY title="..." tags="t1,t2"]content[/MEMORY]` - Save a note to your '
         "long-term memory. Use this for important ideas, decisions, or insights you want "
@@ -53,7 +54,7 @@ def build_system_prompt(config: SessionConfig, agent: str) -> str:
     )
 
     parts.append(
-        "\n## Guidelines\n"
+        "\n# Guidelines\n"
         "- Be substantive and build on previous ideas\n"
         "- Challenge assumptions constructively\n"
         "- Save key insights and decisions to memory with [MEMORY]\n"
@@ -61,14 +62,24 @@ def build_system_prompt(config: SessionConfig, agent: str) -> str:
         "- Keep responses focused and actionable"
     )
 
+    # Reference materials section
+    if config.reference_dir:
+        parts.append(
+            "\n# Reference Materials\n"
+            f"A directory of background materials relevant to this topic is available at:\n"
+            f"`{config.reference_dir}`\n\n"
+            "Use `Glob` and `Read` to browse and read files from this directory. "
+            "This is read-only reference material — do not modify these files."
+        )
+
     # Session structure section (pacing overview + deliverables)
     if config.deliverables or config.goal:
         structure_parts = [
-            f"\n## Session Structure\n"
+            f"\n# Session Structure\n"
             f"This session has a budget of {config.max_turns} turns total."
         ]
         if config.deliverables:
-            structure_parts.append("\n**Expected deliverables:**")
+            structure_parts.append("\n## Expected Deliverables")
             for d in config.deliverables:
                 structure_parts.append(f"- {d}")
         structure_parts.append(
@@ -108,26 +119,26 @@ def build_turn_prompt(
     sections = []
 
     # Other agent's response
-    sections.append(f"=== {other_label.upper()}'S RESPONSE ===")
+    sections.append(f"# {other_label}'s Response")
     if config.current_turn == 0 and agent == "a":
         sections.append("This is the start of the conversation. You go first.")
     else:
         sections.append(other_response or "(no response)")
 
     # Memory index
-    sections.append(f"\n=== YOUR MEMORY INDEX ===\n{memory_index}")
+    sections.append(f"\n# Your Memory Index\n{memory_index}")
 
     # Recent memories
     if recent_memories:
-        sections.append(f"\n=== RECENT MEMORIES ===\n{recent_memories}")
+        sections.append(f"\n# Recent Memories\n{recent_memories}")
 
     # Search results
     if search_results:
-        sections.append(f"\n=== SEARCH RESULTS ===\n{search_results}")
+        sections.append(f"\n# Search Results\n{search_results}")
 
     # User input
     if user_input:
-        sections.append(f"\n=== USER INPUT ===\n{user_input}")
+        sections.append(f"\n# User Input\n{user_input}")
 
     # Pacing block (replaces old turn info)
     turn_number = config.current_turn + 1
@@ -136,7 +147,7 @@ def build_turn_prompt(
         max_turns=config.max_turns,
         deliverables=config.deliverables or None,
     )
-    sections.append(f"\n{pacing}")
+    sections.append(f"\n# Turn Progress\n{pacing}")
 
     if config.auto_complete:
         sections.append(
@@ -156,8 +167,10 @@ def build_summary_prompt(config: SessionConfig) -> str:
         The summary request prompt.
     """
     parts = [
+        "# Session Summary Request\n",
         f"The brainstorming session on \"{config.topic}\" has concluded after "
-        f"{config.current_turn} turns. Please provide a comprehensive summary of:\n\n"
+        f"{config.current_turn} turns.\n"
+        "Please provide a comprehensive summary of:\n\n"
         "1. Key ideas discussed\n"
         "2. Decisions made\n"
         "3. Open questions remaining\n"
@@ -167,9 +180,42 @@ def build_summary_prompt(config: SessionConfig) -> str:
 
     if config.deliverables:
         parts.append(
-            "\nThe following deliverables were expected:\n"
+            "\n## Deliverables Assessment\n\n"
+            "The following deliverables were expected:\n"
             + "\n".join(f"- {d}" for d in config.deliverables)
             + "\n\nPlease assess which were produced and their completeness."
         )
 
     return "\n".join(parts)
+
+
+def build_deliverable_prompt(
+    config: SessionConfig,
+    deliverable_name: str,
+    memories_text: str,
+    conversation_text: str,
+) -> str:
+    """Build a prompt to compile a single deliverable from session materials.
+
+    Args:
+        config: The session configuration.
+        deliverable_name: Name of the deliverable to compile.
+        memories_text: Combined memory contents from both agents.
+        conversation_text: The full conversation log.
+
+    Returns:
+        The compilation prompt string.
+    """
+    return (
+        f"# Deliverable Compilation\n\n"
+        f"The brainstorming session on \"{config.topic}\" has concluded.\n"
+        f"Please compile the following deliverable from the session materials:\n\n"
+        f"**Deliverable:** {deliverable_name}\n\n"
+        f"Produce a clean, well-structured markdown document. Include all relevant\n"
+        f"information discussed during the session. Do not include preamble or\n"
+        f"meta-commentary — just the deliverable content.\n\n"
+        f"---\n\n"
+        f"## Agent Memories\n\n{memories_text}\n\n"
+        f"---\n\n"
+        f"## Conversation Log\n\n{conversation_text}"
+    )

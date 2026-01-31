@@ -52,6 +52,9 @@ deliverables = [
     "Failure handling policy",
 ]
 
+# Optional: directory of notes/docs agents can read for context
+# reference_dir = "/path/to/research/notes"
+
 [options]
 max_turns = 20
 model = "sonnet"
@@ -77,6 +80,9 @@ uv run storm start "Microservices vs monolith" --roles "Advocate" "Skeptic" --au
 
 # CLI flags override TOML values
 uv run storm start --max-turns 6 --model opus
+
+# Give agents read-only access to reference materials
+uv run storm start --reference-dir ./research/notes
 
 # Interactive mode (agents can ask user questions)
 uv run storm start --interactive
@@ -110,6 +116,14 @@ When deliverables or a goal are defined, agents receive pacing guidance:
 5. Pacing nudges guide agents through exploration, convergence, and deliverable production
 6. In `--auto-complete` mode, agents signal `[DONE]` when the topic is well-explored
 7. Sessions can be paused with Ctrl+C and resumed later
+
+## Security
+
+Agent filesystem access is restricted via path-scoped `--allowedTools` patterns:
+
+- **Read/Glob/Grep**: session directory + reference directory (if configured)
+- **Write/Edit**: session directory only
+- **Bash/other tools**: not available to agents
 
 ## License
 

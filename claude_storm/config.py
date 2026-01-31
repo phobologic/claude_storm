@@ -31,6 +31,7 @@ class SessionConfig:
     status: str = "active"
     done_signals: list[str] = field(default_factory=list)
     deliverables: list[str] = field(default_factory=list)
+    reference_dir: str = ""
     storms_dir: str = ""
 
     @classmethod
@@ -47,6 +48,7 @@ class SessionConfig:
         debug: bool = False,
         model: str = "sonnet",
         deliverables: list[str] | None = None,
+        reference_dir: str = "",
         storms_dir: str = "",
     ) -> SessionConfig:
         """Create a new session config with generated IDs."""
@@ -67,6 +69,7 @@ class SessionConfig:
             started_at=datetime.now(timezone.utc).isoformat(),
             status="active",
             deliverables=deliverables or [],
+            reference_dir=reference_dir,
             storms_dir=storms_dir,
         )
 

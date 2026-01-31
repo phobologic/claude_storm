@@ -30,6 +30,8 @@ topic = """
 #     "Summary document",
 # ]
 
+# reference_dir = "/path/to/notes"
+
 [options]
 # max_turns = 20
 # model = "sonnet"
@@ -138,13 +140,21 @@ def format_pacing_block(turn: int, max_turns: int, deliverables: list[str] | Non
     pct = int((turn / max_turns) * 100)
     remaining = max_turns - turn
 
-    parts = [f"=== TURN {turn} of {max_turns} ({pct}%) ==="]
+    parts = [f"## Turn {turn} of {max_turns} ({pct}%)"]
 
     if remaining < 2:
-        parts.append(
+        msg = (
             "This is one of the final turns. Prioritize completing artifacts "
             "and capturing remaining decisions."
         )
+        if deliverables:
+            deliv_list = ", ".join(deliverables)
+            msg += (
+                f"\n\nIMPORTANT: Before signaling [DONE], produce an "
+                f'[ARTIFACT filename="..."] for each deliverable not yet produced: {deliv_list}. '
+                f"If you've already produced them, signal [DONE]."
+            )
+        parts.append(msg)
     elif pct >= 75:
         parts.append(
             "Session is 75% complete. Focus on producing deliverables "
@@ -160,7 +170,7 @@ def format_pacing_block(turn: int, max_turns: int, deliverables: list[str] | Non
 
     if deliverables:
         parts.append(
-            "\nExpected deliverables: " + ", ".join(deliverables)
+            "\n**Expected deliverables:** " + ", ".join(deliverables)
         )
 
     return "\n".join(parts)

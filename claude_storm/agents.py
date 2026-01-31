@@ -25,6 +25,48 @@ def _get_session_id(config: SessionConfig, agent: str) -> str:
     return config.claude_session_a if agent == "a" else config.claude_session_b
 
 
+def _abs_pattern(path: str) -> str:
+    """Convert an absolute path to a // prefixed glob pattern.
+
+    The // prefix in allowedTools means 'from filesystem root',
+    so /some/path becomes //some/path/**.
+    """
+    # Strip leading slash since // already implies root
+    stripped = path.lstrip("/")
+    return f"//{stripped}/**"
+
+
+def _build_allowed_tools(config: SessionConfig) -> list[str]:
+    """Build path-scoped --allowedTools list.
+
+    Write/Edit are restricted to the session directory.
+    Read/Glob/Grep are restricted to the session directory plus any
+    configured reference directory.
+    """
+    session_path = str(config.session_dir().resolve())
+
+    # Readable directories: session dir + optional reference dir
+    readable_dirs = [session_path]
+    if config.reference_dir:
+        readable_dirs.append(config.reference_dir)
+
+    tools: list[str] = []
+
+    # Read-only tools scoped to all readable directories
+    for d in readable_dirs:
+        pattern = _abs_pattern(d)
+        tools.append(f"Read({pattern})")
+        tools.append(f"Glob({pattern})")
+        tools.append(f"Grep({pattern})")
+
+    # Write tools scoped to session directory only
+    session_pattern = _abs_pattern(session_path)
+    tools.append(f"Write({session_pattern})")
+    tools.append(f"Edit({session_pattern})")
+
+    return tools
+
+
 def invoke_agent(
     config: SessionConfig,
     agent: str,
@@ -58,10 +100,7 @@ def invoke_agent(
         cmd.extend(["--session-id", session_id])
         cmd.extend(["--system-prompt", system_prompt])
         cmd.extend(["--model", config.model])
-        cmd.extend([
-            "--allowedTools",
-            "Read", "Write", "Edit", "Glob", "Grep",
-        ])
+        cmd.extend(["--allowedTools"] + _build_allowed_tools(config))
     else:
         # Subsequent turns: resume existing session
         cmd.extend(["--resume", session_id])

@@ -5,6 +5,7 @@ from claude_storm.prompts import (
     build_system_prompt,
     build_turn_prompt,
     build_summary_prompt,
+    build_deliverable_prompt,
 )
 
 
@@ -66,14 +67,14 @@ class TestBuildSystemPrompt:
     def test_system_prompt_includes_deliverables(self):
         config = _make_config(deliverables=["Doc A", "Doc B"])
         prompt = build_system_prompt(config, "a")
-        assert "Expected deliverables" in prompt
+        assert "Expected Deliverables" in prompt
         assert "Doc A" in prompt
         assert "Doc B" in prompt
 
     def test_system_prompt_no_deliverables(self):
         config = _make_config(goal="", deliverables=[])
         prompt = build_system_prompt(config, "a")
-        assert "Expected deliverables" not in prompt
+        assert "Expected Deliverables" not in prompt
         assert "Session Structure" not in prompt
 
     def test_system_prompt_includes_pacing_overview(self):
@@ -81,6 +82,18 @@ class TestBuildSystemPrompt:
         prompt = build_system_prompt(config, "a")
         assert "budget of 10 turns" in prompt
         assert "Pace yourself" in prompt
+
+    def test_system_prompt_includes_reference_dir(self):
+        config = _make_config(reference_dir="/tmp/notes")
+        prompt = build_system_prompt(config, "a")
+        assert "Reference Materials" in prompt
+        assert "/tmp/notes" in prompt
+        assert "read-only" in prompt
+
+    def test_system_prompt_no_reference_dir(self):
+        config = _make_config()
+        prompt = build_system_prompt(config, "a")
+        assert "Reference Materials" not in prompt
 
 
 class TestBuildTurnPrompt:
@@ -94,7 +107,7 @@ class TestBuildTurnPrompt:
             recent_memories="",
         )
         assert "start of the conversation" in prompt
-        assert "TURN 1 of 10" in prompt
+        assert "Turn 1 of 10" in prompt
 
     def test_includes_other_response(self):
         config = _make_config(current_turn=2)
@@ -116,7 +129,7 @@ class TestBuildTurnPrompt:
             memory_index='You have 2 saved note(s):\n- "Note 1" [tag1]',
             recent_memories="",
         )
-        assert "MEMORY INDEX" in prompt
+        assert "Memory Index" in prompt
         assert '"Note 1"' in prompt
 
     def test_includes_search_results(self):
@@ -129,7 +142,7 @@ class TestBuildTurnPrompt:
             recent_memories="",
             search_results='Results for "auth": ## Auth Notes\ncontent',
         )
-        assert "SEARCH RESULTS" in prompt
+        assert "Search Results" in prompt
         assert "Auth Notes" in prompt
 
     def test_includes_user_input(self):
@@ -142,7 +155,7 @@ class TestBuildTurnPrompt:
             recent_memories="",
             user_input="Use JWT tokens",
         )
-        assert "USER INPUT" in prompt
+        assert "User Input" in prompt
         assert "Use JWT tokens" in prompt
 
     def test_auto_complete_message(self):
@@ -166,7 +179,7 @@ class TestBuildTurnPrompt:
             recent_memories="",
         )
         assert "15%" in prompt
-        assert "TURN 3 of 20" in prompt
+        assert "Turn 3 of 20" in prompt
 
     def test_turn_prompt_halfway_nudge(self):
         config = _make_config(current_turn=9, max_turns=20)
@@ -225,3 +238,36 @@ class TestBuildSummaryPrompt:
         assert "Doc A" in prompt
         assert "Doc B" in prompt
         assert "completeness" in prompt
+
+
+class TestBuildDeliverablePrompt:
+    def test_includes_deliverable_name(self):
+        config = _make_config()
+        prompt = build_deliverable_prompt(
+            config=config,
+            deliverable_name="Chapter Summaries",
+            memories_text="memory content",
+            conversation_text="conversation content",
+        )
+        assert "Chapter Summaries" in prompt
+
+    def test_includes_topic(self):
+        config = _make_config()
+        prompt = build_deliverable_prompt(
+            config=config,
+            deliverable_name="Doc",
+            memories_text="memories",
+            conversation_text="conversation",
+        )
+        assert "Design an API" in prompt
+
+    def test_includes_memories_and_conversation(self):
+        config = _make_config()
+        prompt = build_deliverable_prompt(
+            config=config,
+            deliverable_name="Doc",
+            memories_text="key insight about caching",
+            conversation_text="turn 1: discussed caching",
+        )
+        assert "key insight about caching" in prompt
+        assert "turn 1: discussed caching" in prompt

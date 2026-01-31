@@ -1,12 +1,17 @@
 """Tests for CLI commands and directive parsing."""
 
 import json
+from io import StringIO
 from unittest.mock import patch, MagicMock
+
+from rich.console import Console
 
 from typer.testing import CliRunner
 
-from claude_storm.cli import app, _parse_directives, _check_stop
+from claude_storm.cli import app, _parse_directives, _check_stop, _compile_deliverables
+from claude_storm.agents import AgentResponse
 from claude_storm.config import SessionConfig
+from claude_storm.display import Display
 from claude_storm.project import STORM_CONFIG_FILENAME
 
 runner = CliRunner()
@@ -34,10 +39,24 @@ class TestParseDirectives:
         assert result["artifacts"][0][0] == "api.yaml"
         assert "openapi: 3.0" in result["artifacts"][0][1]
 
-    def test_parse_done(self):
+    def test_parse_done_with_reason(self):
         text = 'I think we covered everything [DONE reason="Topic well explored"]'
         result = _parse_directives(text)
         assert result["done"] == "Topic well explored"
+
+    def test_parse_done_without_reason(self):
+        text = "I think we're done here [DONE]"
+        result = _parse_directives(text)
+        assert result["done"] == "complete"
+        assert "[DONE]" not in result["clean_text"]
+
+    def test_parse_done_bare_cleans_text(self):
+        text = "Final thoughts. [DONE] That's all."
+        result = _parse_directives(text)
+        assert result["done"] == "complete"
+        assert "Final thoughts." in result["clean_text"]
+        assert "That's all." in result["clean_text"]
+        assert "[DONE]" not in result["clean_text"]
 
     def test_parse_ask_user(self):
         text = "What do you think? [ASK_USER]Should we use JWT or OAuth?[/ASK_USER]"
@@ -214,3 +233,90 @@ class TestCLICommands:
         result = runner.invoke(app, ["start"])
         assert result.exit_code == 1
         assert "No topic" in result.output
+
+    @patch("claude_storm.cli.run_session")
+    def test_start_with_reference_dir(self, mock_run, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        ref_dir = tmp_path / "notes"
+        ref_dir.mkdir()
+        result = runner.invoke(
+            app, ["start", "Topic", "--reference-dir", str(ref_dir)]
+        )
+        assert result.exit_code == 0
+        config = mock_run.call_args[0][0]
+        assert config.reference_dir == str(ref_dir)
+
+    def test_start_reference_dir_not_found(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(
+            app, ["start", "Topic", "--reference-dir", "/nonexistent/path"]
+        )
+        assert result.exit_code == 1
+        assert "not found" in result.output
+
+
+class TestCompileDeliverables:
+    def _make_config(self, tmp_storms, **kwargs):
+        defaults = dict(
+            session_id="compile-test",
+            topic="Test topic",
+            goal="Test goal",
+            role_a="Agent A",
+            role_b="Agent B",
+            max_turns=10,
+            current_turn=10,
+            status="completed",
+            model="sonnet",
+            deliverables=["Chapter Summaries", "Character Profiles"],
+            storms_dir=str(tmp_storms),
+        )
+        defaults.update(kwargs)
+        config = SessionConfig(**defaults)
+        config.ensure_dirs()
+        return config
+
+    def test_skips_when_no_deliverables(self, tmp_storms):
+        config = self._make_config(tmp_storms, deliverables=[])
+        display = Display(console=Console(file=StringIO(), force_terminal=True, no_color=True))
+        with patch("claude_storm.cli.invoke_agent") as mock_invoke:
+            _compile_deliverables(config, display)
+            mock_invoke.assert_not_called()
+
+    def test_writes_artifact_files(self, tmp_storms):
+        config = self._make_config(tmp_storms)
+        # Create some memory files
+        mem_dir = config.session_dir() / "agent-a" / "memory"
+        mem_dir.mkdir(parents=True, exist_ok=True)
+        (mem_dir / "note1.md").write_text("Some memory content")
+        # Create conversation log
+        (config.session_dir() / "conversation.md").write_text("## Turn 1\nHello")
+
+        display = Display(console=Console(file=StringIO(), force_terminal=True, no_color=True))
+
+        mock_response = AgentResponse(text="# Chapter Summaries\n\nChapter 1...", raw={})
+        with patch("claude_storm.cli.invoke_agent", return_value=mock_response):
+            _compile_deliverables(config, display)
+
+        artifacts_dir = config.session_dir() / "artifacts"
+        assert artifacts_dir.exists()
+        files = list(artifacts_dir.glob("*.md"))
+        assert len(files) == 2
+
+    def test_sanitizes_filenames(self, tmp_storms):
+        config = self._make_config(
+            tmp_storms,
+            deliverables=["Chapter: Summaries (All)"],
+        )
+        (config.session_dir() / "conversation.md").write_text("")
+        display = Display(console=Console(file=StringIO(), force_terminal=True, no_color=True))
+
+        mock_response = AgentResponse(text="content", raw={})
+        with patch("claude_storm.cli.invoke_agent", return_value=mock_response):
+            _compile_deliverables(config, display)
+
+        artifacts_dir = config.session_dir() / "artifacts"
+        files = list(artifacts_dir.glob("*.md"))
+        assert len(files) == 1
+        # Should not contain colons or parens
+        assert ":" not in files[0].name
+        assert "(" not in files[0].name

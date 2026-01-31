@@ -78,6 +78,7 @@ class TestScaffoldConfig:
         content = path.read_text()
         assert "[session]" in content
         assert "topic" in content
+        assert "reference_dir" in content
 
     def test_scaffold_with_topic(self, tmp_path):
         path = scaffold_config(tmp_path, topic="My cool topic")
@@ -98,7 +99,7 @@ class TestScaffoldConfig:
 class TestFormatPacingBlock:
     def test_format_pacing_block_early(self):
         block = format_pacing_block(turn=3, max_turns=20)
-        assert "TURN 3 of 20" in block
+        assert "Turn 3 of 20" in block
         assert "15%" in block
         assert "Continue the brainstorm" in block
         assert "halfway" not in block
@@ -107,7 +108,7 @@ class TestFormatPacingBlock:
 
     def test_format_pacing_block_halfway(self):
         block = format_pacing_block(turn=10, max_turns=20)
-        assert "TURN 10 of 20" in block
+        assert "Turn 10 of 20" in block
         assert "50%" in block
         assert "halfway" in block
 
@@ -132,3 +133,19 @@ class TestFormatPacingBlock:
         assert "Expected deliverables" in block
         assert "Doc A" in block
         assert "Doc B" in block
+
+    def test_format_pacing_final_with_deliverables_includes_artifact_instruction(self):
+        block = format_pacing_block(
+            turn=19, max_turns=20,
+            deliverables=["Doc A", "Doc B"],
+        )
+        assert "final turns" in block
+        assert "[ARTIFACT" in block
+        assert "[DONE]" in block
+        assert "Doc A" in block
+        assert "Doc B" in block
+
+    def test_format_pacing_final_without_deliverables_no_artifact_instruction(self):
+        block = format_pacing_block(turn=19, max_turns=20)
+        assert "final turns" in block
+        assert "[ARTIFACT" not in block

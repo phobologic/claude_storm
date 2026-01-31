@@ -31,6 +31,7 @@ from claude_storm.prompts import (
     build_system_prompt,
     build_turn_prompt,
     build_summary_prompt,
+    build_deliverable_prompt,
 )
 
 app = typer.Typer(
@@ -95,11 +96,11 @@ def _parse_directives(text: str) -> dict:
     for match in artifact_pattern.finditer(text):
         result["artifacts"].append((match.group(1), match.group(2).strip()))
 
-    # Parse [DONE reason="..."]
-    done_pattern = re.compile(r'\[DONE\s+reason="([^"]+)"\]')
+    # Parse [DONE] or [DONE reason="..."]
+    done_pattern = re.compile(r'\[DONE(?:\s+reason="([^"]+)")?\]')
     done_match = done_pattern.search(text)
     if done_match:
-        result["done"] = done_match.group(1)
+        result["done"] = done_match.group(1) or "complete"
 
     # Parse [ASK_USER]question[/ASK_USER]
     ask_pattern = re.compile(r"\[ASK_USER\](.*?)\[/ASK_USER\]", re.DOTALL)
@@ -357,11 +358,64 @@ def run_session(config: SessionConfig, display: Display) -> None:
         signal.signal(signal.SIGINT, old_handler)
         config.save()
 
-    # Generate summary if completed
+    # Compile deliverables and generate summary if completed
     if config.status == "completed":
+        _compile_deliverables(config, display)
         _generate_summary(config, display)
 
     display.show_completion(config)
+
+
+def _compile_deliverables(config: SessionConfig, display: Display) -> None:
+    """Compile each deliverable from session materials into artifact files."""
+    if not config.deliverables:
+        return
+
+    # Gather all memory files from both agents
+    memories_parts: list[str] = []
+    for agent in ("a", "b"):
+        mem_dir = config.session_dir() / f"agent-{agent}" / "memory"
+        if mem_dir.exists():
+            for md_file in sorted(mem_dir.glob("*.md")):
+                label = config.agent_label(agent)
+                memories_parts.append(
+                    f"### {label}: {md_file.stem}\n\n{md_file.read_text()}"
+                )
+    memories_text = "\n\n---\n\n".join(memories_parts) if memories_parts else "(no memories)"
+
+    # Read conversation log
+    conv_path = config.session_dir() / "conversation.md"
+    conversation_text = conv_path.read_text() if conv_path.exists() else "(no conversation)"
+
+    artifacts_dir = config.session_dir() / "artifacts"
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+
+    for deliverable in config.deliverables:
+        display.show_deliverable_compile(deliverable)
+
+        prompt = build_deliverable_prompt(
+            config=config,
+            deliverable_name=deliverable,
+            memories_text=memories_text,
+            conversation_text=conversation_text,
+        )
+
+        with display.console.status(
+            f"[bold]Compiling: {deliverable}...[/bold]"
+        ):
+            response = invoke_agent(
+                config=config,
+                agent="a",
+                prompt=prompt,
+            )
+
+        if not response.is_error:
+            # Sanitize filename
+            safe_name = re.sub(r'[^\w\s-]', '', deliverable).strip()
+            safe_name = re.sub(r'[\s]+', '_', safe_name).lower()
+            artifact_path = artifacts_dir / f"{safe_name}.md"
+            artifact_path.write_text(response.text + "\n")
+            display.show_artifact_save(f"{safe_name}.md")
 
 
 def _generate_summary(config: SessionConfig, display: Display) -> None:
@@ -439,6 +493,9 @@ def start(
     interactive: Optional[bool] = typer.Option(
         None, "--interactive/--no-interactive", help="Allow agents to ask user questions"
     ),
+    reference_dir: Optional[Path] = typer.Option(
+        None, "--reference-dir", "--ref", help="Read-only directory of reference materials"
+    ),
 ) -> None:
     """Start a new brainstorming session."""
     console = Console()
@@ -455,6 +512,7 @@ def start(
         "interactive": False,
         "model": "sonnet",
         "deliverables": [],
+        "reference_dir": "",
     }
 
     # Layer 2: TOML config (if available)
@@ -496,6 +554,18 @@ def start(
         merged["interactive"] = interactive
     if model is not None:
         merged["model"] = model
+    if reference_dir is not None:
+        merged["reference_dir"] = str(reference_dir)
+
+    # Validate: reference_dir must exist if set
+    if merged["reference_dir"]:
+        ref_path = Path(merged["reference_dir"]).resolve()
+        if not ref_path.is_dir():
+            console.print(
+                f"[bold red]Reference directory not found: {ref_path}[/bold red]"
+            )
+            raise typer.Exit(1)
+        merged["reference_dir"] = str(ref_path)
 
     # Validate: topic is required
     if not merged["topic"]:
@@ -519,6 +589,7 @@ def start(
         debug=_debug_mode,
         model=merged["model"],
         deliverables=merged["deliverables"],
+        reference_dir=merged["reference_dir"],
         storms_dir=storms_dir,
     )
 

@@ -39,3 +39,5 @@ uv run pytest
 - Agents communicate via structured directives: `[MEMORY]`, `[ARTIFACT]`, `[DONE]`, `[ASK_USER]`
 - Conversation pacing: percentage-based nudges at 50%, 75%, and final 2 turns
 - Rich panels with color coding (blue=Agent A, green=Agent B)
+- Reference directory (`--reference-dir`): agents get read-only access to browse background materials
+- Agent filesystem access is path-scoped via `--allowedTools` patterns: Read/Glob/Grep for session dir + reference dir, Write/Edit for session dir only
