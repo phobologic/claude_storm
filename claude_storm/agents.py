@@ -72,6 +72,7 @@ def invoke_agent(
     prompt: str,
     system_prompt: str | None = None,
     timeout: int = 300,
+    session_id: str | None = None,
 ) -> AgentResponse:
     """Invoke a Claude CLI session for an agent.
 
@@ -85,24 +86,31 @@ def invoke_agent(
         prompt: The user prompt to send.
         system_prompt: System prompt (only for first turn).
         timeout: Per-turn timeout in seconds.
+        session_id: Override session ID. When provided, creates a fresh
+            session instead of resuming the agent's brainstorming session.
 
     Returns:
         AgentResponse with the agent's text response.
     """
-    session_id = _get_session_id(config, agent)
+    resolved_session_id = session_id or _get_session_id(config, agent)
     cwd = config.session_dir()
 
     cmd = ["claude", "-p", "--output-format", "json"]
 
     if system_prompt is not None:
         # First turn: create session with system prompt
-        cmd.extend(["--session-id", session_id])
+        cmd.extend(["--session-id", resolved_session_id])
         cmd.extend(["--system-prompt", system_prompt])
+        cmd.extend(["--model", config.model])
+        cmd.extend(["--allowedTools"] + _build_allowed_tools(config))
+    elif session_id is not None:
+        # Fresh one-shot session (no system prompt, no resume)
+        cmd.extend(["--session-id", resolved_session_id])
         cmd.extend(["--model", config.model])
         cmd.extend(["--allowedTools"] + _build_allowed_tools(config))
     else:
         # Subsequent turns: resume existing session
-        cmd.extend(["--resume", session_id])
+        cmd.extend(["--resume", resolved_session_id])
 
     try:
         result = subprocess.run(

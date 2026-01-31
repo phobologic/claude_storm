@@ -8,27 +8,21 @@ from pathlib import Path
 from rich.console import Console
 
 
-def write_debug_entry(
+def write_debug_request(
     log_path: Path,
     turn: int,
     agent_label: str,
-    cmd: list[str],
     system_prompt: str | None,
     turn_prompt: str,
-    raw_response: dict,
-    directives: dict,
 ) -> None:
-    """Append a formatted debug entry to the log file.
+    """Write the request half of a debug entry (before agent invocation).
 
-    Each entry is delimited by === lines and contains labeled sections
-    for the CLI command, prompts, raw response, and parsed directives.
+    Writes the turn header, system prompt (if any), and turn prompt.
+    This is called before the agent is invoked so the prompts are
+    visible even if the agent hangs or crashes.
     """
     lines: list[str] = []
     lines.append(f"=== Turn {turn} - {agent_label} ===")
-    lines.append("")
-
-    lines.append("--- CLI COMMAND ---")
-    lines.append(" ".join(cmd))
     lines.append("")
 
     if system_prompt is not None:
@@ -38,6 +32,25 @@ def write_debug_entry(
 
     lines.append("--- TURN PROMPT ---")
     lines.append(turn_prompt)
+    lines.append("")
+
+    with open(log_path, "a") as f:
+        f.write("\n".join(lines))
+
+
+def write_debug_response(
+    log_path: Path,
+    cmd: list[str],
+    raw_response: dict,
+    directives: dict,
+) -> None:
+    """Write the response half of a debug entry (after agent invocation).
+
+    Writes the CLI command, raw response, and parsed directives.
+    """
+    lines: list[str] = []
+    lines.append("--- CLI COMMAND ---")
+    lines.append(" ".join(cmd))
     lines.append("")
 
     lines.append("--- RAW RESPONSE ---")
@@ -58,6 +71,25 @@ def write_debug_entry(
 
     with open(log_path, "a") as f:
         f.write("\n".join(lines))
+
+
+def write_debug_entry(
+    log_path: Path,
+    turn: int,
+    agent_label: str,
+    cmd: list[str],
+    system_prompt: str | None,
+    turn_prompt: str,
+    raw_response: dict,
+    directives: dict,
+) -> None:
+    """Append a formatted debug entry to the log file.
+
+    Thin wrapper that calls write_debug_request followed by
+    write_debug_response, preserving the original all-at-once API.
+    """
+    write_debug_request(log_path, turn, agent_label, system_prompt, turn_prompt)
+    write_debug_response(log_path, cmd, raw_response, directives)
 
 
 def debug_pause(console: Console) -> None:

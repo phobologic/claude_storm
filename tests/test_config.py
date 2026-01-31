@@ -82,7 +82,7 @@ class TestSessionConfig:
 
     def test_done_signals_default(self):
         config = SessionConfig(session_id="x", topic="t")
-        assert config.done_signals == []
+        assert config.done_signals == {}
 
     def test_debug_default_false(self):
         config = SessionConfig.create(topic="Test")
@@ -157,3 +157,31 @@ class TestSessionConfig:
         (session_dir / "session.json").write_text(json.dumps(data))
         loaded = SessionConfig.load("legacy456", storms_dir=str(tmp_storms))
         assert loaded.reference_dirs == []
+
+    def test_load_migrates_done_signals_list_to_dict(self, tmp_storms):
+        """Loading a session.json with old list done_signals migrates to dict."""
+        session_dir = tmp_storms / "legacy789"
+        session_dir.mkdir()
+        data = {
+            "session_id": "legacy789",
+            "topic": "Legacy",
+            "done_signals": ["a"],
+            "storms_dir": str(tmp_storms),
+        }
+        (session_dir / "session.json").write_text(json.dumps(data))
+        loaded = SessionConfig.load("legacy789", storms_dir=str(tmp_storms))
+        assert loaded.done_signals == {"a": "complete"}
+
+    def test_load_migrates_empty_done_signals_list(self, tmp_storms):
+        """Loading a session.json with empty list done_signals migrates to empty dict."""
+        session_dir = tmp_storms / "legacy000"
+        session_dir.mkdir()
+        data = {
+            "session_id": "legacy000",
+            "topic": "Legacy",
+            "done_signals": [],
+            "storms_dir": str(tmp_storms),
+        }
+        (session_dir / "session.json").write_text(json.dumps(data))
+        loaded = SessionConfig.load("legacy000", storms_dir=str(tmp_storms))
+        assert loaded.done_signals == {}
