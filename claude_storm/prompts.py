@@ -63,12 +63,13 @@ def build_system_prompt(config: SessionConfig, agent: str) -> str:
     )
 
     # Reference materials section
-    if config.reference_dir:
+    if config.reference_dirs:
+        dir_list = "\n".join(f"- `{d}`" for d in config.reference_dirs)
         parts.append(
             "\n# Reference Materials\n"
-            f"A directory of background materials relevant to this topic is available at:\n"
-            f"`{config.reference_dir}`\n\n"
-            "Use `Glob` and `Read` to browse and read files from this directory. "
+            "Directories of background materials relevant to this topic are available at:\n"
+            f"{dir_list}\n\n"
+            "Use `Glob` and `Read` to browse and read files from these directories. "
             "This is read-only reference material — do not modify these files."
         )
 

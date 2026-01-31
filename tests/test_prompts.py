@@ -83,14 +83,21 @@ class TestBuildSystemPrompt:
         assert "budget of 10 turns" in prompt
         assert "Pace yourself" in prompt
 
-    def test_system_prompt_includes_reference_dir(self):
-        config = _make_config(reference_dir="/tmp/notes")
+    def test_system_prompt_includes_reference_dirs(self):
+        config = _make_config(reference_dirs=["/tmp/notes"])
         prompt = build_system_prompt(config, "a")
         assert "Reference Materials" in prompt
         assert "/tmp/notes" in prompt
         assert "read-only" in prompt
 
-    def test_system_prompt_no_reference_dir(self):
+    def test_system_prompt_multiple_reference_dirs(self):
+        config = _make_config(reference_dirs=["/tmp/notes", "/tmp/docs"])
+        prompt = build_system_prompt(config, "a")
+        assert "Reference Materials" in prompt
+        assert "/tmp/notes" in prompt
+        assert "/tmp/docs" in prompt
+
+    def test_system_prompt_no_reference_dirs(self):
         config = _make_config()
         prompt = build_system_prompt(config, "a")
         assert "Reference Materials" not in prompt

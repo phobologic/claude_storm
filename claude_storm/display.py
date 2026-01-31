@@ -109,6 +109,12 @@ class Display:
         )
         return self.console.input("[bold yellow]Your response: [/bold yellow]")
 
+    def show_deliverable_compile(self, deliverable_name: str) -> None:
+        """Display progress during the deliverable compilation phase."""
+        self.console.print(
+            f"[bold cyan]  Compiling deliverable: {deliverable_name}[/bold cyan]"
+        )
+
     def show_summary(self, summary: str) -> None:
         """Display the final session summary."""
         self.console.print()

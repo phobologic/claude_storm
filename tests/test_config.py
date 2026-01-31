@@ -114,16 +114,46 @@ class TestSessionConfig:
         config = SessionConfig.create(topic="Test")
         assert config.deliverables == []
 
-    def test_reference_dir_default_empty(self):
+    def test_reference_dirs_default_empty(self):
         config = SessionConfig.create(topic="Test")
-        assert config.reference_dir == ""
+        assert config.reference_dirs == []
 
-    def test_create_with_reference_dir(self, tmp_storms):
+    def test_create_with_reference_dirs(self, tmp_storms):
         config = SessionConfig.create(
             topic="Test",
-            reference_dir="/some/path",
+            reference_dirs=["/some/path", "/other/path"],
             storms_dir=str(tmp_storms),
         )
         config.save()
         loaded = SessionConfig.load(config.session_id, storms_dir=str(tmp_storms))
-        assert loaded.reference_dir == "/some/path"
+        assert loaded.reference_dirs == ["/some/path", "/other/path"]
+
+    def test_load_migrates_legacy_reference_dir(self, tmp_storms):
+        """Loading a session.json with old reference_dir key migrates to reference_dirs."""
+        import json
+        session_dir = tmp_storms / "legacy123"
+        session_dir.mkdir()
+        data = {
+            "session_id": "legacy123",
+            "topic": "Legacy",
+            "reference_dir": "/old/path",
+            "storms_dir": str(tmp_storms),
+        }
+        (session_dir / "session.json").write_text(json.dumps(data))
+        loaded = SessionConfig.load("legacy123", storms_dir=str(tmp_storms))
+        assert loaded.reference_dirs == ["/old/path"]
+
+    def test_load_migrates_empty_reference_dir(self, tmp_storms):
+        """Loading a session.json with empty reference_dir results in empty list."""
+        import json
+        session_dir = tmp_storms / "legacy456"
+        session_dir.mkdir()
+        data = {
+            "session_id": "legacy456",
+            "topic": "Legacy",
+            "reference_dir": "",
+            "storms_dir": str(tmp_storms),
+        }
+        (session_dir / "session.json").write_text(json.dumps(data))
+        loaded = SessionConfig.load("legacy456", storms_dir=str(tmp_storms))
+        assert loaded.reference_dirs == []

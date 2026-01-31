@@ -154,7 +154,7 @@ class TestBuildAllowedTools:
 
     def test_with_reference_dir(self, tmp_path, monkeypatch):
         config = _make_config(tmp_path, monkeypatch)
-        config.reference_dir = "/some/ref/dir"
+        config.reference_dirs = ["/some/ref/dir"]
         tools = _build_allowed_tools(config)
         # Read tools for both dirs
         assert "Read(//some/ref/dir/**)" in tools
@@ -165,6 +165,21 @@ class TestBuildAllowedTools:
         assert not any("Edit" in t and "some/ref" in t for t in tools)
         # 8 total: 3 read tools * 2 dirs + 2 write tools * 1 dir
         assert len(tools) == 8
+
+    def test_with_multiple_reference_dirs(self, tmp_path, monkeypatch):
+        config = _make_config(tmp_path, monkeypatch)
+        config.reference_dirs = ["/ref/one", "/ref/two"]
+        tools = _build_allowed_tools(config)
+        # Read tools for all 3 dirs (session + 2 ref)
+        assert "Read(//ref/one/**)" in tools
+        assert "Read(//ref/two/**)" in tools
+        assert "Glob(//ref/one/**)" in tools
+        assert "Glob(//ref/two/**)" in tools
+        # Write/Edit only for session dir
+        assert not any("Write" in t and "ref/one" in t for t in tools)
+        assert not any("Write" in t and "ref/two" in t for t in tools)
+        # 11 total: 3 read tools * 3 dirs + 2 write tools * 1 dir
+        assert len(tools) == 11
 
 
 class TestExtractText:

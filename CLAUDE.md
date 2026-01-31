@@ -7,7 +7,7 @@ Dual-agent brainstorming system that orchestrates two Claude Code CLI sessions.
 - `claude_storm/` - Main Python package
   - `cli.py` - Typer CLI app (entry point: `storm`)
   - `config.py` - SessionConfig dataclass + JSON persistence
-  - `project.py` - Project directory config (storm.toml parsing, scaffolding, pacing)
+  - `project.py` - Project directory config (storm.toml parsing, scaffolding, pacing, migration)
   - `agents.py` - Claude CLI subprocess wrapper with session management
   - `memory.py` - Per-agent markdown memory filesystem with index
   - `prompts.py` - System prompt and per-turn prompt templates with pacing
@@ -18,6 +18,7 @@ Dual-agent brainstorming system that orchestrates two Claude Code CLI sessions.
 ## Commands
 
 - `uv run storm init [--topic "..."]` - Create a storm.toml config in CWD
+- `uv run storm init --update` - Migrate existing storm.toml to latest schema
 - `uv run storm start [TOPIC] [OPTIONS]` - Start a session (reads storm.toml if present)
 - `uv run storm resume <session-id>` - Resume a paused session
 - `uv run storm list` - List all sessions in .storms/
@@ -39,5 +40,6 @@ uv run pytest
 - Agents communicate via structured directives: `[MEMORY]`, `[ARTIFACT]`, `[DONE]`, `[ASK_USER]`
 - Conversation pacing: percentage-based nudges at 50%, 75%, and final 2 turns
 - Rich panels with color coding (blue=Agent A, green=Agent B)
-- Reference directory (`--reference-dir`): agents get read-only access to browse background materials
-- Agent filesystem access is path-scoped via `--allowedTools` patterns: Read/Glob/Grep for session dir + reference dir, Write/Edit for session dir only
+- Reference directories (`--reference-dir`, repeatable): agents get read-only access to browse background materials
+- Agent filesystem access is path-scoped via `--allowedTools` patterns: Read/Glob/Grep for session dir + reference dirs, Write/Edit for session dir only
+- Config migration (`storm init --update` or automatic on `storm start`): renames deprecated keys and appends missing defaults

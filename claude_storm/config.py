@@ -31,7 +31,7 @@ class SessionConfig:
     status: str = "active"
     done_signals: list[str] = field(default_factory=list)
     deliverables: list[str] = field(default_factory=list)
-    reference_dir: str = ""
+    reference_dirs: list[str] = field(default_factory=list)
     storms_dir: str = ""
 
     @classmethod
@@ -48,7 +48,7 @@ class SessionConfig:
         debug: bool = False,
         model: str = "sonnet",
         deliverables: list[str] | None = None,
-        reference_dir: str = "",
+        reference_dirs: list[str] | None = None,
         storms_dir: str = "",
     ) -> SessionConfig:
         """Create a new session config with generated IDs."""
@@ -69,7 +69,7 @@ class SessionConfig:
             started_at=datetime.now(timezone.utc).isoformat(),
             status="active",
             deliverables=deliverables or [],
-            reference_dir=reference_dir,
+            reference_dirs=reference_dirs or [],
             storms_dir=storms_dir,
         )
 
@@ -100,6 +100,11 @@ class SessionConfig:
         else:
             path = Path("sessions") / session_id / "session.json"
         data = json.loads(path.read_text())
+        # Migrate legacy reference_dir → reference_dirs
+        if "reference_dir" in data:
+            old = data.pop("reference_dir")
+            if old and "reference_dirs" not in data:
+                data["reference_dirs"] = [old]
         return cls(**data)
 
     def ensure_dirs(self) -> None:

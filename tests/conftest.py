@@ -33,6 +33,7 @@ def sample_config(tmp_storms):
         started_at="2025-01-31T10:00:00+00:00",
         status="active",
         deliverables=[],
+        reference_dirs=[],
         storms_dir=str(tmp_storms),
     )
     config.ensure_dirs()

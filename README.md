@@ -52,8 +52,8 @@ deliverables = [
     "Failure handling policy",
 ]
 
-# Optional: directory of notes/docs agents can read for context
-# reference_dir = "/path/to/research/notes"
+# Optional: directories of notes/docs agents can read for context
+# reference_dirs = ["/path/to/research/notes"]
 
 [options]
 max_turns = 20
@@ -70,6 +70,9 @@ Sessions are stored in `.storms/` alongside `storm.toml` (add to `.gitignore`).
 # Initialize a project config
 uv run storm init [--topic "quick topic"]
 
+# Migrate existing config to latest schema
+uv run storm init --update
+
 # Start a session (reads storm.toml if present, or pass a topic)
 uv run storm start [TOPIC] [OPTIONS]
 uv run storm start --config path/to/storm.toml
@@ -81,8 +84,8 @@ uv run storm start "Microservices vs monolith" --roles "Advocate" "Skeptic" --au
 # CLI flags override TOML values
 uv run storm start --max-turns 6 --model opus
 
-# Give agents read-only access to reference materials
-uv run storm start --reference-dir ./research/notes
+# Give agents read-only access to reference materials (repeatable)
+uv run storm start --reference-dir ./research/notes --reference-dir ./design/specs
 
 # Interactive mode (agents can ask user questions)
 uv run storm start --interactive
@@ -121,7 +124,7 @@ When deliverables or a goal are defined, agents receive pacing guidance:
 
 Agent filesystem access is restricted via path-scoped `--allowedTools` patterns:
 
-- **Read/Glob/Grep**: session directory + reference directory (if configured)
+- **Read/Glob/Grep**: session directory + reference directories (if configured)
 - **Write/Edit**: session directory only
 - **Bash/other tools**: not available to agents
 

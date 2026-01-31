@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import tomllib
 from pathlib import Path
 
@@ -30,7 +31,7 @@ topic = """
 #     "Summary document",
 # ]
 
-# reference_dir = "/path/to/notes"
+# reference_dirs = ["/path/to/notes"]
 
 [options]
 # max_turns = 20
@@ -174,3 +175,89 @@ def format_pacing_block(turn: int, max_turns: int, deliverables: list[str] | Non
         )
 
     return "\n".join(parts)
+
+
+# Known config keys with their section, commented default, and a pattern to detect them.
+_KNOWN_KEYS: list[tuple[str, str, str]] = [
+    # (key_name, section, commented_default_line)
+    ("reference_dirs", "session", '# reference_dirs = ["/path/to/notes"]'),
+    ("max_turns", "options", "# max_turns = 20"),
+    ("model", "options", '# model = "sonnet"'),
+    ("auto_complete", "options", "# auto_complete = true"),
+    ("interactive", "options", "# interactive = false"),
+]
+
+
+def migrate_config(config_path: Path) -> list[str]:
+    """Migrate a storm.toml to the latest schema.
+
+    Reads the raw TOML text, detects missing or renamed keys, and rewrites
+    the file with commented defaults appended where needed.
+
+    Returns a list of human-readable messages describing changes made.
+    """
+    text = config_path.read_text()
+    messages: list[str] = []
+
+    # --- Migration 1: reference_dir → reference_dirs ---
+    # Uncommented: reference_dir = "..."  →  reference_dirs = ["..."]
+    uncommented = re.search(r'^reference_dir\s*=\s*"([^"]*)"', text, re.MULTILINE)
+    if uncommented:
+        old_val = uncommented.group(1)
+        if old_val:
+            replacement = f'reference_dirs = ["{old_val}"]'
+        else:
+            replacement = '# reference_dirs = ["/path/to/notes"]'
+        text = text[: uncommented.start()] + replacement + text[uncommented.end() :]
+        messages.append("Renamed reference_dir → reference_dirs")
+    else:
+        # Commented: # reference_dir = "..."  →  # reference_dirs = ["/path/to/notes"]
+        commented = re.search(r'^#\s*reference_dir\s*=', text, re.MULTILINE)
+        if commented:
+            text = (
+                text[: commented.start()]
+                + '# reference_dirs = ["/path/to/notes"]'
+                + text[commented.end() :]
+            )
+            # Trim the rest of the old commented line
+            # The end() above points past '# reference_dir =', need to eat the rest of line
+            rest_match = re.search(r'^.*$', text[commented.start():], re.MULTILINE)
+            if rest_match:
+                line_end = commented.start() + rest_match.end()
+                text = text[:commented.start()] + '# reference_dirs = ["/path/to/notes"]' + text[line_end:]
+            messages.append("Updated commented reference_dir → reference_dirs")
+
+    # --- Migration 2: Append missing keys ---
+    for key_name, section, commented_default in _KNOWN_KEYS:
+        # Check if key already present (commented or uncommented)
+        pattern = rf'^#?\s*{re.escape(key_name)}\s*='
+        if re.search(pattern, text, re.MULTILINE):
+            continue
+
+        # Key is missing — append to the appropriate section
+        section_header = f"[{section}]"
+        if section_header in text:
+            # Insert before the next section header or at end of file
+            idx = text.index(section_header) + len(section_header)
+            # Find the next section header
+            next_section = re.search(r'^\[', text[idx:], re.MULTILINE)
+            if next_section:
+                insert_pos = idx + next_section.start()
+                text = text[:insert_pos] + commented_default + "\n" + text[insert_pos:]
+            else:
+                # Append at end
+                if not text.endswith("\n"):
+                    text += "\n"
+                text += commented_default + "\n"
+        else:
+            # Section doesn't exist — append section + key
+            if not text.endswith("\n"):
+                text += "\n"
+            text += f"\n{section_header}\n{commented_default}\n"
+
+        messages.append(f"Added missing key: {key_name}")
+
+    if messages:
+        config_path.write_text(text)
+
+    return messages

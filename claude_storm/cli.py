@@ -25,6 +25,7 @@ from claude_storm.project import (
     load_project_config,
     scaffold_config,
     get_storms_dir,
+    migrate_config,
     STORM_CONFIG_FILENAME,
 )
 from claude_storm.prompts import (
@@ -454,9 +455,26 @@ def init(
     force: bool = typer.Option(
         False, "--force", "-f", help="Overwrite existing storm.toml"
     ),
+    update: bool = typer.Option(
+        False, "--update", "-u", help="Migrate existing config to latest schema"
+    ),
 ) -> None:
     """Initialize a storm.toml config file in the current directory."""
     console = Console()
+
+    if update:
+        config_file = Path.cwd() / STORM_CONFIG_FILENAME
+        if not config_file.exists():
+            console.print(f"[bold red]No {STORM_CONFIG_FILENAME} found to update.[/bold red]")
+            raise typer.Exit(1)
+        messages = migrate_config(config_file)
+        if messages:
+            for msg in messages:
+                console.print(f"[yellow]{msg}[/yellow]")
+        else:
+            console.print("Config is already up to date.")
+        return
+
     try:
         path = scaffold_config(Path.cwd(), topic=topic, force=force)
         console.print(f"Created {path}")
@@ -493,8 +511,8 @@ def start(
     interactive: Optional[bool] = typer.Option(
         None, "--interactive/--no-interactive", help="Allow agents to ask user questions"
     ),
-    reference_dir: Optional[Path] = typer.Option(
-        None, "--reference-dir", "--ref", help="Read-only directory of reference materials"
+    reference_dir: Optional[list[Path]] = typer.Option(
+        None, "--reference-dir", "--ref", help="Read-only directory of reference materials (repeatable)"
     ),
 ) -> None:
     """Start a new brainstorming session."""
@@ -512,7 +530,7 @@ def start(
         "interactive": False,
         "model": "sonnet",
         "deliverables": [],
-        "reference_dir": "",
+        "reference_dirs": [],
     }
 
     # Layer 2: TOML config (if available)
@@ -529,6 +547,21 @@ def start(
         except (FileNotFoundError, ValueError) as e:
             console.print(f"[bold red]{e}[/bold red]")
             raise typer.Exit(1)
+
+        # Run migration on the config file
+        migration_messages = migrate_config(resolved_config_path)
+        for msg in migration_messages:
+            console.print(f"[yellow]{msg}[/yellow]")
+
+        # Reload if migrated
+        if migration_messages:
+            toml_config = load_project_config(resolved_config_path)
+
+        # Migrate old reference_dir key from TOML to reference_dirs
+        if "reference_dir" in toml_config and "reference_dirs" not in toml_config:
+            old_val = toml_config.pop("reference_dir")
+            if old_val:
+                toml_config["reference_dirs"] = [old_val]
 
         for key in merged:
             if key in toml_config:
@@ -554,18 +587,20 @@ def start(
         merged["interactive"] = interactive
     if model is not None:
         merged["model"] = model
-    if reference_dir is not None:
-        merged["reference_dir"] = str(reference_dir)
+    if reference_dir:
+        merged["reference_dirs"] = [str(p) for p in reference_dir]
 
-    # Validate: reference_dir must exist if set
-    if merged["reference_dir"]:
-        ref_path = Path(merged["reference_dir"]).resolve()
+    # Validate: each reference dir must exist
+    resolved_refs: list[str] = []
+    for ref in merged["reference_dirs"]:
+        ref_path = Path(ref).resolve()
         if not ref_path.is_dir():
             console.print(
                 f"[bold red]Reference directory not found: {ref_path}[/bold red]"
             )
             raise typer.Exit(1)
-        merged["reference_dir"] = str(ref_path)
+        resolved_refs.append(str(ref_path))
+    merged["reference_dirs"] = resolved_refs
 
     # Validate: topic is required
     if not merged["topic"]:
@@ -589,7 +624,7 @@ def start(
         debug=_debug_mode,
         model=merged["model"],
         deliverables=merged["deliverables"],
-        reference_dir=merged["reference_dir"],
+        reference_dirs=merged["reference_dirs"],
         storms_dir=storms_dir,
     )
 

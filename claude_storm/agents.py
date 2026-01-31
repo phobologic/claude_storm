@@ -45,10 +45,9 @@ def _build_allowed_tools(config: SessionConfig) -> list[str]:
     """
     session_path = str(config.session_dir().resolve())
 
-    # Readable directories: session dir + optional reference dir
+    # Readable directories: session dir + any reference dirs
     readable_dirs = [session_path]
-    if config.reference_dir:
-        readable_dirs.append(config.reference_dir)
+    readable_dirs.extend(config.reference_dirs)
 
     tools: list[str] = []
 

@@ -244,7 +244,24 @@ class TestCLICommands:
         )
         assert result.exit_code == 0
         config = mock_run.call_args[0][0]
-        assert config.reference_dir == str(ref_dir)
+        assert config.reference_dirs == [str(ref_dir)]
+
+    @patch("claude_storm.cli.run_session")
+    def test_start_with_multiple_reference_dirs(self, mock_run, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        ref1 = tmp_path / "notes"
+        ref1.mkdir()
+        ref2 = tmp_path / "docs"
+        ref2.mkdir()
+        result = runner.invoke(
+            app,
+            ["start", "Topic", "--reference-dir", str(ref1), "--reference-dir", str(ref2)],
+        )
+        assert result.exit_code == 0
+        config = mock_run.call_args[0][0]
+        assert len(config.reference_dirs) == 2
+        assert str(ref1) in config.reference_dirs
+        assert str(ref2) in config.reference_dirs
 
     def test_start_reference_dir_not_found(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
@@ -253,6 +270,19 @@ class TestCLICommands:
         )
         assert result.exit_code == 1
         assert "not found" in result.output
+
+    def test_init_update_migrates_config(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        config_file = tmp_path / STORM_CONFIG_FILENAME
+        config_file.write_text('[session]\ntopic = "Test"\nreference_dir = "/old"\n\n[options]\n')
+        result = runner.invoke(app, ["init", "--update"])
+        assert result.exit_code == 0
+        assert "reference_dirs" in config_file.read_text()
+
+    def test_init_update_no_file_errors(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(app, ["init", "--update"])
+        assert result.exit_code == 1
 
 
 class TestCompileDeliverables:

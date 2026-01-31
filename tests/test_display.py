@@ -100,6 +100,13 @@ class TestDisplay:
         display.show_completion(config)
         assert "8 turns" in _plain(buf)
 
+    def test_show_deliverable_compile(self):
+        display, buf = _capture_display()
+        display.show_deliverable_compile("Chapter Summaries")
+        output = buf.getvalue()
+        assert "Chapter Summaries" in output
+        assert "Compiling" in output
+
     def test_show_summary(self):
         display, buf = _capture_display()
         display.show_summary("## Summary\nKey ideas discussed.")

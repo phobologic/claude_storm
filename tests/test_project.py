@@ -7,6 +7,7 @@ from claude_storm.project import (
     load_project_config,
     scaffold_config,
     format_pacing_block,
+    migrate_config,
     STORM_CONFIG_FILENAME,
 )
 
@@ -78,7 +79,7 @@ class TestScaffoldConfig:
         content = path.read_text()
         assert "[session]" in content
         assert "topic" in content
-        assert "reference_dir" in content
+        assert "reference_dirs" in content
 
     def test_scaffold_with_topic(self, tmp_path):
         path = scaffold_config(tmp_path, topic="My cool topic")
@@ -149,3 +150,57 @@ class TestFormatPacingBlock:
         block = format_pacing_block(turn=19, max_turns=20)
         assert "final turns" in block
         assert "[ARTIFACT" not in block
+
+
+class TestMigrateConfig:
+    def test_renames_uncommented_reference_dir(self, tmp_path):
+        config = tmp_path / STORM_CONFIG_FILENAME
+        config.write_text(
+            '[session]\ntopic = "Test"\nreference_dir = "/my/notes"\n\n[options]\n'
+        )
+        messages = migrate_config(config)
+        text = config.read_text()
+        assert "reference_dir" not in text or "reference_dirs" in text
+        assert 'reference_dirs = ["/my/notes"]' in text
+        assert any("Renamed" in m for m in messages)
+
+    def test_renames_commented_reference_dir(self, tmp_path):
+        config = tmp_path / STORM_CONFIG_FILENAME
+        config.write_text(
+            '[session]\ntopic = "Test"\n# reference_dir = "/path/to/notes"\n\n[options]\n'
+        )
+        messages = migrate_config(config)
+        text = config.read_text()
+        assert "# reference_dirs" in text
+        assert "reference_dir =" not in text.replace("reference_dirs", "")
+
+    def test_appends_missing_keys(self, tmp_path):
+        config = tmp_path / STORM_CONFIG_FILENAME
+        config.write_text('[session]\ntopic = "Test"\n')
+        messages = migrate_config(config)
+        text = config.read_text()
+        assert "# reference_dirs" in text
+        assert "# max_turns" in text
+        assert "# model" in text
+        assert "# auto_complete" in text
+        assert "# interactive" in text
+        assert len(messages) >= 5  # one per missing key
+
+    def test_no_changes_when_up_to_date(self, tmp_path):
+        config = tmp_path / STORM_CONFIG_FILENAME
+        scaffold_config(tmp_path, topic="Test")
+        messages = migrate_config(config)
+        assert messages == []
+
+    def test_does_not_duplicate_existing_keys(self, tmp_path):
+        config = tmp_path / STORM_CONFIG_FILENAME
+        config.write_text(
+            '[session]\ntopic = "Test"\n# reference_dirs = []\n\n'
+            '[options]\nmax_turns = 10\n# model = "opus"\n'
+            '# auto_complete = false\n# interactive = true\n'
+        )
+        messages = migrate_config(config)
+        # Only missing keys should be added, existing ones left alone
+        text = config.read_text()
+        assert text.count("max_turns") == 1
+        assert text.count("reference_dirs") == 1
