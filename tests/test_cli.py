@@ -8,7 +8,7 @@ from rich.console import Console
 
 from typer.testing import CliRunner
 
-from claude_storm.cli import app, _parse_directives, _check_stop, _compile_deliverables
+from claude_storm.cli import app, _parse_directives, _check_stop, _compile_deliverables, _process_directives
 from claude_storm.agents import AgentResponse
 from claude_storm.config import SessionConfig
 from claude_storm.display import Display
@@ -81,6 +81,46 @@ class TestParseDirectives:
         result = _parse_directives(text)
         assert len(result["memories"]) == 2
 
+    def test_parse_propose(self):
+        text = 'Let me propose [PROPOSE title="Use REST"]We should use REST for the API[/PROPOSE] done'
+        result = _parse_directives(text)
+        assert len(result["proposals"]) == 1
+        assert result["proposals"][0] == ("Use REST", "We should use REST for the API")
+        assert "[PROPOSE" not in result["clean_text"]
+        assert "Let me propose" in result["clean_text"]
+
+    def test_parse_accept(self):
+        text = 'I agree with that. [ACCEPT id="a3f2"]'
+        result = _parse_directives(text)
+        assert result["accepts"] == ["a3f2"]
+        assert "[ACCEPT" not in result["clean_text"]
+
+    def test_parse_reject(self):
+        text = 'I disagree. [REJECT id="a3f2" reason="Too complex"]'
+        result = _parse_directives(text)
+        assert result["rejects"] == [("a3f2", "Too complex")]
+        assert "[REJECT" not in result["clean_text"]
+
+    def test_parse_revise(self):
+        text = '[REVISE id="a3f2"]Updated: use REST with caching[/REVISE]'
+        result = _parse_directives(text)
+        assert len(result["revisions"]) == 1
+        assert result["revisions"][0] == ("a3f2", "Updated: use REST with caching")
+        assert "[REVISE" not in result["clean_text"]
+
+    def test_parse_multiple_accepts(self):
+        text = '[ACCEPT id="a3f2"] [ACCEPT id="b7c1"]'
+        result = _parse_directives(text)
+        assert result["accepts"] == ["a3f2", "b7c1"]
+
+    def test_no_agreement_directives(self):
+        text = "Just a regular response."
+        result = _parse_directives(text)
+        assert result["proposals"] == []
+        assert result["accepts"] == []
+        assert result["rejects"] == []
+        assert result["revisions"] == []
+
 
 class TestCheckStop:
     def test_max_turns(self):
@@ -102,7 +142,7 @@ class TestCheckStop:
             max_turns=20,
             current_turn=5,
             auto_complete=True,
-            done_signals=["a", "b"],
+            done_signals={"a": "complete", "b": "agreed"},
         )
         assert _check_stop(config, float("inf")) == "auto_complete"
 
@@ -113,7 +153,7 @@ class TestCheckStop:
             max_turns=20,
             current_turn=5,
             auto_complete=True,
-            done_signals=["a"],
+            done_signals={"a": "complete"},
         )
         assert _check_stop(config, float("inf")) is None
 
@@ -285,6 +325,66 @@ class TestCLICommands:
         assert result.exit_code == 1
 
 
+class TestConsensus:
+    def _make_config(self, tmp_storms, **kwargs):
+        defaults = dict(
+            session_id="consensus-test",
+            topic="Test topic",
+            max_turns=20,
+            current_turn=5,
+            auto_complete=True,
+            storms_dir=str(tmp_storms),
+        )
+        defaults.update(kwargs)
+        config = SessionConfig(**defaults)
+        config.ensure_dirs()
+        return config
+
+    def test_done_signal_stored_in_dict(self, tmp_storms):
+        config = self._make_config(tmp_storms)
+        display = Display(console=Console(file=StringIO(), force_terminal=True, no_color=True))
+        directives = _parse_directives('[DONE reason="All covered"]')
+        _process_directives(config, "a", directives, display)
+        assert config.done_signals == {"a": "All covered"}
+
+    def test_both_agents_agree(self, tmp_storms):
+        config = self._make_config(tmp_storms)
+        display = Display(console=Console(file=StringIO(), force_terminal=True, no_color=True))
+        # Agent A signals DONE
+        dir_a = _parse_directives('[DONE reason="All covered"]')
+        _process_directives(config, "a", dir_a, display)
+        # Agent B also signals DONE (agreement)
+        dir_b = _parse_directives('[DONE reason="Agreed"]')
+        _process_directives(config, "b", dir_b, display)
+        assert len(config.done_signals) == 2
+
+    def test_disagreement_clears_done(self, tmp_storms):
+        config = self._make_config(tmp_storms)
+        display = Display(console=Console(file=StringIO(), force_terminal=True, no_color=True))
+        # Agent A signals DONE
+        dir_a = _parse_directives('[DONE reason="All covered"]')
+        _process_directives(config, "a", dir_a, display)
+        assert "a" in config.done_signals
+        # Agent B responds without DONE (disagreement)
+        dir_b = _parse_directives("I think we still need to discuss error handling.")
+        _process_directives(config, "b", dir_b, display)
+        assert config.done_signals == {}
+
+    def test_disagreement_display_message(self, tmp_storms):
+        config = self._make_config(tmp_storms)
+        display, buf = Display(console=Console(file=StringIO(), force_terminal=True, no_color=True)), None
+        buf = display.console.file
+        # Agent A signals DONE
+        dir_a = _parse_directives('[DONE reason="All covered"]')
+        _process_directives(config, "a", dir_a, display)
+        # Agent B disagrees
+        dir_b = _parse_directives("More to discuss.")
+        _process_directives(config, "b", dir_b, display)
+        output = buf.getvalue()
+        assert "disagrees" in output
+        assert "DONE" in output
+
+
 class TestCompileDeliverables:
     def _make_config(self, tmp_storms, **kwargs):
         defaults = dict(
@@ -331,6 +431,47 @@ class TestCompileDeliverables:
         assert artifacts_dir.exists()
         files = list(artifacts_dir.glob("*.md"))
         assert len(files) == 2
+
+    def test_shows_error_on_failed_deliverable(self, tmp_storms):
+        config = self._make_config(tmp_storms)
+        (config.session_dir() / "conversation.md").write_text("")
+        buf = StringIO()
+        display = Display(console=Console(file=buf, force_terminal=True, no_color=True))
+
+        error_response = AgentResponse(
+            text="[Agent error: timeout]", raw={"error": "timeout"}, is_error=True
+        )
+        with patch("claude_storm.cli.invoke_agent", return_value=error_response):
+            _compile_deliverables(config, display)
+
+        output = buf.getvalue()
+        assert "Failed to compile deliverable" in output
+        # No artifact files should be written
+        artifacts_dir = config.session_dir() / "artifacts"
+        md_files = list(artifacts_dir.glob("*.md")) if artifacts_dir.exists() else []
+        assert len(md_files) == 0
+
+    def test_uses_distinct_session_ids(self, tmp_storms):
+        config = self._make_config(tmp_storms)
+        (config.session_dir() / "conversation.md").write_text("")
+        display = Display(console=Console(file=StringIO(), force_terminal=True, no_color=True))
+
+        mock_response = AgentResponse(text="content", raw={})
+        session_ids = []
+
+        def capture_invoke(**kwargs):
+            session_ids.append(kwargs.get("session_id"))
+            return mock_response
+
+        with patch("claude_storm.cli.invoke_agent", side_effect=capture_invoke):
+            _compile_deliverables(config, display)
+
+        # Should have one session_id per deliverable, all unique and non-None
+        assert len(session_ids) == 2
+        assert all(sid is not None for sid in session_ids)
+        assert session_ids[0] != session_ids[1]
+        # None of them should be the agent's brainstorming session ID
+        assert all(sid != config.claude_session_a for sid in session_ids)
 
     def test_sanitizes_filenames(self, tmp_storms):
         config = self._make_config(

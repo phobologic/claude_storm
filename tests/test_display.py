@@ -112,3 +112,49 @@ class TestDisplay:
         display.show_summary("## Summary\nKey ideas discussed.")
         output = buf.getvalue()
         assert "Summary" in output
+
+    def test_show_done_disagreement(self):
+        display, buf = _capture_display()
+        display.show_done_disagreement("b", "a")
+        output = buf.getvalue()
+        assert "disagrees" in output
+        assert "A" in output
+        assert "DONE" in output
+
+    def test_show_proposal(self):
+        display, buf = _capture_display()
+        display.show_proposal("a", "Use REST API", "a3f2")
+        output = buf.getvalue()
+        assert "a3f2" in output
+        assert "Use REST API" in output
+        assert "A" in output
+
+    def test_show_agreement_accepted(self):
+        display, buf = _capture_display()
+        display.show_agreement_accepted("a3f2", "Use REST API")
+        output = buf.getvalue()
+        assert "a3f2" in output
+        assert "Use REST API" in output
+        assert "accepted" in output.lower()
+
+    def test_show_agreement_rejected(self):
+        display, buf = _capture_display()
+        display.show_agreement_rejected("a3f2", "Too complex")
+        output = buf.getvalue()
+        assert "a3f2" in output
+        assert "Too complex" in output
+        assert "rejected" in output.lower()
+
+    def test_show_revision_proposed(self):
+        display, buf = _capture_display()
+        display.show_revision_proposed("b", "a3f2", "e9d4")
+        output = buf.getvalue()
+        assert "a3f2" in output
+        assert "e9d4" in output
+        assert "B" in output
+
+    def test_thinking_status(self):
+        display, buf = _capture_display()
+        with display.thinking_status("Agent A", timeout=300):
+            pass  # immediate exit
+        # transient=True means output is cleared, just verify no exception

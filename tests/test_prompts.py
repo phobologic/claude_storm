@@ -53,6 +53,16 @@ class TestBuildSystemPrompt:
         assert "[ARTIFACT" in prompt
         assert "[DONE" in prompt
         assert "[ASK_USER]" in prompt
+        assert "[PROPOSE" in prompt
+        assert "[ACCEPT" in prompt
+        assert "[REJECT" in prompt
+        assert "[REVISE" in prompt
+
+    def test_includes_agreement_guidelines(self):
+        config = _make_config()
+        prompt = build_system_prompt(config, "a")
+        assert "shared agreement" in prompt
+        assert "pending proposals" in prompt
 
     def test_no_role_uses_default(self):
         config = _make_config(role_a=None)
@@ -227,6 +237,77 @@ class TestBuildTurnPrompt:
         assert "Data model" in prompt
 
 
+    def test_completion_check_shown_when_other_done(self):
+        config = _make_config(
+            auto_complete=True,
+            done_signals={"a": "All topics covered"},
+        )
+        prompt = build_turn_prompt(
+            config=config,
+            agent="b",
+            other_response="I think we're done.",
+            memory_index="You have no saved notes.",
+            recent_memories="",
+        )
+        assert "Completion Check" in prompt
+        assert "All topics covered" in prompt
+        assert "If you agree, signal [DONE]" in prompt
+        # Should NOT show the generic DONE hint
+        assert "Signal [DONE] when you believe" not in prompt
+
+    def test_no_completion_check_when_no_pending_done(self):
+        config = _make_config(auto_complete=True)
+        prompt = build_turn_prompt(
+            config=config,
+            agent="b",
+            other_response="Let's keep going.",
+            memory_index="You have no saved notes.",
+            recent_memories="",
+        )
+        assert "Completion Check" not in prompt
+        assert "Signal [DONE] when you believe" in prompt
+
+    def test_includes_agreements_text(self):
+        config = _make_config(current_turn=5)
+        prompt = build_turn_prompt(
+            config=config,
+            agent="a",
+            other_response="response",
+            memory_index="You have no saved notes.",
+            recent_memories="",
+            agreements_text="# Shared Agreements\n\n## Confirmed\n- [a3f2] **Use REST**",
+        )
+        assert "Shared Agreements" in prompt
+        assert "[a3f2]" in prompt
+        assert "Use REST" in prompt
+
+    def test_no_agreements_text_when_empty(self):
+        config = _make_config(current_turn=5)
+        prompt = build_turn_prompt(
+            config=config,
+            agent="a",
+            other_response="response",
+            memory_index="You have no saved notes.",
+            recent_memories="",
+            agreements_text="",
+        )
+        assert "Shared Agreements" not in prompt
+
+    def test_completion_check_not_shown_without_auto_complete(self):
+        config = _make_config(
+            auto_complete=False,
+            done_signals={"a": "Done"},
+        )
+        prompt = build_turn_prompt(
+            config=config,
+            agent="b",
+            other_response="response",
+            memory_index="You have no saved notes.",
+            recent_memories="",
+        )
+        assert "Completion Check" not in prompt
+
+
 class TestBuildSummaryPrompt:
     def test_includes_topic_and_turns(self):
         config = _make_config(current_turn=8)
@@ -278,3 +359,26 @@ class TestBuildDeliverablePrompt:
         )
         assert "key insight about caching" in prompt
         assert "turn 1: discussed caching" in prompt
+
+    def test_includes_agreements_text(self):
+        config = _make_config()
+        prompt = build_deliverable_prompt(
+            config=config,
+            deliverable_name="Doc",
+            memories_text="memories",
+            conversation_text="conversation",
+            agreements_text="[a3f2] Use REST API",
+        )
+        assert "Shared Agreements" in prompt
+        assert "[a3f2] Use REST API" in prompt
+
+    def test_no_agreements_section_when_empty(self):
+        config = _make_config()
+        prompt = build_deliverable_prompt(
+            config=config,
+            deliverable_name="Doc",
+            memories_text="memories",
+            conversation_text="conversation",
+            agreements_text="",
+        )
+        assert "Shared Agreements" not in prompt

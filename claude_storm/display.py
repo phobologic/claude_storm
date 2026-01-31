@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import time
+from contextlib import contextmanager
+
 from rich.console import Console
+from rich.live import Live
 from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.text import Text
@@ -92,6 +96,14 @@ class Display:
             f"[bold magenta]  {label} signals DONE: {reason}[/bold magenta]"
         )
 
+    def show_done_disagreement(self, agent: str, other: str) -> None:
+        """Display when an agent disagrees with the other's DONE signal."""
+        label = agent.upper()
+        other_label = other.upper()
+        self.console.print(
+            f"[bold yellow]  {label} disagrees — {other_label}'s DONE signal cleared[/bold yellow]"
+        )
+
     def show_completion(self, config: SessionConfig) -> None:
         """Display session completion info."""
         self.console.rule()
@@ -109,6 +121,38 @@ class Display:
         )
         return self.console.input("[bold yellow]Your response: [/bold yellow]")
 
+    def show_proposal(self, agent: str, title: str, proposal_id: str) -> None:
+        """Display a proposal notification."""
+        label = agent.upper()
+        style = AGENT_STYLES.get(agent, AGENT_STYLES["a"])
+        self.console.print(
+            f"[{style['border']}]  Agent {label} proposed \\[{proposal_id}]: "
+            f"{title}[/{style['border']}]"
+        )
+
+    def show_agreement_accepted(self, proposal_id: str, title: str) -> None:
+        """Display an agreement acceptance notification."""
+        self.console.print(
+            f"[bold cyan]  Agreement accepted \\[{proposal_id}]: {title}[/bold cyan]"
+        )
+
+    def show_agreement_rejected(self, proposal_id: str, reason: str) -> None:
+        """Display an agreement rejection notification."""
+        self.console.print(
+            f"[bold yellow]  Proposal rejected \\[{proposal_id}]: {reason}[/bold yellow]"
+        )
+
+    def show_revision_proposed(
+        self, agent: str, agreement_id: str, new_id: str
+    ) -> None:
+        """Display a revision proposal notification."""
+        label = agent.upper()
+        style = AGENT_STYLES.get(agent, AGENT_STYLES["a"])
+        self.console.print(
+            f"[{style['border']}]  Agent {label} proposed revision \\[{new_id}] "
+            f"of \\[{agreement_id}][/{style['border']}]"
+        )
+
     def show_deliverable_compile(self, deliverable_name: str) -> None:
         """Display progress during the deliverable compilation phase."""
         self.console.print(
@@ -125,3 +169,21 @@ class Display:
             title_align="left",
         )
         self.console.print(panel)
+
+    @contextmanager
+    def thinking_status(self, label: str, timeout: int = 300):
+        """Show a live elapsed timer while an agent is working."""
+        start = time.monotonic()
+
+        def get_renderable():
+            elapsed = int(time.monotonic() - start)
+            return Text(f"  {label} is thinking... ({elapsed}s / {timeout}s)")
+
+        with Live(
+            get_renderable(),
+            console=self.console,
+            refresh_per_second=1,
+            get_renderable=get_renderable,
+            transient=True,
+        ):
+            yield

@@ -48,9 +48,17 @@ def build_system_prompt(config: SessionConfig, agent: str) -> str:
         '- `[ARTIFACT filename="..."]content[/ARTIFACT]` - Produce a shared output file '
         "(code, document, etc.).\n"
         '- `[DONE reason="..."]` - Signal that you believe the brainstorming is complete '
-        "and the topic is well-explored.\n"
+        "and the topic is well-explored. The other agent will be asked to confirm. "
+        "If they disagree, the conversation continues.\n"
         "- `[ASK_USER]question[/ASK_USER]` - Pause to ask the human user a question "
-        "(only if interactive mode is enabled)."
+        "(only if interactive mode is enabled).\n"
+        '- `[PROPOSE title="..."]content[/PROPOSE]` - Propose a shared agreement when you believe '
+        "you and the other agent have converged on a decision. The other agent will be asked to "
+        "accept or reject it on their next turn.\n"
+        '- `[ACCEPT id="..."]` - Accept a pending agreement proposal by its ID.\n'
+        '- `[REJECT id="..." reason="..."]` - Reject a pending proposal with an explanation.\n'
+        '- `[REVISE id="..."]new content[/REVISE]` - Propose revising an existing confirmed '
+        "agreement. Creates a new pending proposal the other agent must accept."
     )
 
     parts.append(
@@ -59,7 +67,9 @@ def build_system_prompt(config: SessionConfig, agent: str) -> str:
         "- Challenge assumptions constructively\n"
         "- Save key insights and decisions to memory with [MEMORY]\n"
         "- Produce concrete artifacts when appropriate\n"
-        "- Keep responses focused and actionable"
+        "- Keep responses focused and actionable\n"
+        "- When you converge on a substantive point, propose it as a shared agreement with [PROPOSE]\n"
+        "- Review and respond to any pending proposals from the other agent"
     )
 
     # Reference materials section
@@ -100,6 +110,7 @@ def build_turn_prompt(
     recent_memories: str,
     search_results: str | None = None,
     user_input: str | None = None,
+    agreements_text: str = "",
 ) -> str:
     """Build the per-turn prompt for an agent.
 
@@ -111,6 +122,7 @@ def build_turn_prompt(
         recent_memories: Formatted recent memories string.
         search_results: Formatted search results, if any.
         user_input: User input in response to ASK_USER, if any.
+        agreements_text: Formatted shared agreements text.
 
     Returns:
         The per-turn prompt string.
@@ -141,6 +153,10 @@ def build_turn_prompt(
     if user_input:
         sections.append(f"\n# User Input\n{user_input}")
 
+    # Shared agreements
+    if agreements_text:
+        sections.append(f"\n{agreements_text}")
+
     # Pacing block (replaces old turn info)
     turn_number = config.current_turn + 1
     pacing = format_pacing_block(
@@ -150,7 +166,18 @@ def build_turn_prompt(
     )
     sections.append(f"\n# Turn Progress\n{pacing}")
 
-    if config.auto_complete:
+    # Completion Check: if the other agent has a pending DONE signal
+    other_agent = "b" if agent == "a" else "a"
+    other_done_reason = config.done_signals.get(other_agent)
+    if other_done_reason and config.auto_complete:
+        sections.append(
+            f"\n# Completion Check\n"
+            f"{other_label} has signaled that they believe the brainstorming is complete.\n"
+            f'Their reason: "{other_done_reason}"\n\n'
+            f"If you agree, signal [DONE]. If not, continue normally and explain "
+            f"what still needs attention."
+        )
+    elif config.auto_complete:
         sections.append(
             "Signal [DONE] when you believe the topic is well-explored."
         )
@@ -195,6 +222,7 @@ def build_deliverable_prompt(
     deliverable_name: str,
     memories_text: str,
     conversation_text: str,
+    agreements_text: str = "",
 ) -> str:
     """Build a prompt to compile a single deliverable from session materials.
 
@@ -203,11 +231,12 @@ def build_deliverable_prompt(
         deliverable_name: Name of the deliverable to compile.
         memories_text: Combined memory contents from both agents.
         conversation_text: The full conversation log.
+        agreements_text: Formatted shared agreements text.
 
     Returns:
         The compilation prompt string.
     """
-    return (
+    parts = [
         f"# Deliverable Compilation\n\n"
         f"The brainstorming session on \"{config.topic}\" has concluded.\n"
         f"Please compile the following deliverable from the session materials:\n\n"
@@ -216,7 +245,12 @@ def build_deliverable_prompt(
         f"information discussed during the session. Do not include preamble or\n"
         f"meta-commentary — just the deliverable content.\n\n"
         f"---\n\n"
-        f"## Agent Memories\n\n{memories_text}\n\n"
-        f"---\n\n"
-        f"## Conversation Log\n\n{conversation_text}"
-    )
+        f"## Agent Memories\n\n{memories_text}",
+    ]
+
+    if agreements_text:
+        parts.append(f"---\n\n## Shared Agreements\n\n{agreements_text}")
+
+    parts.append(f"---\n\n## Conversation Log\n\n{conversation_text}")
+
+    return "\n\n".join(parts)

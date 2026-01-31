@@ -29,9 +29,11 @@ class SessionConfig:
     current_turn: int = 0
     started_at: str = ""
     status: str = "active"
-    done_signals: list[str] = field(default_factory=list)
+    done_signals: dict[str, str] = field(default_factory=dict)
     deliverables: list[str] = field(default_factory=list)
     reference_dirs: list[str] = field(default_factory=list)
+    pending_proposals: list[dict] = field(default_factory=list)
+    accepted_agreements: list[dict] = field(default_factory=list)
     storms_dir: str = ""
 
     @classmethod
@@ -105,6 +107,12 @@ class SessionConfig:
             old = data.pop("reference_dir")
             if old and "reference_dirs" not in data:
                 data["reference_dirs"] = [old]
+        # Migrate legacy done_signals list → dict
+        if isinstance(data.get("done_signals"), list):
+            data["done_signals"] = {a: "complete" for a in data["done_signals"]}
+        # Ensure new agreement fields exist for legacy sessions
+        data.setdefault("pending_proposals", [])
+        data.setdefault("accepted_agreements", [])
         return cls(**data)
 
     def ensure_dirs(self) -> None:

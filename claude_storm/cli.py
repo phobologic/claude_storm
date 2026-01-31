@@ -7,13 +7,19 @@ import signal
 import time
 from pathlib import Path
 from typing import Optional
+from uuid import uuid4
 
 import typer
 from rich.console import Console
 
 from claude_storm.agents import invoke_agent, AgentResponse
 from claude_storm.config import SessionConfig
-from claude_storm.debug import write_debug_entry, debug_pause
+from claude_storm.debug import (
+    debug_pause,
+    write_debug_entry,
+    write_debug_request,
+    write_debug_response,
+)
 from claude_storm.display import Display
 from claude_storm.memory import (
     format_memory_index,
@@ -27,6 +33,12 @@ from claude_storm.project import (
     get_storms_dir,
     migrate_config,
     STORM_CONFIG_FILENAME,
+)
+from claude_storm.agreements import (
+    accept_proposal,
+    create_proposal,
+    format_agreements_for_prompt,
+    reject_proposal,
 )
 from claude_storm.prompts import (
     build_system_prompt,
@@ -70,6 +82,10 @@ def _parse_directives(text: str) -> dict:
         "artifacts": [],
         "done": None,
         "ask_user": None,
+        "proposals": [],
+        "accepts": [],
+        "rejects": [],
+        "revisions": [],
         "clean_text": text,
     }
 
@@ -109,6 +125,32 @@ def _parse_directives(text: str) -> dict:
     if ask_match:
         result["ask_user"] = ask_match.group(1).strip()
 
+    # Parse [PROPOSE title="..."]content[/PROPOSE]
+    propose_pattern = re.compile(
+        r'\[PROPOSE\s+title="([^"]+)"\](.*?)\[/PROPOSE\]',
+        re.DOTALL,
+    )
+    for match in propose_pattern.finditer(text):
+        result["proposals"].append((match.group(1), match.group(2).strip()))
+
+    # Parse [ACCEPT id="..."]
+    accept_pattern = re.compile(r'\[ACCEPT\s+id="([^"]+)"\]')
+    for match in accept_pattern.finditer(text):
+        result["accepts"].append(match.group(1))
+
+    # Parse [REJECT id="..." reason="..."]
+    reject_pattern = re.compile(r'\[REJECT\s+id="([^"]+)"\s+reason="([^"]+)"\]')
+    for match in reject_pattern.finditer(text):
+        result["rejects"].append((match.group(1), match.group(2)))
+
+    # Parse [REVISE id="..."]content[/REVISE]
+    revise_pattern = re.compile(
+        r'\[REVISE\s+id="([^"]+)"\](.*?)\[/REVISE\]',
+        re.DOTALL,
+    )
+    for match in revise_pattern.finditer(text):
+        result["revisions"].append((match.group(1), match.group(2).strip()))
+
     # Clean text: remove all directives
     clean = text
     clean = memory_pattern.sub("", clean)
@@ -116,6 +158,10 @@ def _parse_directives(text: str) -> dict:
     clean = artifact_pattern.sub("", clean)
     clean = done_pattern.sub("", clean)
     clean = ask_pattern.sub("", clean)
+    clean = propose_pattern.sub("", clean)
+    clean = accept_pattern.sub("", clean)
+    clean = reject_pattern.sub("", clean)
+    clean = revise_pattern.sub("", clean)
     result["clean_text"] = clean.strip()
 
     return result
@@ -151,6 +197,9 @@ def _run_turn(
     if search_query:
         search_results = format_search_results(agent_dir, search_query)
 
+    # Build agreements context
+    agreements_text = format_agreements_for_prompt(config, agent)
+
     # Build the turn prompt
     turn_prompt = build_turn_prompt(
         config=config,
@@ -160,6 +209,7 @@ def _run_turn(
         recent_memories=recent_memories,
         search_results=search_results,
         user_input=user_input,
+        agreements_text=agreements_text,
     )
 
     # Determine if this is the first turn for this agent
@@ -171,9 +221,18 @@ def _run_turn(
     # Display turn start
     display.show_turn_start(config, agent)
 
-    with display.console.status(
-        f"[bold]{config.agent_label(agent)} is thinking...[/bold]"
-    ):
+    # Write debug request before invoking (visible even if agent hangs)
+    if config.debug:
+        debug_log = config.session_dir() / "debug.log"
+        write_debug_request(
+            log_path=debug_log,
+            turn=config.current_turn + 1,
+            agent_label=config.agent_label(agent),
+            system_prompt=system_prompt,
+            turn_prompt=turn_prompt,
+        )
+
+    with display.thinking_status(config.agent_label(agent)):
         response = invoke_agent(
             config=config,
             agent=agent,
@@ -186,6 +245,16 @@ def _run_turn(
 
     # Parse directives
     directives = _parse_directives(response.text)
+
+    # Write debug response after invocation
+    if config.debug:
+        debug_log = config.session_dir() / "debug.log"
+        write_debug_response(
+            log_path=debug_log,
+            cmd=response.cmd or [],
+            raw_response=response.raw,
+            directives=directives,
+        )
 
     return response, directives, turn_prompt, system_prompt
 
@@ -221,11 +290,47 @@ def _process_directives(
         artifact_path.write_text(content + "\n")
         display.show_artifact_save(filename)
 
-    # Handle done signal
+    # Handle done signal (consensus mechanism)
+    other_agent = "b" if agent == "a" else "a"
     if directives["done"]:
         display.show_done_signal(agent, directives["done"])
-        if agent not in config.done_signals:
-            config.done_signals.append(agent)
+        config.done_signals[agent] = directives["done"]
+    else:
+        # If the other agent had a pending DONE but this agent didn't agree, clear it
+        if other_agent in config.done_signals and agent not in config.done_signals:
+            display.show_done_disagreement(agent, other_agent)
+            del config.done_signals[other_agent]
+
+    # Handle proposals
+    turn = config.current_turn + 1
+    for title, content in directives["proposals"]:
+        proposal_id = create_proposal(config, title, content, agent, turn)
+        display.show_proposal(agent, title, proposal_id)
+
+    # Handle accepts
+    for proposal_id in directives["accepts"]:
+        accepted = accept_proposal(config, proposal_id, turn)
+        if accepted:
+            display.show_agreement_accepted(proposal_id, accepted["title"])
+
+    # Handle rejects
+    for proposal_id, reason in directives["rejects"]:
+        rejected = reject_proposal(config, proposal_id)
+        if rejected:
+            display.show_agreement_rejected(proposal_id, reason)
+
+    # Handle revisions
+    for agreement_id, content in directives["revisions"]:
+        # Find the original agreement title
+        original = next(
+            (a for a in config.accepted_agreements if a["id"] == agreement_id),
+            None,
+        )
+        title = original["title"] if original else "Revised agreement"
+        new_id = create_proposal(
+            config, title, content, agent, turn, revises=agreement_id
+        )
+        display.show_revision_proposed(agent, agreement_id, new_id)
 
     # Handle ask_user
     if directives["ask_user"] and config.interactive:
@@ -319,19 +424,8 @@ def run_session(config: SessionConfig, display: Display) -> None:
                 config, current_agent, directives["clean_text"]
             )
 
-            # Debug logging
+            # Debug pause (logging already happened in _run_turn)
             if config.debug:
-                debug_log = config.session_dir() / "debug.log"
-                write_debug_entry(
-                    log_path=debug_log,
-                    turn=config.current_turn + 1,
-                    agent_label=config.agent_label(current_agent),
-                    cmd=response.cmd or [],
-                    system_prompt=system_prompt,
-                    turn_prompt=turn_prompt,
-                    raw_response=response.raw,
-                    directives=directives,
-                )
                 debug_pause(display.console)
 
             # Advance turn
@@ -388,6 +482,9 @@ def _compile_deliverables(config: SessionConfig, display: Display) -> None:
     conv_path = config.session_dir() / "conversation.md"
     conversation_text = conv_path.read_text() if conv_path.exists() else "(no conversation)"
 
+    # Build agreements text for deliverable compilation
+    agreements_text = format_agreements_for_prompt(config, "a")
+
     artifacts_dir = config.session_dir() / "artifacts"
     artifacts_dir.mkdir(parents=True, exist_ok=True)
 
@@ -399,15 +496,15 @@ def _compile_deliverables(config: SessionConfig, display: Display) -> None:
             deliverable_name=deliverable,
             memories_text=memories_text,
             conversation_text=conversation_text,
+            agreements_text=agreements_text,
         )
 
-        with display.console.status(
-            f"[bold]Compiling: {deliverable}...[/bold]"
-        ):
+        with display.thinking_status(f"Compiling: {deliverable}"):
             response = invoke_agent(
                 config=config,
                 agent="a",
                 prompt=prompt,
+                session_id=str(uuid4()),
             )
 
         if not response.is_error:
@@ -417,6 +514,8 @@ def _compile_deliverables(config: SessionConfig, display: Display) -> None:
             artifact_path = artifacts_dir / f"{safe_name}.md"
             artifact_path.write_text(response.text + "\n")
             display.show_artifact_save(f"{safe_name}.md")
+        else:
+            display.show_error(f"Failed to compile deliverable: {deliverable}")
 
 
 def _generate_summary(config: SessionConfig, display: Display) -> None:
@@ -424,18 +523,20 @@ def _generate_summary(config: SessionConfig, display: Display) -> None:
     display.show_status("Generating session summary...")
     summary_prompt = build_summary_prompt(config)
 
-    # Use agent A's session to generate summary
-    with display.console.status("[bold]Generating summary...[/bold]"):
+    with display.thinking_status("Generating summary"):
         response = invoke_agent(
             config=config,
             agent="a",
             prompt=summary_prompt,
+            session_id=str(uuid4()),
         )
 
     if not response.is_error:
         summary_path = config.session_dir() / "summary.md"
         summary_path.write_text(response.text + "\n")
         display.show_summary(response.text)
+    else:
+        display.show_error("Failed to generate session summary")
 
 
 @app.callback()
