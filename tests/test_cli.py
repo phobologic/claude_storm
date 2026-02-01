@@ -8,7 +8,7 @@ from rich.console import Console
 
 from typer.testing import CliRunner
 
-from claude_storm.cli import app, _parse_directives, _check_stop, _compile_deliverables, _process_directives, _merge_user_input
+from claude_storm.cli import app, _parse_directives, _check_stop, _compile_deliverables, _process_directives, _merge_user_input, _find_matching_artifacts
 from claude_storm.agents import AgentResponse
 from claude_storm.config import SessionConfig
 from claude_storm.display import Display
@@ -571,8 +571,10 @@ class TestMergeUserInput:
         assert _merge_user_input(None, None) is None
 
     def test_ask_user_only(self):
-        result = _merge_user_input("Use JWT", None)
-        assert result == "[In response to your question]: Use JWT"
+        result = _merge_user_input("Q: Should we use JWT?\nA: Yes", None)
+        assert "[Agent asked the user a question]:" in result
+        assert "Q: Should we use JWT?" in result
+        assert "A: Yes" in result
 
     def test_buffer_only(self):
         buf = InputBuffer()
@@ -585,15 +587,136 @@ class TestMergeUserInput:
     def test_both_present(self):
         buf = InputBuffer()
         buf._lines.append("also consider caching")
-        result = _merge_user_input("Use JWT", buf)
-        assert "[In response to your question]: Use JWT" in result
+        result = _merge_user_input("Q: JWT?\nA: Yes", buf)
+        assert "[Agent asked the user a question]:" in result
+        assert "Q: JWT?" in result
         assert "[User nudge]: also consider caching" in result
 
     def test_empty_buffer_returns_ask_only(self):
         buf = InputBuffer()
-        result = _merge_user_input("Use JWT", buf)
-        assert result == "[In response to your question]: Use JWT"
+        result = _merge_user_input("Q: JWT?\nA: Yes", buf)
+        assert "[Agent asked the user a question]:" in result
+        assert "Q: JWT?" in result
 
     def test_empty_buffer_and_no_ask(self):
         buf = InputBuffer()
         assert _merge_user_input(None, buf) is None
+
+
+class TestProcessDirectivesAskUser:
+    def test_ask_user_includes_question_and_answer(self, tmp_storms):
+        """_process_directives formats user_input with both Q and A."""
+        config = SessionConfig(
+            session_id="ask-test",
+            topic="Test",
+            max_turns=20,
+            current_turn=5,
+            interactive=True,
+            storms_dir=str(tmp_storms),
+        )
+        config.ensure_dirs()
+        display = Display(console=Console(file=StringIO(), force_terminal=True, no_color=True))
+        directives = _parse_directives("[ASK_USER]Should we use JWT or OAuth?[/ASK_USER]")
+
+        with patch.object(display, "prompt_user", return_value="Use JWT") as mock_prompt:
+            _, user_input = _process_directives(config, "a", directives, display)
+
+        mock_prompt.assert_called_once_with("Should we use JWT or OAuth?")
+        assert user_input == "Q: Should we use JWT or OAuth?\nA: Use JWT"
+
+    def test_ask_user_pauses_and_restarts_input_buffer(self, tmp_storms):
+        """_process_directives stops/starts the input buffer around prompt."""
+        config = SessionConfig(
+            session_id="ask-buf-test",
+            topic="Test",
+            max_turns=20,
+            current_turn=5,
+            interactive=True,
+            storms_dir=str(tmp_storms),
+        )
+        config.ensure_dirs()
+        display = Display(console=Console(file=StringIO(), force_terminal=True, no_color=True))
+        directives = _parse_directives("[ASK_USER]Question?[/ASK_USER]")
+
+        buf = MagicMock(spec=InputBuffer)
+        call_order = []
+        buf.stop.side_effect = lambda: call_order.append("stop")
+        buf.start.side_effect = lambda: call_order.append("start")
+
+        with patch.object(display, "prompt_user", return_value="answer"):
+            _process_directives(config, "a", directives, display, input_buffer=buf)
+
+        assert call_order == ["stop", "start"]
+
+
+class TestFindMatchingArtifacts:
+    def test_finds_matching_files(self, tmp_path):
+        artifacts_dir = tmp_path / "artifacts"
+        artifacts_dir.mkdir()
+        (artifacts_dir / "chapter_summaries.md").write_text("# Summaries")
+        (artifacts_dir / "unrelated.md").write_text("# Other")
+
+        result = _find_matching_artifacts(artifacts_dir, "Chapter Summaries")
+        assert "chapter_summaries.md" in result
+        assert result["chapter_summaries.md"] == "# Summaries"
+        assert "unrelated.md" not in result
+
+    def test_returns_empty_for_no_matches(self, tmp_path):
+        artifacts_dir = tmp_path / "artifacts"
+        artifacts_dir.mkdir()
+        (artifacts_dir / "something_else.md").write_text("content")
+
+        result = _find_matching_artifacts(artifacts_dir, "Chapter Summaries")
+        assert result == {}
+
+    def test_returns_empty_for_missing_dir(self, tmp_path):
+        result = _find_matching_artifacts(tmp_path / "nonexistent", "Doc")
+        assert result == {}
+
+    def test_matches_partial_overlap(self, tmp_path):
+        artifacts_dir = tmp_path / "artifacts"
+        artifacts_dir.mkdir()
+        (artifacts_dir / "act_1_chapters.md").write_text("# Act 1")
+        (artifacts_dir / "act_2_chapters.md").write_text("# Act 2")
+
+        result = _find_matching_artifacts(artifacts_dir, "chapters")
+        assert "act_1_chapters.md" in result
+        assert "act_2_chapters.md" in result
+
+    def test_compile_passes_existing_artifacts(self, tmp_storms):
+        config = SessionConfig(
+            session_id="artifact-test",
+            topic="Test topic",
+            goal="Test goal",
+            role_a="Agent A",
+            role_b="Agent B",
+            max_turns=10,
+            current_turn=10,
+            status="completed",
+            model="sonnet",
+            deliverables=["Chapter Summaries"],
+            storms_dir=str(tmp_storms),
+        )
+        config.ensure_dirs()
+
+        # Create pre-existing artifact
+        artifacts_dir = config.session_dir() / "artifacts"
+        (artifacts_dir / "chapter_summaries.md").write_text("# Draft content")
+        (config.session_dir() / "conversation.md").write_text("## Turn 1\nHello")
+
+        display = Display(console=Console(file=StringIO(), force_terminal=True, no_color=True))
+        mock_response = AgentResponse(text="# Final Summaries\n\nDone", raw={})
+
+        prompts_captured = []
+
+        def capture_invoke(**kwargs):
+            prompts_captured.append(kwargs.get("prompt", ""))
+            return mock_response
+
+        with patch("claude_storm.cli.invoke_agent", side_effect=capture_invoke):
+            _compile_deliverables(config, display)
+
+        # The prompt should contain the draft content
+        assert len(prompts_captured) == 1
+        assert "Draft Content" in prompts_captured[0]
+        assert "# Draft content" in prompts_captured[0]

@@ -185,7 +185,7 @@ def _merge_user_input(
     """
     parts: list[str] = []
     if ask_user_response:
-        parts.append(f"[In response to your question]: {ask_user_response}")
+        parts.append(f"[Agent asked the user a question]:\n{ask_user_response}")
     buffered = input_buffer.drain() if input_buffer is not None else None
     if buffered:
         parts.append(f"[User nudge]: {buffered}")
@@ -362,7 +362,8 @@ def _process_directives(
         if input_buffer is not None:
             input_buffer.stop()
         try:
-            user_input = display.prompt_user(directives["ask_user"])
+            answer = display.prompt_user(directives["ask_user"])
+            user_input = f"Q: {directives['ask_user']}\nA: {answer}"
         finally:
             if input_buffer is not None:
                 input_buffer.start()
@@ -498,6 +499,34 @@ def run_session(config: SessionConfig, display: Display) -> None:
     display.show_completion(config)
 
 
+def _find_matching_artifacts(artifacts_dir: Path, deliverable_name: str) -> dict[str, str]:
+    """Find existing artifact files whose names fuzzy-match a deliverable.
+
+    Compares normalized words from the deliverable name against each artifact
+    filename. A file matches if at least half the deliverable's words appear
+    in the filename.
+
+    Returns:
+        Dict of filename → file content for matching artifacts.
+    """
+    if not artifacts_dir.exists():
+        return {}
+
+    # Normalize deliverable name into lowercase tokens
+    deliv_words = set(re.sub(r'[^\w\s]', '', deliverable_name).lower().split())
+    if not deliv_words:
+        return {}
+
+    matches: dict[str, str] = {}
+    for path in sorted(artifacts_dir.glob("*.md")):
+        stem_words = set(re.sub(r'[_\-]', ' ', path.stem).lower().split())
+        overlap = deliv_words & stem_words
+        if len(overlap) >= max(1, len(deliv_words) // 2):
+            matches[path.name] = path.read_text()
+
+    return matches
+
+
 def _compile_deliverables(config: SessionConfig, display: Display) -> None:
     """Compile each deliverable from session materials into artifact files."""
     if not config.deliverables:
@@ -528,12 +557,16 @@ def _compile_deliverables(config: SessionConfig, display: Display) -> None:
     for deliverable in config.deliverables:
         display.show_deliverable_compile(deliverable)
 
+        # Find existing artifact files that match this deliverable
+        existing_artifacts = _find_matching_artifacts(artifacts_dir, deliverable)
+
         prompt = build_deliverable_prompt(
             config=config,
             deliverable_name=deliverable,
             memories_text=memories_text,
             conversation_text=conversation_text,
             agreements_text=agreements_text,
+            existing_artifacts=existing_artifacts or None,
         )
 
         if config.debug:
@@ -709,6 +742,7 @@ def start(
         "model": "sonnet",
         "deliverables": [],
         "reference_dirs": [],
+        "truncate_conversation": True,
     }
 
     # Layer 2: TOML config (if available)
@@ -803,6 +837,7 @@ def start(
         model=merged["model"],
         deliverables=merged["deliverables"],
         reference_dirs=merged["reference_dirs"],
+        truncate_conversation=merged["truncate_conversation"],
         storms_dir=storms_dir,
     )
 
