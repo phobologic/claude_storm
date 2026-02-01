@@ -52,7 +52,6 @@ class TestBuildSystemPrompt:
         assert "[MEMORY" in prompt
         assert "[ARTIFACT" in prompt
         assert "[DONE" in prompt
-        assert "[ASK_USER]" in prompt
         assert "[PROPOSE" in prompt
         assert "[ACCEPT" in prompt
         assert "[REJECT" in prompt
@@ -63,6 +62,27 @@ class TestBuildSystemPrompt:
         prompt = build_system_prompt(config, "a")
         assert "shared agreement" in prompt
         assert "pending proposals" in prompt
+
+    def test_ask_user_shown_when_interactive(self):
+        config = _make_config(interactive=True)
+        prompt = build_system_prompt(config, "a")
+        assert "[ASK_USER]" in prompt
+        assert "human operator is available" in prompt
+
+    def test_ask_user_hidden_when_not_interactive(self):
+        config = _make_config(interactive=False)
+        prompt = build_system_prompt(config, "a")
+        assert "[ASK_USER]" not in prompt
+
+    def test_interactive_guideline_shown(self):
+        config = _make_config(interactive=True)
+        prompt = build_system_prompt(config, "a")
+        assert "uncertain about a direction" in prompt
+
+    def test_interactive_guideline_hidden(self):
+        config = _make_config(interactive=False)
+        prompt = build_system_prompt(config, "a")
+        assert "uncertain about a direction" not in prompt
 
     def test_no_role_uses_default(self):
         config = _make_config(role_a=None)
@@ -292,6 +312,29 @@ class TestBuildTurnPrompt:
             agreements_text="",
         )
         assert "Shared Agreements" not in prompt
+
+    def test_interactive_reminder_shown(self):
+        config = _make_config(interactive=True, current_turn=3)
+        prompt = build_turn_prompt(
+            config=config,
+            agent="a",
+            other_response="response",
+            memory_index="You have no saved notes.",
+            recent_memories="",
+        )
+        assert "interactive mode" in prompt
+        assert "[ASK_USER]" in prompt
+
+    def test_interactive_reminder_hidden(self):
+        config = _make_config(interactive=False, current_turn=3)
+        prompt = build_turn_prompt(
+            config=config,
+            agent="a",
+            other_response="response",
+            memory_index="You have no saved notes.",
+            recent_memories="",
+        )
+        assert "interactive mode" not in prompt
 
     def test_completion_check_not_shown_without_auto_complete(self):
         config = _make_config(

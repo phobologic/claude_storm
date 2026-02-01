@@ -37,7 +37,7 @@ def build_system_prompt(config: SessionConfig, agent: str) -> str:
         "You take strict alternating turns. Read their latest message and respond thoughtfully."
     )
 
-    parts.append(
+    directives = (
         "\n# Directives\n"
         "You may use these special directives in your responses:\n\n"
         '- `[MEMORY title="..." tags="t1,t2"]content[/MEMORY]` - Save a note to your '
@@ -50,8 +50,14 @@ def build_system_prompt(config: SessionConfig, agent: str) -> str:
         '- `[DONE reason="..."]` - Signal that you believe the brainstorming is complete '
         "and the topic is well-explored. The other agent will be asked to confirm. "
         "If they disagree, the conversation continues.\n"
-        "- `[ASK_USER]question[/ASK_USER]` - Pause to ask the human user a question "
-        "(only if interactive mode is enabled).\n"
+    )
+    if config.interactive:
+        directives += (
+            "- `[ASK_USER]question[/ASK_USER]` - Pause to ask the human user a question. "
+            "A human operator is available and monitoring this session. Use this when you "
+            "need clarification, want input on a decision, or are unsure which direction to take.\n"
+        )
+    directives += (
         '- `[PROPOSE title="..."]content[/PROPOSE]` - Propose a shared agreement when you believe '
         "you and the other agent have converged on a decision. The other agent will be asked to "
         "accept or reject it on their next turn.\n"
@@ -60,8 +66,9 @@ def build_system_prompt(config: SessionConfig, agent: str) -> str:
         '- `[REVISE id="..."]new content[/REVISE]` - Propose revising an existing confirmed '
         "agreement. Creates a new pending proposal the other agent must accept."
     )
+    parts.append(directives)
 
-    parts.append(
+    guidelines = (
         "\n# Guidelines\n"
         "- Be substantive and build on previous ideas\n"
         "- Challenge assumptions constructively\n"
@@ -71,6 +78,12 @@ def build_system_prompt(config: SessionConfig, agent: str) -> str:
         "- When you converge on a substantive point, propose it as a shared agreement with [PROPOSE]\n"
         "- Review and respond to any pending proposals from the other agent"
     )
+    if config.interactive:
+        guidelines += (
+            "\n- If you're uncertain about a direction or need user preferences, "
+            "ask with [ASK_USER]"
+        )
+    parts.append(guidelines)
 
     # Reference materials section
     if config.reference_dirs:
@@ -180,6 +193,13 @@ def build_turn_prompt(
     elif config.auto_complete:
         sections.append(
             "Signal [DONE] when you believe the topic is well-explored."
+        )
+
+    # Interactive mode reminder
+    if config.interactive:
+        sections.append(
+            "\nYou are in **interactive mode** — a human is monitoring. "
+            "Use [ASK_USER] if you need their input."
         )
 
     return "\n".join(sections)
