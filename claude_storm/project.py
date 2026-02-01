@@ -127,13 +127,14 @@ def get_storms_dir(config_path: Path | None) -> Path:
     return base / STORMS_DIR_NAME
 
 
-def format_pacing_block(turn: int, max_turns: int, deliverables: list[str] | None = None) -> str:
+def format_pacing_block(turn: int, max_turns: int, deliverables: list[str] | None = None, session_id: str | None = None) -> str:
     """Compute percentage-based pacing nudge for a turn prompt.
 
     Args:
         turn: Current turn number (1-based).
         max_turns: Total turn budget.
         deliverables: Optional list of expected deliverables.
+        session_id: Optional session identifier to display.
 
     Returns:
         Formatted pacing block string.
@@ -141,7 +142,10 @@ def format_pacing_block(turn: int, max_turns: int, deliverables: list[str] | Non
     pct = int((turn / max_turns) * 100)
     remaining = max_turns - turn
 
-    parts = [f"## Turn {turn} of {max_turns} ({pct}%)"]
+    if session_id:
+        parts = [f"## Session {session_id} — Turn {turn} of {max_turns} ({pct}%)"]
+    else:
+        parts = [f"## Turn {turn} of {max_turns} ({pct}%)"]
 
     if remaining < 2:
         msg = (

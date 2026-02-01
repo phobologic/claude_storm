@@ -1,10 +1,8 @@
 """Tests for debug logging utilities."""
 
 from pathlib import Path
-from unittest.mock import MagicMock
 
 from claude_storm.debug import (
-    debug_pause,
     write_debug_entry,
     write_debug_request,
     write_debug_response,
@@ -208,13 +206,3 @@ class TestWriteDebugEntry:
 
         content = log_path.read_text()
         assert content.count("=== Turn") == 3
-
-
-class TestDebugPause:
-    def test_calls_console_input(self):
-        console = MagicMock()
-        console.input = MagicMock(return_value="")
-        debug_pause(console)
-        console.input.assert_called_once()
-        call_arg = console.input.call_args[0][0]
-        assert "Press Enter" in call_arg

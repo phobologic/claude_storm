@@ -11,13 +11,26 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.text import Text
 
+from typing import TYPE_CHECKING
+
 from claude_storm.config import SessionConfig
+
+if TYPE_CHECKING:
+    from claude_storm.input_buffer import InputBuffer
 
 # Agent color scheme
 AGENT_STYLES = {
     "a": {"border": "blue", "title_style": "bold blue"},
     "b": {"border": "green", "title_style": "bold green"},
 }
+
+
+def _truncate_label(label: str, max_len: int = 40) -> str:
+    """Take only the first line of a label and truncate to max_len."""
+    first_line = label.split("\n")[0].strip()
+    if len(first_line) > max_len:
+        return first_line[: max_len - 1] + "…"
+    return first_line
 
 
 class Display:
@@ -50,17 +63,19 @@ class Display:
 
     def show_turn_start(self, config: SessionConfig, agent: str) -> None:
         """Display a turn start indicator."""
-        label = config.agent_label(agent)
+        label = _truncate_label(config.agent_label(agent))
         turn = config.current_turn + 1
+        style = AGENT_STYLES.get(agent, AGENT_STYLES["a"])
+        color = style["border"]
         self.console.print(
-            f"\n[dim]--- Turn {turn}/{config.max_turns} - {label} ---[/dim]"
+            f"\n[{color}]── Turn {turn}/{config.max_turns} · {label} ──[/{color}]"
         )
 
     def show_agent_response(
         self, config: SessionConfig, agent: str, text: str
     ) -> None:
         """Display an agent's response in a colored panel."""
-        label = config.agent_label(agent)
+        label = _truncate_label(config.agent_label(agent))
         style = AGENT_STYLES.get(agent, AGENT_STYLES["a"])
         panel = Panel(
             Markdown(text),
@@ -170,20 +185,63 @@ class Display:
         )
         self.console.print(panel)
 
+    def show_user_nudge(self, text: str) -> None:
+        """Display a confirmation panel when user nudge input is injected."""
+        panel = Panel(
+            text,
+            title="Your Input (injected)",
+            border_style="yellow",
+            title_align="left",
+        )
+        self.console.print(panel)
+
+    def show_input_hint(self) -> None:
+        """Display a hint at session start about nudge input."""
+        self.console.print("[bold yellow]▶ Type at any time to nudge the conversation.[/bold yellow]")
+
     @contextmanager
-    def thinking_status(self, label: str, timeout: int = 300):
+    def thinking_status(
+        self,
+        label: str,
+        timeout: int = 300,
+        input_buffer: InputBuffer | None = None,
+    ):
         """Show a live elapsed timer while an agent is working."""
         start = time.monotonic()
+        short_label = _truncate_label(label)
 
-        def get_renderable():
-            elapsed = int(time.monotonic() - start)
-            return Text(f"  {label} is thinking... ({elapsed}s / {timeout}s)")
+        if input_buffer is not None:
+            # Interactive mode: static prompt to avoid Live overwriting typed input
+            style = AGENT_STYLES.get("a", AGENT_STYLES["a"])
+            # Try to detect agent color from label
+            for key, s in AGENT_STYLES.items():
+                if key in label.lower():
+                    style = s
+                    break
+            color = style["border"]
+            self.console.print(
+                f"[yellow]▶[/yellow] [bold {color}]{short_label} thinking "
+                f"— type and press Enter to nudge[/bold {color}]"
+            )
+            try:
+                yield
+            finally:
+                elapsed = int(time.monotonic() - start)
+                self.console.print(f"[dim]  ({elapsed}s)[/dim]")
+        else:
+            # Non-interactive: use Live timer display
+            def get_renderable():
+                elapsed = int(time.monotonic() - start)
+                return Text(
+                    f"  {short_label} is thinking... ({elapsed}s / {timeout}s)",
+                    style="bold",
+                )
 
-        with Live(
-            get_renderable(),
-            console=self.console,
-            refresh_per_second=1,
-            get_renderable=get_renderable,
-            transient=True,
-        ):
-            yield
+            with Live(
+                get_renderable(),
+                console=self.console,
+                refresh_per_second=1,
+                get_renderable=get_renderable,
+                transient=True,
+            ):
+                yield

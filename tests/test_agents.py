@@ -182,6 +182,28 @@ class TestBuildAllowedTools:
         assert len(tools) == 11
 
 
+    def test_readonly_excludes_write_edit(self, tmp_path, monkeypatch):
+        config = _make_config(tmp_path, monkeypatch)
+        tools = _build_allowed_tools(config, readonly=True)
+        assert not any("Write" in t for t in tools)
+        assert not any("Edit" in t for t in tools)
+        # Read/Glob/Grep should still be present
+        assert any("Read" in t for t in tools)
+        assert any("Glob" in t for t in tools)
+        assert any("Grep" in t for t in tools)
+        # Only 3 tool entries (read-only for session dir)
+        assert len(tools) == 3
+
+    def test_readonly_with_reference_dir(self, tmp_path, monkeypatch):
+        config = _make_config(tmp_path, monkeypatch)
+        config.reference_dirs = ["/some/ref/dir"]
+        tools = _build_allowed_tools(config, readonly=True)
+        assert not any("Write" in t for t in tools)
+        assert not any("Edit" in t for t in tools)
+        # 6 total: 3 read tools * 2 dirs
+        assert len(tools) == 6
+
+
 class TestExtractText:
     def test_result_field(self):
         assert _extract_text({"result": "hello"}) == "hello"

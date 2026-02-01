@@ -62,6 +62,8 @@ class TestBuildSystemPrompt:
         prompt = build_system_prompt(config, "a")
         assert "shared agreement" in prompt
         assert "pending proposals" in prompt
+        assert "Verbal agreement" in prompt
+        assert "does NOT create a shared record" in prompt
 
     def test_ask_user_shown_when_interactive(self):
         config = _make_config(interactive=True)
@@ -83,6 +85,17 @@ class TestBuildSystemPrompt:
         config = _make_config(interactive=False)
         prompt = build_system_prompt(config, "a")
         assert "uncertain about a direction" not in prompt
+
+    def test_nudge_guidance_shown_when_interactive(self):
+        config = _make_config(interactive=True)
+        prompt = build_system_prompt(config, "a")
+        assert "nudge" in prompt.lower()
+        assert "steering guidance" in prompt
+
+    def test_nudge_guidance_hidden_when_not_interactive(self):
+        config = _make_config(interactive=False)
+        prompt = build_system_prompt(config, "a")
+        assert "steering guidance" not in prompt
 
     def test_no_role_uses_default(self):
         config = _make_config(role_a=None)
@@ -414,6 +427,17 @@ class TestBuildDeliverablePrompt:
         )
         assert "Shared Agreements" in prompt
         assert "[a3f2] Use REST API" in prompt
+
+    def test_includes_no_write_instruction(self):
+        config = _make_config()
+        prompt = build_deliverable_prompt(
+            config=config,
+            deliverable_name="Doc",
+            memories_text="memories",
+            conversation_text="conversation",
+        )
+        assert "Output the full deliverable content directly" in prompt
+        assert "Do NOT use Write or Edit tools" in prompt
 
     def test_no_agreements_section_when_empty(self):
         config = _make_config()

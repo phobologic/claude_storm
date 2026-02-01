@@ -36,12 +36,18 @@ def _abs_pattern(path: str) -> str:
     return f"//{stripped}/**"
 
 
-def _build_allowed_tools(config: SessionConfig) -> list[str]:
+def _build_allowed_tools(
+    config: SessionConfig, readonly: bool = False
+) -> list[str]:
     """Build path-scoped --allowedTools list.
 
     Write/Edit are restricted to the session directory.
     Read/Glob/Grep are restricted to the session directory plus any
     configured reference directory.
+
+    Args:
+        config: The session configuration.
+        readonly: When True, omit Write and Edit tools.
     """
     session_path = str(config.session_dir().resolve())
 
@@ -59,9 +65,10 @@ def _build_allowed_tools(config: SessionConfig) -> list[str]:
         tools.append(f"Grep({pattern})")
 
     # Write tools scoped to session directory only
-    session_pattern = _abs_pattern(session_path)
-    tools.append(f"Write({session_pattern})")
-    tools.append(f"Edit({session_pattern})")
+    if not readonly:
+        session_pattern = _abs_pattern(session_path)
+        tools.append(f"Write({session_pattern})")
+        tools.append(f"Edit({session_pattern})")
 
     return tools
 
@@ -73,6 +80,7 @@ def invoke_agent(
     system_prompt: str | None = None,
     timeout: int = 300,
     session_id: str | None = None,
+    readonly: bool = False,
 ) -> AgentResponse:
     """Invoke a Claude CLI session for an agent.
 
@@ -102,12 +110,12 @@ def invoke_agent(
         cmd.extend(["--session-id", resolved_session_id])
         cmd.extend(["--system-prompt", system_prompt])
         cmd.extend(["--model", config.model])
-        cmd.extend(["--allowedTools"] + _build_allowed_tools(config))
+        cmd.extend(["--allowedTools"] + _build_allowed_tools(config, readonly=readonly))
     elif session_id is not None:
         # Fresh one-shot session (no system prompt, no resume)
         cmd.extend(["--session-id", resolved_session_id])
         cmd.extend(["--model", config.model])
-        cmd.extend(["--allowedTools"] + _build_allowed_tools(config))
+        cmd.extend(["--allowedTools"] + _build_allowed_tools(config, readonly=readonly))
     else:
         # Subsequent turns: resume existing session
         cmd.extend(["--resume", resolved_session_id])

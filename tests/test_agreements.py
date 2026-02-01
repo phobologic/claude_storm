@@ -231,3 +231,59 @@ class TestFormatAgreementsForPrompt:
         text = format_agreements_for_prompt(config, "b")
         assert "## Confirmed" in text
         assert "## Pending Proposals" in text
+
+    def test_nudge_after_warmup(self, tmp_storms):
+        """After turn 3 with no agreements, agents see a nudge."""
+        config = _make_config(tmp_storms)
+        text = format_agreements_for_prompt(config, "a", current_turn=3)
+        assert "No agreements have been formalized" in text
+        assert "[PROPOSE" in text
+        assert "Verbal agreement alone" in text
+
+    def test_no_nudge_during_warmup(self, tmp_storms):
+        """During turns 1-2, no nudge is shown."""
+        config = _make_config(tmp_storms)
+        text = format_agreements_for_prompt(config, "a", current_turn=2)
+        assert text == ""
+
+    def test_no_nudge_without_current_turn(self, tmp_storms):
+        """Backward compat: no current_turn returns empty string."""
+        config = _make_config(tmp_storms)
+        text = format_agreements_for_prompt(config, "a")
+        assert text == ""
+
+    def test_stale_agreement_nudge(self, tmp_storms):
+        """When last agreement was 4+ turns ago, show a reminder."""
+        config = _make_config(tmp_storms)
+        config.accepted_agreements = [
+            {
+                "id": "a3f2",
+                "title": "Use REST",
+                "content": "REST API.",
+                "proposed_by": "a",
+                "proposed_turn": 4,
+                "accepted_turn": 5,
+                "revises": None,
+            }
+        ]
+        text = format_agreements_for_prompt(config, "b", current_turn=9)
+        assert "## Confirmed" in text
+        assert "several turns since the last agreement" in text
+        assert "[PROPOSE]" in text
+
+    def test_no_stale_nudge_when_recent(self, tmp_storms):
+        """No stale nudge when last agreement was recent."""
+        config = _make_config(tmp_storms)
+        config.accepted_agreements = [
+            {
+                "id": "a3f2",
+                "title": "Use REST",
+                "content": "REST API.",
+                "proposed_by": "a",
+                "proposed_turn": 4,
+                "accepted_turn": 5,
+                "revises": None,
+            }
+        ]
+        text = format_agreements_for_prompt(config, "b", current_turn=7)
+        assert "several turns since the last agreement" not in text

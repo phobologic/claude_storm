@@ -40,48 +40,62 @@ def build_system_prompt(config: SessionConfig, agent: str) -> str:
     directives = (
         "\n# Directives\n"
         "You may use these special directives in your responses:\n\n"
-        '- `[MEMORY title="..." tags="t1,t2"]content[/MEMORY]` - Save a note to your '
-        "long-term memory. Use this for important ideas, decisions, or insights you want "
-        "to remember.\n"
-        '- `[MEMORY_SEARCH query="..."]` - Request a search of your saved memories. '
-        "Results will appear in your next turn.\n"
-        '- `[ARTIFACT filename="..."]content[/ARTIFACT]` - Produce a shared output file '
+        "## Private Tools\n"
+        '- `[MEMORY title="..." tags="t1,t2"]content[/MEMORY]` — Save a note to your '
+        "**private** long-term memory (only visible to you). Use this for your own working "
+        "notes, open questions, and ideas you're still developing.\n"
+        '- `[MEMORY_SEARCH query="..."]` — Request a search of your saved memories. '
+        "Results will appear in your next turn.\n\n"
+        "## Shared Output\n"
+        '- `[PROPOSE title="..."]content[/PROPOSE]` — Propose a shared agreement for the '
+        "other agent to confirm. **Whenever you agree with the other agent on a decision, "
+        "immediately formalize it with [PROPOSE].** Verbal agreement ('I agree', 'good point', "
+        "'I'm sold') does NOT create a shared record. Only [PROPOSE] + [ACCEPT] does. "
+        "Confirmed agreements become part of the session's formal output. "
+        "Don't wait for perfect consensus — propose early to test alignment.\n"
+        '- `[ACCEPT id="..."]` — Accept a pending agreement proposal by its ID.\n'
+        '- `[REJECT id="..." reason="..."]` — Reject a pending proposal with an explanation.\n'
+        '- `[REVISE id="..."]new content[/REVISE]` — Propose revising an existing confirmed '
+        "agreement. Creates a new pending proposal the other agent must accept.\n"
+        '- `[ARTIFACT filename="..."]content[/ARTIFACT]` — Produce a shared output file '
         "(code, document, etc.).\n"
-        '- `[DONE reason="..."]` - Signal that you believe the brainstorming is complete '
+        '- `[DONE reason="..."]` — Signal that you believe the brainstorming is complete '
         "and the topic is well-explored. The other agent will be asked to confirm. "
         "If they disagree, the conversation continues.\n"
     )
     if config.interactive:
         directives += (
-            "- `[ASK_USER]question[/ASK_USER]` - Pause to ask the human user a question. "
+            "- `[ASK_USER]question[/ASK_USER]` — Pause to ask the human user a question. "
             "A human operator is available and monitoring this session. Use this when you "
             "need clarification, want input on a decision, or are unsure which direction to take.\n"
         )
-    directives += (
-        '- `[PROPOSE title="..."]content[/PROPOSE]` - Propose a shared agreement when you believe '
-        "you and the other agent have converged on a decision. The other agent will be asked to "
-        "accept or reject it on their next turn.\n"
-        '- `[ACCEPT id="..."]` - Accept a pending agreement proposal by its ID.\n'
-        '- `[REJECT id="..." reason="..."]` - Reject a pending proposal with an explanation.\n'
-        '- `[REVISE id="..."]new content[/REVISE]` - Propose revising an existing confirmed '
-        "agreement. Creates a new pending proposal the other agent must accept."
-    )
     parts.append(directives)
 
     guidelines = (
         "\n# Guidelines\n"
         "- Be substantive and build on previous ideas\n"
         "- Challenge assumptions constructively\n"
-        "- Save key insights and decisions to memory with [MEMORY]\n"
-        "- Produce concrete artifacts when appropriate\n"
         "- Keep responses focused and actionable\n"
-        "- When you converge on a substantive point, propose it as a shared agreement with [PROPOSE]\n"
-        "- Review and respond to any pending proposals from the other agent"
+        "- Produce concrete artifacts when appropriate\n\n"
+        "## Memory vs Proposals\n"
+        "- Use [MEMORY] for your private working notes — things you want to track "
+        "but that don't need the other agent's sign-off.\n"
+        "- Prefer [PROPOSE] over [MEMORY] for anything that should be a session "
+        "conclusion, recommendation, or decision. Proposals are the **only** way to "
+        "create shared, confirmed output that both agents endorse.\n"
+        "- Propose early and often — you don't need certainty. A proposal that gets "
+        "rejected still moves the conversation forward by revealing disagreement.\n"
+        "- Good proposals are specific and actionable: *\"Use PostgreSQL for the data "
+        'layer because X, Y, Z"* rather than *"We discussed database options."*\n'
+        "- Always review and respond to pending proposals from the other agent"
     )
     if config.interactive:
         guidelines += (
             "\n- If you're uncertain about a direction or need user preferences, "
             "ask with [ASK_USER]"
+            "\n- The user may type nudges at any time during the session. These "
+            "appear in the \"User Input\" section of your turn prompt and should be "
+            "treated as steering guidance — acknowledge and incorporate them."
         )
     parts.append(guidelines)
 
@@ -176,6 +190,7 @@ def build_turn_prompt(
         turn=turn_number,
         max_turns=config.max_turns,
         deliverables=config.deliverables or None,
+        session_id=config.session_id,
     )
     sections.append(f"\n# Turn Progress\n{pacing}")
 
@@ -264,6 +279,9 @@ def build_deliverable_prompt(
         f"Produce a clean, well-structured markdown document. Include all relevant\n"
         f"information discussed during the session. Do not include preamble or\n"
         f"meta-commentary — just the deliverable content.\n\n"
+        f"IMPORTANT: Output the full deliverable content directly in your response.\n"
+        f"Do NOT use Write or Edit tools. Do NOT summarize what you would write —\n"
+        f"write the actual content here.\n\n"
         f"---\n\n"
         f"## Agent Memories\n\n{memories_text}",
     ]

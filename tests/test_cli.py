@@ -8,10 +8,11 @@ from rich.console import Console
 
 from typer.testing import CliRunner
 
-from claude_storm.cli import app, _parse_directives, _check_stop, _compile_deliverables, _process_directives
+from claude_storm.cli import app, _parse_directives, _check_stop, _compile_deliverables, _process_directives, _merge_user_input
 from claude_storm.agents import AgentResponse
 from claude_storm.config import SessionConfig
 from claude_storm.display import Display
+from claude_storm.input_buffer import InputBuffer
 from claude_storm.project import STORM_CONFIG_FILENAME
 
 runner = CliRunner()
@@ -491,3 +492,108 @@ class TestCompileDeliverables:
         # Should not contain colons or parens
         assert ":" not in files[0].name
         assert "(" not in files[0].name
+
+
+class TestCompileDeliverablesDebug:
+    def _make_config(self, tmp_storms, **kwargs):
+        defaults = dict(
+            session_id="debug-test",
+            topic="Test topic",
+            goal="Test goal",
+            role_a="Agent A",
+            role_b="Agent B",
+            max_turns=10,
+            current_turn=10,
+            status="completed",
+            model="sonnet",
+            deliverables=["Summary Doc"],
+            debug=True,
+            storms_dir=str(tmp_storms),
+        )
+        defaults.update(kwargs)
+        config = SessionConfig(**defaults)
+        config.ensure_dirs()
+        return config
+
+    def test_debug_logging_called_during_compilation(self, tmp_storms):
+        config = self._make_config(tmp_storms)
+        (config.session_dir() / "conversation.md").write_text("")
+        display = Display(console=Console(file=StringIO(), force_terminal=True, no_color=True))
+
+        mock_response = AgentResponse(text="content", raw={})
+        with patch("claude_storm.cli.invoke_agent", return_value=mock_response), \
+             patch("claude_storm.cli.write_debug_request") as mock_req, \
+             patch("claude_storm.cli.write_debug_response") as mock_resp:
+            _compile_deliverables(config, display)
+
+        assert mock_req.call_count == 1
+        assert mock_resp.call_count == 1
+
+    def test_debug_logging_called_during_summary(self, tmp_storms):
+        from claude_storm.cli import _generate_summary
+        config = self._make_config(tmp_storms)
+        display = Display(console=Console(file=StringIO(), force_terminal=True, no_color=True))
+
+        mock_response = AgentResponse(text="summary content", raw={})
+        with patch("claude_storm.cli.invoke_agent", return_value=mock_response), \
+             patch("claude_storm.cli.write_debug_request") as mock_req, \
+             patch("claude_storm.cli.write_debug_response") as mock_resp:
+            _generate_summary(config, display)
+
+        assert mock_req.call_count == 1
+        assert mock_resp.call_count == 1
+
+    def test_readonly_passed_during_compilation(self, tmp_storms):
+        config = self._make_config(tmp_storms)
+        (config.session_dir() / "conversation.md").write_text("")
+        display = Display(console=Console(file=StringIO(), force_terminal=True, no_color=True))
+
+        mock_response = AgentResponse(text="content", raw={})
+        with patch("claude_storm.cli.invoke_agent", return_value=mock_response) as mock_invoke:
+            _compile_deliverables(config, display)
+
+        assert mock_invoke.call_args.kwargs.get("readonly") is True
+
+    def test_readonly_passed_during_summary(self, tmp_storms):
+        from claude_storm.cli import _generate_summary
+        config = self._make_config(tmp_storms)
+        display = Display(console=Console(file=StringIO(), force_terminal=True, no_color=True))
+
+        mock_response = AgentResponse(text="summary content", raw={})
+        with patch("claude_storm.cli.invoke_agent", return_value=mock_response) as mock_invoke:
+            _generate_summary(config, display)
+
+        assert mock_invoke.call_args.kwargs.get("readonly") is True
+
+
+class TestMergeUserInput:
+    def test_both_none(self):
+        assert _merge_user_input(None, None) is None
+
+    def test_ask_user_only(self):
+        result = _merge_user_input("Use JWT", None)
+        assert result == "[In response to your question]: Use JWT"
+
+    def test_buffer_only(self):
+        buf = InputBuffer()
+        buf._lines.append("focus on security")
+        result = _merge_user_input(None, buf)
+        assert result == "[User nudge]: focus on security"
+        # Buffer should be drained
+        assert buf.drain() is None
+
+    def test_both_present(self):
+        buf = InputBuffer()
+        buf._lines.append("also consider caching")
+        result = _merge_user_input("Use JWT", buf)
+        assert "[In response to your question]: Use JWT" in result
+        assert "[User nudge]: also consider caching" in result
+
+    def test_empty_buffer_returns_ask_only(self):
+        buf = InputBuffer()
+        result = _merge_user_input("Use JWT", buf)
+        assert result == "[In response to your question]: Use JWT"
+
+    def test_empty_buffer_and_no_ask(self):
+        buf = InputBuffer()
+        assert _merge_user_input(None, buf) is None

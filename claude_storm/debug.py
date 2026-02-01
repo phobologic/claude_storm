@@ -1,16 +1,14 @@
-"""Debug logging and pause utilities for Claude Storm."""
+"""Debug logging utilities for Claude Storm."""
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
-from rich.console import Console
-
 
 def write_debug_request(
     log_path: Path,
-    turn: int,
+    turn: int | str,
     agent_label: str,
     system_prompt: str | None,
     turn_prompt: str,
@@ -75,7 +73,7 @@ def write_debug_response(
 
 def write_debug_entry(
     log_path: Path,
-    turn: int,
+    turn: int | str,
     agent_label: str,
     cmd: list[str],
     system_prompt: str | None,
@@ -90,8 +88,3 @@ def write_debug_entry(
     """
     write_debug_request(log_path, turn, agent_label, system_prompt, turn_prompt)
     write_debug_response(log_path, cmd, raw_response, directives)
-
-
-def debug_pause(console: Console) -> None:
-    """Print a debug prompt and wait for the user to press Enter."""
-    console.input("[bold yellow][debug] Press Enter to continue...[/bold yellow]")

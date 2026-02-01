@@ -131,15 +131,18 @@ def write_agreements_file(config: SessionConfig) -> None:
 def format_agreements_for_prompt(
     config: SessionConfig,
     current_agent: str,
+    current_turn: int | None = None,
 ) -> str:
     """Format confirmed and pending agreements for inclusion in a turn prompt.
 
     Args:
         config: The session configuration.
         current_agent: The agent whose turn it is ('a' or 'b').
+        current_turn: The current turn number (1-indexed). When provided and
+            >= 3 with no agreements, a nudge is returned instead of empty string.
 
     Returns:
-        Formatted agreements text, or empty string if none.
+        Formatted agreements text, or empty string if none (unless nudge applies).
     """
     sections: list[str] = []
 
@@ -175,6 +178,28 @@ def format_agreements_for_prompt(
         sections.append("\n".join(lines))
 
     if not sections:
+        # No agreements or proposals — check if we should nudge
+        if current_turn is not None and current_turn >= 3:
+            return (
+                "# Shared Agreements\n\n"
+                "No agreements have been formalized yet. When you reach consensus on a decision, "
+                'use [PROPOSE title="..."]content[/PROPOSE] to create a shared agreement. '
+                "Verbal agreement alone does not create a shared record \u2014 only [PROPOSE] + [ACCEPT] does."
+            )
         return ""
 
-    return "# Shared Agreements\n\n" + "\n\n".join(sections)
+    result = "# Shared Agreements\n\n" + "\n\n".join(sections)
+
+    # Stale agreement nudge: if agreements exist but the last one was accepted
+    # 4+ turns ago, remind the agent to formalize new consensus points
+    if current_turn is not None and config.accepted_agreements and not pending_for_me:
+        last_accepted_turn = max(
+            a["accepted_turn"] for a in config.accepted_agreements
+        )
+        if current_turn - last_accepted_turn >= 4:
+            result += (
+                "\n\n*Reminder: It has been several turns since the last agreement. "
+                "If you've reached new consensus points, formalize them with [PROPOSE].*"
+            )
+
+    return result

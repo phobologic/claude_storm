@@ -6,7 +6,7 @@ from io import StringIO
 from rich.console import Console
 
 from claude_storm.config import SessionConfig
-from claude_storm.display import Display
+from claude_storm.display import Display, _truncate_label
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 
@@ -59,6 +59,7 @@ class TestDisplay:
         output = _plain(buf)
         assert "Turn 1/10" in output
         assert "Architect" in output
+        assert "·" in output
 
     def test_show_agent_response(self):
         display, buf = _capture_display()
@@ -158,3 +159,31 @@ class TestDisplay:
         with display.thinking_status("Agent A", timeout=300):
             pass  # immediate exit
         # transient=True means output is cleared, just verify no exception
+
+    def test_thinking_status_interactive_no_live(self):
+        """When input_buffer is provided, thinking_status prints a static prompt."""
+        display, buf = _capture_display()
+
+        class FakeBuffer:
+            pending_count = 0
+
+        with display.thinking_status("Agent A", timeout=300, input_buffer=FakeBuffer()):
+            pass
+        output = _plain(buf)
+        assert "Agent A" in output
+        assert "thinking" in output
+
+
+class TestTruncateLabel:
+    def test_short_passthrough(self):
+        assert _truncate_label("Architect") == "Architect"
+
+    def test_long_truncated(self):
+        long = "A" * 60
+        result = _truncate_label(long, max_len=40)
+        assert len(result) == 40
+        assert result.endswith("…")
+
+    def test_multiline_first_line_only(self):
+        label = "First line\nSecond line\nThird line"
+        assert _truncate_label(label) == "First line"

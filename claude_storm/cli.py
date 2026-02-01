@@ -15,12 +15,12 @@ from rich.console import Console
 from claude_storm.agents import invoke_agent, AgentResponse
 from claude_storm.config import SessionConfig
 from claude_storm.debug import (
-    debug_pause,
     write_debug_entry,
     write_debug_request,
     write_debug_response,
 )
 from claude_storm.display import Display
+from claude_storm.input_buffer import InputBuffer
 from claude_storm.memory import (
     format_memory_index,
     format_recent_memories,
@@ -175,6 +175,23 @@ def _append_conversation(config: SessionConfig, agent: str, text: str) -> None:
         f.write(f"\n## {label} (Turn {config.current_turn + 1})\n\n{text}\n")
 
 
+def _merge_user_input(
+    ask_user_response: str | None,
+    input_buffer: InputBuffer | None,
+) -> str | None:
+    """Combine [ASK_USER] response and buffered nudges into a single string.
+
+    Returns None if both are empty/None.
+    """
+    parts: list[str] = []
+    if ask_user_response:
+        parts.append(f"[In response to your question]: {ask_user_response}")
+    buffered = input_buffer.drain() if input_buffer is not None else None
+    if buffered:
+        parts.append(f"[User nudge]: {buffered}")
+    return "\n\n".join(parts) if parts else None
+
+
 def _run_turn(
     config: SessionConfig,
     agent: str,
@@ -182,6 +199,7 @@ def _run_turn(
     display: Display,
     search_query: str | None = None,
     user_input: str | None = None,
+    input_buffer: InputBuffer | None = None,
 ) -> tuple[AgentResponse, dict, str, str | None]:
     """Execute a single agent turn.
 
@@ -198,7 +216,12 @@ def _run_turn(
         search_results = format_search_results(agent_dir, search_query)
 
     # Build agreements context
-    agreements_text = format_agreements_for_prompt(config, agent)
+    agreements_text = format_agreements_for_prompt(config, agent, current_turn=config.current_turn + 1)
+
+    # Merge buffered nudges with any ASK_USER response
+    merged_input = _merge_user_input(user_input, input_buffer)
+    if merged_input:
+        display.show_user_nudge(merged_input)
 
     # Build the turn prompt
     turn_prompt = build_turn_prompt(
@@ -208,7 +231,7 @@ def _run_turn(
         memory_index=memory_index,
         recent_memories=recent_memories,
         search_results=search_results,
-        user_input=user_input,
+        user_input=merged_input,
         agreements_text=agreements_text,
     )
 
@@ -232,7 +255,7 @@ def _run_turn(
             turn_prompt=turn_prompt,
         )
 
-    with display.thinking_status(config.agent_label(agent)):
+    with display.thinking_status(config.agent_label(agent), input_buffer=input_buffer):
         response = invoke_agent(
             config=config,
             agent=agent,
@@ -264,6 +287,7 @@ def _process_directives(
     agent: str,
     directives: dict,
     display: Display,
+    input_buffer: InputBuffer | None = None,
 ) -> tuple[str | None, str | None]:
     """Process parsed directives from an agent response.
 
@@ -334,7 +358,14 @@ def _process_directives(
 
     # Handle ask_user
     if directives["ask_user"] and config.interactive:
-        user_input = display.prompt_user(directives["ask_user"])
+        # Pause the input buffer to avoid competing for stdin
+        if input_buffer is not None:
+            input_buffer.stop()
+        try:
+            user_input = display.prompt_user(directives["ask_user"])
+        finally:
+            if input_buffer is not None:
+                input_buffer.start()
 
     return search_query, user_input
 
@@ -380,6 +411,13 @@ def run_session(config: SessionConfig, display: Display) -> None:
     config.save()
     display.show_header(config)
 
+    # Set up input buffer for interactive nudges
+    input_buffer: InputBuffer | None = None
+    if config.interactive:
+        input_buffer = InputBuffer()
+        input_buffer.start()
+        display.show_input_hint()
+
     start_time = time.time()
     other_response = ""
     current_agent = "a"
@@ -407,6 +445,7 @@ def run_session(config: SessionConfig, display: Display) -> None:
                 display=display,
                 search_query=search_query,
                 user_input=user_input,
+                input_buffer=input_buffer,
             )
 
             if response.is_error:
@@ -416,17 +455,13 @@ def run_session(config: SessionConfig, display: Display) -> None:
 
             # Process directives
             search_query, user_input = _process_directives(
-                config, current_agent, directives, display
+                config, current_agent, directives, display, input_buffer
             )
 
             # Append to conversation log
             _append_conversation(
                 config, current_agent, directives["clean_text"]
             )
-
-            # Debug pause (logging already happened in _run_turn)
-            if config.debug:
-                debug_pause(display.console)
 
             # Advance turn
             other_response = response.text
@@ -450,6 +485,8 @@ def run_session(config: SessionConfig, display: Display) -> None:
             current_agent = "b" if current_agent == "a" else "a"
 
     finally:
+        if input_buffer is not None:
+            input_buffer.stop()
         signal.signal(signal.SIGINT, old_handler)
         config.save()
 
@@ -499,12 +536,32 @@ def _compile_deliverables(config: SessionConfig, display: Display) -> None:
             agreements_text=agreements_text,
         )
 
+        if config.debug:
+            debug_log = config.session_dir() / "debug.log"
+            write_debug_request(
+                log_path=debug_log,
+                turn=f"deliverable:{deliverable}",
+                agent_label="Compiler",
+                system_prompt=None,
+                turn_prompt=prompt,
+            )
+
         with display.thinking_status(f"Compiling: {deliverable}"):
             response = invoke_agent(
                 config=config,
                 agent="a",
                 prompt=prompt,
                 session_id=str(uuid4()),
+                readonly=True,
+            )
+
+        if config.debug:
+            debug_log = config.session_dir() / "debug.log"
+            write_debug_response(
+                log_path=debug_log,
+                cmd=response.cmd or [],
+                raw_response=response.raw,
+                directives={},
             )
 
         if not response.is_error:
@@ -523,12 +580,32 @@ def _generate_summary(config: SessionConfig, display: Display) -> None:
     display.show_status("Generating session summary...")
     summary_prompt = build_summary_prompt(config)
 
+    if config.debug:
+        debug_log = config.session_dir() / "debug.log"
+        write_debug_request(
+            log_path=debug_log,
+            turn="summary",
+            agent_label="Summarizer",
+            system_prompt=None,
+            turn_prompt=summary_prompt,
+        )
+
     with display.thinking_status("Generating summary"):
         response = invoke_agent(
             config=config,
             agent="a",
             prompt=summary_prompt,
             session_id=str(uuid4()),
+            readonly=True,
+        )
+
+    if config.debug:
+        debug_log = config.session_dir() / "debug.log"
+        write_debug_response(
+            log_path=debug_log,
+            cmd=response.cmd or [],
+            raw_response=response.raw,
+            directives={},
         )
 
     if not response.is_error:
