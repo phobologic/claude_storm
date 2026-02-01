@@ -38,6 +38,7 @@ topic = """
 # model = "sonnet"
 # auto_complete = true
 # interactive = false
+# truncate_conversation = true
 '''
 
 
@@ -150,7 +151,9 @@ def format_pacing_block(turn: int, max_turns: int, deliverables: list[str] | Non
     if remaining < 2:
         msg = (
             "This is one of the final turns. Prioritize completing artifacts "
-            "and capturing remaining decisions."
+            "and capturing remaining decisions. "
+            "Your deliverable artifacts should already exist from earlier turns — "
+            "finalize and update them now."
         )
         if deliverables:
             deliv_list = ", ".join(deliverables)
@@ -162,13 +165,18 @@ def format_pacing_block(turn: int, max_turns: int, deliverables: list[str] | Non
         parts.append(msg)
     elif pct >= 75:
         parts.append(
-            "Session is 75% complete. Focus on producing deliverables "
-            "and resolving open questions."
+            "Session is 75% complete. Finalize deliverable artifacts now. "
+            "Update or produce `[ARTIFACT]` files for each expected deliverable. "
+            "Break large deliverables into multiple files (e.g., `part_1.md`, `part_2.md`). "
+            "Focus on resolving open questions."
         )
     elif pct >= 50:
         parts.append(
             "You're at the halfway point. Start narrowing down "
-            "and committing to approaches."
+            "and committing to approaches. "
+            "Start producing draft `[ARTIFACT]` files for deliverables you have enough "
+            "material for. For large deliverables, break them into parts "
+            "(e.g., `act_1_chapters.md`, `act_2a_chapters.md`). You can revise artifacts later."
         )
     else:
         parts.append("Continue the brainstorm. Save important ideas with [MEMORY].")
@@ -189,6 +197,7 @@ _KNOWN_KEYS: list[tuple[str, str, str]] = [
     ("model", "options", '# model = "sonnet"'),
     ("auto_complete", "options", "# auto_complete = true"),
     ("interactive", "options", "# interactive = false"),
+    ("truncate_conversation", "options", "# truncate_conversation = true"),
 ]
 
 

@@ -32,6 +32,7 @@ class SessionConfig:
     done_signals: dict[str, str] = field(default_factory=dict)
     deliverables: list[str] = field(default_factory=list)
     reference_dirs: list[str] = field(default_factory=list)
+    truncate_conversation: bool = True
     pending_proposals: list[dict] = field(default_factory=list)
     accepted_agreements: list[dict] = field(default_factory=list)
     storms_dir: str = ""
@@ -51,6 +52,7 @@ class SessionConfig:
         model: str = "sonnet",
         deliverables: list[str] | None = None,
         reference_dirs: list[str] | None = None,
+        truncate_conversation: bool = True,
         storms_dir: str = "",
     ) -> SessionConfig:
         """Create a new session config with generated IDs."""
@@ -72,6 +74,7 @@ class SessionConfig:
             status="active",
             deliverables=deliverables or [],
             reference_dirs=reference_dirs or [],
+            truncate_conversation=truncate_conversation,
             storms_dir=storms_dir,
         )
 

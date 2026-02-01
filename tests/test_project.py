@@ -112,11 +112,14 @@ class TestFormatPacingBlock:
         assert "Turn 10 of 20" in block
         assert "50%" in block
         assert "halfway" in block
+        assert "[ARTIFACT]" in block
+        assert "draft" in block.lower()
 
     def test_format_pacing_block_75pct(self):
         block = format_pacing_block(turn=15, max_turns=20)
         assert "75%" in block
-        assert "producing deliverables" in block
+        assert "Finalize deliverable artifacts" in block
+        assert "[ARTIFACT]" in block
 
     def test_format_pacing_block_final(self):
         block = format_pacing_block(turn=19, max_turns=20)
