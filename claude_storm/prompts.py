@@ -122,7 +122,10 @@ def build_system_prompt(config: SessionConfig, agent: str) -> str:
                 structure_parts.append(f"- {d}")
         structure_parts.append(
             "\nPace yourself: explore broadly in the first half, then shift toward "
-            "concrete decisions and producing deliverables in the second half."
+            "concrete decisions and producing deliverables in the second half. "
+            "Start writing `[ARTIFACT]` files incrementally from the halfway point — "
+            "don't wait until the end. For large deliverables, break them into "
+            "multiple artifact files that you can refine over subsequent turns."
         )
         parts.append("\n".join(structure_parts))
 
@@ -252,12 +255,16 @@ def build_summary_prompt(config: SessionConfig) -> str:
     return "\n".join(parts)
 
 
+_TRUNCATION_THRESHOLD = 50_000
+
+
 def build_deliverable_prompt(
     config: SessionConfig,
     deliverable_name: str,
     memories_text: str,
     conversation_text: str,
     agreements_text: str = "",
+    existing_artifacts: dict[str, str] | None = None,
 ) -> str:
     """Build a prompt to compile a single deliverable from session materials.
 
@@ -267,27 +274,61 @@ def build_deliverable_prompt(
         memories_text: Combined memory contents from both agents.
         conversation_text: The full conversation log.
         agreements_text: Formatted shared agreements text.
+        existing_artifacts: Dict of filename→content for draft artifacts
+            that match this deliverable. When present, the agent is asked
+            to refine/merge rather than generate from scratch.
 
     Returns:
         The compilation prompt string.
     """
+    if existing_artifacts:
+        instruction = (
+            f"Produce a clean, well-structured markdown document. "
+            f"Draft artifact files from the session are included below — "
+            f"refine, merge, and complete them into the final deliverable. "
+            f"Do not start from scratch; use the drafts as your foundation.\n\n"
+            f"IMPORTANT: Output the full deliverable content directly in your response.\n"
+            f"Do NOT use Write or Edit tools. Do NOT summarize what you would write —\n"
+            f"write the actual content here."
+        )
+    else:
+        instruction = (
+            f"Produce a clean, well-structured markdown document. Include all relevant\n"
+            f"information discussed during the session. Do not include preamble or\n"
+            f"meta-commentary — just the deliverable content.\n\n"
+            f"IMPORTANT: Output the full deliverable content directly in your response.\n"
+            f"Do NOT use Write or Edit tools. Do NOT summarize what you would write —\n"
+            f"write the actual content here."
+        )
+
     parts = [
         f"# Deliverable Compilation\n\n"
         f"The brainstorming session on \"{config.topic}\" has concluded.\n"
         f"Please compile the following deliverable from the session materials:\n\n"
         f"**Deliverable:** {deliverable_name}\n\n"
-        f"Produce a clean, well-structured markdown document. Include all relevant\n"
-        f"information discussed during the session. Do not include preamble or\n"
-        f"meta-commentary — just the deliverable content.\n\n"
-        f"IMPORTANT: Output the full deliverable content directly in your response.\n"
-        f"Do NOT use Write or Edit tools. Do NOT summarize what you would write —\n"
-        f"write the actual content here.\n\n"
+        f"{instruction}\n\n"
         f"---\n\n"
         f"## Agent Memories\n\n{memories_text}",
     ]
 
     if agreements_text:
         parts.append(f"---\n\n## Shared Agreements\n\n{agreements_text}")
+
+    if existing_artifacts:
+        draft_parts = []
+        for filename, content in existing_artifacts.items():
+            draft_parts.append(f"### {filename}\n\n{content}")
+        parts.append(
+            f"---\n\n## Draft Content (from session artifacts)\n\n"
+            + "\n\n---\n\n".join(draft_parts)
+        )
+
+    # Optionally truncate conversation to avoid timeout on large sessions
+    if config.truncate_conversation and len(conversation_text) > _TRUNCATION_THRESHOLD:
+        conversation_text = (
+            "[...earlier conversation truncated...]\n\n"
+            + conversation_text[-_TRUNCATION_THRESHOLD:]
+        )
 
     parts.append(f"---\n\n## Conversation Log\n\n{conversation_text}")
 

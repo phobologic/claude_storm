@@ -125,6 +125,8 @@ class TestBuildSystemPrompt:
         prompt = build_system_prompt(config, "a")
         assert "budget of 10 turns" in prompt
         assert "Pace yourself" in prompt
+        assert "incrementally" in prompt
+        assert "[ARTIFACT]" in prompt
 
     def test_system_prompt_includes_reference_dirs(self):
         config = _make_config(reference_dirs=["/tmp/notes"])
@@ -449,3 +451,68 @@ class TestBuildDeliverablePrompt:
             agreements_text="",
         )
         assert "Shared Agreements" not in prompt
+
+    def test_includes_existing_artifacts(self):
+        config = _make_config()
+        artifacts = {
+            "chapter_1.md": "# Chapter 1\nContent here",
+            "chapter_2.md": "# Chapter 2\nMore content",
+        }
+        prompt = build_deliverable_prompt(
+            config=config,
+            deliverable_name="Chapters",
+            memories_text="memories",
+            conversation_text="conversation",
+            existing_artifacts=artifacts,
+        )
+        assert "Draft Content" in prompt
+        assert "chapter_1.md" in prompt
+        assert "# Chapter 1" in prompt
+        assert "chapter_2.md" in prompt
+        assert "refine" in prompt.lower()
+
+    def test_no_draft_section_without_artifacts(self):
+        config = _make_config()
+        prompt = build_deliverable_prompt(
+            config=config,
+            deliverable_name="Doc",
+            memories_text="memories",
+            conversation_text="conversation",
+        )
+        assert "Draft Content" not in prompt
+
+    def test_truncation_when_conversation_exceeds_threshold(self):
+        config = _make_config(truncate_conversation=True)
+        long_conversation = "x" * 60_000
+        prompt = build_deliverable_prompt(
+            config=config,
+            deliverable_name="Doc",
+            memories_text="memories",
+            conversation_text=long_conversation,
+        )
+        assert "[...earlier conversation truncated...]" in prompt
+        # Memories and agreements should be fully included regardless
+        assert "memories" in prompt
+
+    def test_no_truncation_when_under_threshold(self):
+        config = _make_config(truncate_conversation=True)
+        short_conversation = "x" * 1000
+        prompt = build_deliverable_prompt(
+            config=config,
+            deliverable_name="Doc",
+            memories_text="memories",
+            conversation_text=short_conversation,
+        )
+        assert "truncated" not in prompt
+
+    def test_no_truncation_when_disabled(self):
+        config = _make_config(truncate_conversation=False)
+        long_conversation = "x" * 60_000
+        prompt = build_deliverable_prompt(
+            config=config,
+            deliverable_name="Doc",
+            memories_text="memories",
+            conversation_text=long_conversation,
+        )
+        assert "truncated" not in prompt
+        assert len(prompt) > 60_000
