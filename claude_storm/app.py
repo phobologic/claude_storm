@@ -42,6 +42,7 @@ class StormApp(App):
         self.resume = resume
         self.nudge_queue: deque[str] = deque()
         self._ask_request: RequestUserInput | None = None
+        self._deferred_ask: RequestUserInput | None = None
         self._session_error: str | None = None
         self._session_finished: bool = False
 
@@ -70,7 +71,8 @@ class StormApp(App):
         header.update(
             f"[bold magenta]Claude Storm[/bold magenta]  "
             f"[bold]{topic_summary}[/bold]  "
-            f"[dim]{', '.join(mode_parts)}[/dim]"
+            f"[dim]{', '.join(mode_parts)}[/dim]  "
+            f"[dim italic]session: {self.config.session_id}[/dim italic]"
         )
         self.run_worker(self._session_worker, thread=True)
 
@@ -107,6 +109,22 @@ class StormApp(App):
         bar.stop()
 
     def on_request_user_input(self, message: RequestUserInput) -> None:
+        # If the user is mid-typing, defer the ask until they submit.
+        try:
+            input_bar = self.query_one(InputBar)
+            ta = input_bar.query_one(GrowingTextArea)
+            if ta.text.strip():
+                self._deferred_ask = message
+                return
+        except Exception:
+            # No InputBar (non-interactive) — unblock with empty response
+            message.response = ""
+            message.event.set()
+            return
+        self._activate_ask(message)
+
+    def _activate_ask(self, message: RequestUserInput) -> None:
+        """Display an agent question and switch the input bar to ask mode."""
         self._ask_request = message
         log = self.query_one("#output-log", RichLog)
         from rich.rule import Rule
@@ -121,9 +139,7 @@ class StormApp(App):
             input_bar = self.query_one(InputBar)
             input_bar.set_ask_mode(message.question)
         except Exception:
-            # No InputBar (non-interactive) — unblock with empty response
-            message.response = ""
-            message.event.set()
+            pass
 
     def on_growing_text_area_submitted(self, event: GrowingTextArea.Submitted) -> None:
         text = event.value.strip()
@@ -150,6 +166,11 @@ class StormApp(App):
                 Text(text),
                 Text(""),
             ))
+        # Activate any deferred ASK_USER now that the input has been submitted.
+        if self._deferred_ask is not None:
+            ask = self._deferred_ask
+            self._deferred_ask = None
+            self._activate_ask(ask)
 
     def on_session_complete(self, message: SessionComplete) -> None:
         log = self.query_one("#output-log", RichLog)
