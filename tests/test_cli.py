@@ -11,8 +11,9 @@ from typer.testing import CliRunner
 from claude_storm.cli import app, _parse_directives, _check_stop, _compile_deliverables, _process_directives, _merge_user_input, _find_matching_artifacts
 from claude_storm.agents import AgentResponse
 from claude_storm.config import SessionConfig
+from collections import deque
+
 from claude_storm.display import Display
-from claude_storm.input_buffer import InputBuffer
 from claude_storm.project import STORM_CONFIG_FILENAME
 
 runner = CliRunner()
@@ -577,30 +578,28 @@ class TestMergeUserInput:
         assert "A: Yes" in result
 
     def test_buffer_only(self):
-        buf = InputBuffer()
-        buf._lines.append("focus on security")
-        result = _merge_user_input(None, buf)
+        q = deque(["focus on security"])
+        result = _merge_user_input(None, q)
         assert result == "[User nudge]: focus on security"
-        # Buffer should be drained
-        assert buf.drain() is None
+        # Queue should be drained
+        assert len(q) == 0
 
     def test_both_present(self):
-        buf = InputBuffer()
-        buf._lines.append("also consider caching")
-        result = _merge_user_input("Q: JWT?\nA: Yes", buf)
+        q = deque(["also consider caching"])
+        result = _merge_user_input("Q: JWT?\nA: Yes", q)
         assert "[Agent asked the user a question]:" in result
         assert "Q: JWT?" in result
         assert "[User nudge]: also consider caching" in result
 
     def test_empty_buffer_returns_ask_only(self):
-        buf = InputBuffer()
-        result = _merge_user_input("Q: JWT?\nA: Yes", buf)
+        q: deque[str] = deque()
+        result = _merge_user_input("Q: JWT?\nA: Yes", q)
         assert "[Agent asked the user a question]:" in result
         assert "Q: JWT?" in result
 
     def test_empty_buffer_and_no_ask(self):
-        buf = InputBuffer()
-        assert _merge_user_input(None, buf) is None
+        q: deque[str] = deque()
+        assert _merge_user_input(None, q) is None
 
 
 class TestProcessDirectivesAskUser:
@@ -623,30 +622,6 @@ class TestProcessDirectivesAskUser:
 
         mock_prompt.assert_called_once_with("Should we use JWT or OAuth?")
         assert user_input == "Q: Should we use JWT or OAuth?\nA: Use JWT"
-
-    def test_ask_user_pauses_and_restarts_input_buffer(self, tmp_storms):
-        """_process_directives stops/starts the input buffer around prompt."""
-        config = SessionConfig(
-            session_id="ask-buf-test",
-            topic="Test",
-            max_turns=20,
-            current_turn=5,
-            interactive=True,
-            storms_dir=str(tmp_storms),
-        )
-        config.ensure_dirs()
-        display = Display(console=Console(file=StringIO(), force_terminal=True, no_color=True))
-        directives = _parse_directives("[ASK_USER]Question?[/ASK_USER]")
-
-        buf = MagicMock(spec=InputBuffer)
-        call_order = []
-        buf.stop.side_effect = lambda: call_order.append("stop")
-        buf.start.side_effect = lambda: call_order.append("start")
-
-        with patch.object(display, "prompt_user", return_value="answer"):
-            _process_directives(config, "a", directives, display, input_buffer=buf)
-
-        assert call_order == ["stop", "start"]
 
 
 class TestFindMatchingArtifacts:

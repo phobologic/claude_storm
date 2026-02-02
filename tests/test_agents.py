@@ -1,6 +1,7 @@
 """Tests for agent CLI invocation."""
 
 import json
+import subprocess as _subprocess
 from unittest.mock import patch, MagicMock
 
 from claude_storm.agents import invoke_agent, _extract_text, _build_allowed_tools, AgentResponse
@@ -22,22 +23,28 @@ def _make_config(tmp_path, monkeypatch):
     return config
 
 
+def _mock_popen(stdout="", stderr="", returncode=0):
+    """Create a mock Popen instance that returns given stdout/stderr from communicate()."""
+    mock_proc = MagicMock()
+    mock_proc.communicate.return_value = (stdout, stderr)
+    mock_proc.returncode = returncode
+    return mock_proc
+
+
 class TestInvokeAgent:
     def test_first_turn_uses_session_id(self, tmp_path, monkeypatch):
         config = _make_config(tmp_path, monkeypatch)
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = json.dumps({"result": "Hello from agent A"})
-        mock_result.stderr = ""
+        mock_proc = _mock_popen(
+            stdout=json.dumps({"result": "Hello from agent A"}),
+        )
 
-        with patch("claude_storm.agents.subprocess.run", return_value=mock_result) as mock_run:
+        with patch("claude_storm.agents.subprocess.Popen", return_value=mock_proc) as mock_popen_cls:
             response = invoke_agent(
                 config, "a", "Start the brainstorm",
                 system_prompt="You are an architect",
             )
 
-        call_args = mock_run.call_args
-        cmd = call_args[0][0]
+        cmd = mock_popen_cls.call_args[0][0]
         assert "--session-id" in cmd
         assert "sess-a" in cmd
         assert "--system-prompt" in cmd
@@ -49,15 +56,14 @@ class TestInvokeAgent:
 
     def test_first_turn_has_path_scoped_tools(self, tmp_path, monkeypatch):
         config = _make_config(tmp_path, monkeypatch)
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = json.dumps({"result": "ok"})
-        mock_result.stderr = ""
+        mock_proc = _mock_popen(
+            stdout=json.dumps({"result": "ok"}),
+        )
 
-        with patch("claude_storm.agents.subprocess.run", return_value=mock_result) as mock_run:
+        with patch("claude_storm.agents.subprocess.Popen", return_value=mock_proc) as mock_popen_cls:
             invoke_agent(config, "a", "prompt", system_prompt="sys")
 
-        cmd = mock_run.call_args[0][0]
+        cmd = mock_popen_cls.call_args[0][0]
         session_path = str(config.session_dir().resolve()).lstrip("/")
         # Write/Edit scoped to session dir only
         assert f"Write(//{session_path}/**)" in cmd
@@ -73,15 +79,14 @@ class TestInvokeAgent:
 
     def test_subsequent_turn_uses_resume(self, tmp_path, monkeypatch):
         config = _make_config(tmp_path, monkeypatch)
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = json.dumps({"result": "Continuing..."})
-        mock_result.stderr = ""
+        mock_proc = _mock_popen(
+            stdout=json.dumps({"result": "Continuing..."}),
+        )
 
-        with patch("claude_storm.agents.subprocess.run", return_value=mock_result) as mock_run:
+        with patch("claude_storm.agents.subprocess.Popen", return_value=mock_proc) as mock_popen_cls:
             response = invoke_agent(config, "b", "Your turn")
 
-        cmd = mock_run.call_args[0][0]
+        cmd = mock_popen_cls.call_args[0][0]
         assert "--resume" in cmd
         assert "sess-b" in cmd
         assert "--session-id" not in cmd
@@ -89,11 +94,12 @@ class TestInvokeAgent:
 
     def test_timeout_returns_error(self, tmp_path, monkeypatch):
         config = _make_config(tmp_path, monkeypatch)
-        import subprocess
-        with patch(
-            "claude_storm.agents.subprocess.run",
-            side_effect=subprocess.TimeoutExpired(cmd="claude", timeout=300),
-        ):
+        mock_proc = MagicMock()
+        mock_proc.communicate.side_effect = _subprocess.TimeoutExpired(
+            cmd="claude", timeout=300,
+        )
+
+        with patch("claude_storm.agents.subprocess.Popen", return_value=mock_proc):
             response = invoke_agent(config, "a", "prompt", timeout=300)
 
         assert response.is_error
@@ -101,12 +107,9 @@ class TestInvokeAgent:
 
     def test_nonzero_exit_returns_error(self, tmp_path, monkeypatch):
         config = _make_config(tmp_path, monkeypatch)
-        mock_result = MagicMock()
-        mock_result.returncode = 1
-        mock_result.stdout = ""
-        mock_result.stderr = "Some error"
+        mock_proc = _mock_popen(stderr="Some error", returncode=1)
 
-        with patch("claude_storm.agents.subprocess.run", return_value=mock_result):
+        with patch("claude_storm.agents.subprocess.Popen", return_value=mock_proc):
             response = invoke_agent(config, "a", "prompt")
 
         assert response.is_error
@@ -114,12 +117,9 @@ class TestInvokeAgent:
 
     def test_cmd_populated_on_error(self, tmp_path, monkeypatch):
         config = _make_config(tmp_path, monkeypatch)
-        mock_result = MagicMock()
-        mock_result.returncode = 1
-        mock_result.stdout = ""
-        mock_result.stderr = "fail"
+        mock_proc = _mock_popen(stderr="fail", returncode=1)
 
-        with patch("claude_storm.agents.subprocess.run", return_value=mock_result):
+        with patch("claude_storm.agents.subprocess.Popen", return_value=mock_proc):
             response = invoke_agent(config, "a", "prompt")
 
         assert response.cmd is not None
@@ -127,12 +127,9 @@ class TestInvokeAgent:
 
     def test_invalid_json_falls_back(self, tmp_path, monkeypatch):
         config = _make_config(tmp_path, monkeypatch)
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = "Plain text response"
-        mock_result.stderr = ""
+        mock_proc = _mock_popen(stdout="Plain text response")
 
-        with patch("claude_storm.agents.subprocess.run", return_value=mock_result):
+        with patch("claude_storm.agents.subprocess.Popen", return_value=mock_proc):
             response = invoke_agent(config, "a", "prompt")
 
         assert response.text == "Plain text response"

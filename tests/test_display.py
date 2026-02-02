@@ -6,7 +6,7 @@ from io import StringIO
 from rich.console import Console
 
 from claude_storm.config import SessionConfig
-from claude_storm.display import Display, _truncate_label
+from claude_storm.display import Display, PlainDisplay, DisplayProtocol, _truncate_label
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 
@@ -160,18 +160,14 @@ class TestDisplay:
             pass  # immediate exit
         # transient=True means output is cleared, just verify no exception
 
-    def test_thinking_status_interactive_no_live(self):
-        """When input_buffer is provided, thinking_status prints a static prompt."""
-        display, buf = _capture_display()
+    def test_display_is_plain_display(self):
+        """Display is an alias for PlainDisplay."""
+        assert Display is PlainDisplay
 
-        class FakeBuffer:
-            pending_count = 0
-
-        with display.thinking_status("Agent A", timeout=300, input_buffer=FakeBuffer()):
-            pass
-        output = _plain(buf)
-        assert "Agent A" in output
-        assert "thinking" in output
+    def test_plain_display_satisfies_protocol(self):
+        """PlainDisplay satisfies DisplayProtocol."""
+        display = PlainDisplay()
+        assert isinstance(display, DisplayProtocol)
 
 
 class TestTruncateLabel:

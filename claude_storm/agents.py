@@ -4,10 +4,22 @@ from __future__ import annotations
 
 import json
 import subprocess
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 
 from claude_storm.config import SessionConfig
+
+_active_process: subprocess.Popen | None = None
+_process_lock = threading.Lock()
+
+
+def cancel_active() -> None:
+    """Terminate the currently running agent subprocess, if any."""
+    with _process_lock:
+        proc = _active_process
+    if proc is not None:
+        proc.terminate()
 
 
 @dataclass
@@ -120,16 +132,30 @@ def invoke_agent(
         # Subsequent turns: resume existing session
         cmd.extend(["--resume", resolved_session_id])
 
+    global _active_process
     try:
-        result = subprocess.run(
-            cmd,
-            input=prompt,
-            capture_output=True,
-            text=True,
-            cwd=cwd,
-            timeout=timeout,
-        )
+        with _process_lock:
+            _active_process = subprocess.Popen(
+                cmd,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                cwd=cwd,
+            )
+        try:
+            stdout, stderr = _active_process.communicate(
+                input=prompt, timeout=timeout
+            )
+            returncode = _active_process.returncode
+        finally:
+            with _process_lock:
+                _active_process = None
     except subprocess.TimeoutExpired:
+        with _process_lock:
+            if _active_process is not None:
+                _active_process.kill()
+                _active_process = None
         return AgentResponse(
             text="[Agent timed out]",
             raw={"error": "timeout"},
@@ -137,21 +163,21 @@ def invoke_agent(
             is_error=True,
         )
 
-    if result.returncode != 0:
+    if returncode != 0:
         return AgentResponse(
-            text=f"[Agent error: {result.stderr.strip()}]",
-            raw={"error": result.stderr.strip(), "returncode": result.returncode},
+            text=f"[Agent error: {stderr.strip()}]",
+            raw={"error": stderr.strip(), "returncode": returncode},
             cmd=cmd,
             is_error=True,
         )
 
     try:
-        data = json.loads(result.stdout)
+        data = json.loads(stdout)
     except json.JSONDecodeError:
         # Fall back to raw text if JSON parsing fails
         return AgentResponse(
-            text=result.stdout.strip(),
-            raw={"raw_output": result.stdout.strip()},
+            text=stdout.strip(),
+            raw={"raw_output": stdout.strip()},
             cmd=cmd,
         )
 

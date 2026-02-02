@@ -14,3 +14,4 @@ sessions/
 .ruff_cache/
 tmp/
 .code-review/
+scratchpad/

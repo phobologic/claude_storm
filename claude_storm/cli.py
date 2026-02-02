@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import re
 import signal
+import sys
+import threading
 import time
+from collections import deque
 from pathlib import Path
 from typing import Optional
 from uuid import uuid4
@@ -19,8 +22,7 @@ from claude_storm.debug import (
     write_debug_request,
     write_debug_response,
 )
-from claude_storm.display import Display
-from claude_storm.input_buffer import InputBuffer
+from claude_storm.display import Display, DisplayProtocol
 from claude_storm.memory import (
     format_memory_index,
     format_recent_memories,
@@ -177,7 +179,7 @@ def _append_conversation(config: SessionConfig, agent: str, text: str) -> None:
 
 def _merge_user_input(
     ask_user_response: str | None,
-    input_buffer: InputBuffer | None,
+    nudge_queue: deque[str] | None,
 ) -> str | None:
     """Combine [ASK_USER] response and buffered nudges into a single string.
 
@@ -186,8 +188,11 @@ def _merge_user_input(
     parts: list[str] = []
     if ask_user_response:
         parts.append(f"[Agent asked the user a question]:\n{ask_user_response}")
-    buffered = input_buffer.drain() if input_buffer is not None else None
-    if buffered:
+    if nudge_queue:
+        lines = []
+        while nudge_queue:
+            lines.append(nudge_queue.popleft())
+        buffered = "\n".join(lines)
         parts.append(f"[User nudge]: {buffered}")
     return "\n\n".join(parts) if parts else None
 
@@ -196,10 +201,10 @@ def _run_turn(
     config: SessionConfig,
     agent: str,
     other_response: str,
-    display: Display,
+    display: DisplayProtocol,
     search_query: str | None = None,
     user_input: str | None = None,
-    input_buffer: InputBuffer | None = None,
+    nudge_queue: deque[str] | None = None,
 ) -> tuple[AgentResponse, dict, str, str | None]:
     """Execute a single agent turn.
 
@@ -219,7 +224,7 @@ def _run_turn(
     agreements_text = format_agreements_for_prompt(config, agent, current_turn=config.current_turn + 1)
 
     # Merge buffered nudges with any ASK_USER response
-    merged_input = _merge_user_input(user_input, input_buffer)
+    merged_input = _merge_user_input(user_input, nudge_queue)
     if merged_input:
         display.show_user_nudge(merged_input)
 
@@ -255,7 +260,7 @@ def _run_turn(
             turn_prompt=turn_prompt,
         )
 
-    with display.thinking_status(config.agent_label(agent), input_buffer=input_buffer):
+    with display.thinking_status(config.agent_label(agent)):
         response = invoke_agent(
             config=config,
             agent=agent,
@@ -286,8 +291,7 @@ def _process_directives(
     config: SessionConfig,
     agent: str,
     directives: dict,
-    display: Display,
-    input_buffer: InputBuffer | None = None,
+    display: DisplayProtocol,
 ) -> tuple[str | None, str | None]:
     """Process parsed directives from an agent response.
 
@@ -358,15 +362,8 @@ def _process_directives(
 
     # Handle ask_user
     if directives["ask_user"] and config.interactive:
-        # Pause the input buffer to avoid competing for stdin
-        if input_buffer is not None:
-            input_buffer.stop()
-        try:
-            answer = display.prompt_user(directives["ask_user"])
-            user_input = f"Q: {directives['ask_user']}\nA: {answer}"
-        finally:
-            if input_buffer is not None:
-                input_buffer.start()
+        answer = display.prompt_user(directives["ask_user"])
+        user_input = f"Q: {directives['ask_user']}\nA: {answer}"
 
     return search_query, user_input
 
@@ -395,28 +392,33 @@ def _check_stop(config: SessionConfig, start_time: float) -> str | None:
     return None
 
 
-def run_session(config: SessionConfig, display: Display) -> None:
+def run_session(
+    config: SessionConfig,
+    display: DisplayProtocol,
+    nudge_queue: deque[str] | None = None,
+) -> None:
     """Run the main brainstorming loop.
 
     Args:
         config: The session configuration.
         display: The display manager.
+        nudge_queue: Optional thread-safe deque for user nudge input.
     """
     global _shutdown_requested
     _shutdown_requested = False
 
-    # Install signal handler for graceful shutdown
-    old_handler = signal.signal(signal.SIGINT, _signal_handler)
+    # Install signal handler for graceful shutdown (only from main thread;
+    # when running inside a Textual worker thread, Textual's own Ctrl+C
+    # binding handles shutdown via action_quit_session).
+    old_handler = None
+    if threading.current_thread() is threading.main_thread():
+        old_handler = signal.signal(signal.SIGINT, _signal_handler)
 
     config.ensure_dirs()
     config.save()
     display.show_header(config)
 
-    # Set up input buffer for interactive nudges
-    input_buffer: InputBuffer | None = None
     if config.interactive:
-        input_buffer = InputBuffer()
-        input_buffer.start()
         display.show_input_hint()
 
     start_time = time.time()
@@ -446,7 +448,7 @@ def run_session(config: SessionConfig, display: Display) -> None:
                 display=display,
                 search_query=search_query,
                 user_input=user_input,
-                input_buffer=input_buffer,
+                nudge_queue=nudge_queue,
             )
 
             if response.is_error:
@@ -456,7 +458,7 @@ def run_session(config: SessionConfig, display: Display) -> None:
 
             # Process directives
             search_query, user_input = _process_directives(
-                config, current_agent, directives, display, input_buffer
+                config, current_agent, directives, display
             )
 
             # Append to conversation log
@@ -486,9 +488,8 @@ def run_session(config: SessionConfig, display: Display) -> None:
             current_agent = "b" if current_agent == "a" else "a"
 
     finally:
-        if input_buffer is not None:
-            input_buffer.stop()
-        signal.signal(signal.SIGINT, old_handler)
+        if old_handler is not None:
+            signal.signal(signal.SIGINT, old_handler)
         config.save()
 
     # Compile deliverables and generate summary if completed
@@ -527,7 +528,7 @@ def _find_matching_artifacts(artifacts_dir: Path, deliverable_name: str) -> dict
     return matches
 
 
-def _compile_deliverables(config: SessionConfig, display: Display) -> None:
+def _compile_deliverables(config: SessionConfig, display: DisplayProtocol) -> None:
     """Compile each deliverable from session materials into artifact files."""
     if not config.deliverables:
         return
@@ -608,7 +609,7 @@ def _compile_deliverables(config: SessionConfig, display: Display) -> None:
             display.show_error(f"Failed to compile deliverable: {deliverable}")
 
 
-def _generate_summary(config: SessionConfig, display: Display) -> None:
+def _generate_summary(config: SessionConfig, display: DisplayProtocol) -> None:
     """Generate and save a session summary."""
     display.show_status("Generating session summary...")
     summary_prompt = build_summary_prompt(config)
@@ -841,8 +842,13 @@ def start(
         storms_dir=storms_dir,
     )
 
-    display = Display()
-    run_session(config, display)
+    if sys.stdout.isatty():
+        from claude_storm.app import StormApp
+        tui = StormApp(config)
+        tui.run()
+    else:
+        display = Display()
+        run_session(config, display)
 
 
 @app.command()
@@ -850,6 +856,10 @@ def resume(
     session_id: str = typer.Argument(help="Session ID to resume"),
     config_path: Optional[Path] = typer.Option(
         None, "--config", "-c", help="Path to storm.toml (to locate .storms/)"
+    ),
+    force: bool = typer.Option(
+        False, "--force", "-f",
+        help="Force resume even if session is not paused (e.g. after a hard kill)",
     ),
 ) -> None:
     """Resume a paused brainstorming session."""
@@ -862,17 +872,30 @@ def resume(
         console.print(f"[bold red]Session not found: {session_id}[/bold red]")
         raise typer.Exit(1)
 
-    if config.status != "paused":
+    if config.status == "completed":
+        console.print(
+            f"[bold red]Session {session_id} is completed and cannot be resumed[/bold red]"
+        )
+        raise typer.Exit(1)
+
+    if config.status != "paused" and not force:
         console.print(
             f"[bold red]Session {session_id} is {config.status}, not paused[/bold red]"
         )
+        console.print("[dim]Use --force to resume anyway (e.g. after a hard kill)[/dim]")
         raise typer.Exit(1)
 
     config.status = "active"
     if _debug_mode:
         config.debug = True
-    display = Display()
-    run_session(config, display)
+
+    if sys.stdout.isatty():
+        from claude_storm.app import StormApp
+        tui = StormApp(config, resume=True)
+        tui.run()
+    else:
+        display = Display()
+        run_session(config, display)
 
 
 @app.command(name="list")

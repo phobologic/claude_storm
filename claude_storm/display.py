@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 from contextlib import contextmanager
+from typing import Protocol, runtime_checkable
 
 from rich.console import Console
 from rich.live import Live
@@ -11,12 +12,7 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.text import Text
 
-from typing import TYPE_CHECKING
-
 from claude_storm.config import SessionConfig
-
-if TYPE_CHECKING:
-    from claude_storm.input_buffer import InputBuffer
 
 # Agent color scheme
 AGENT_STYLES = {
@@ -33,7 +29,33 @@ def _truncate_label(label: str, max_len: int = 40) -> str:
     return first_line
 
 
-class Display:
+@runtime_checkable
+class DisplayProtocol(Protocol):
+    """Protocol defining the display interface for brainstorming sessions."""
+
+    def show_header(self, config: SessionConfig) -> None: ...
+    def show_turn_start(self, config: SessionConfig, agent: str) -> None: ...
+    def show_agent_response(self, config: SessionConfig, agent: str, text: str) -> None: ...
+    def show_status(self, message: str) -> None: ...
+    def show_error(self, message: str) -> None: ...
+    def show_memory_save(self, agent: str, title: str) -> None: ...
+    def show_artifact_save(self, filename: str) -> None: ...
+    def show_done_signal(self, agent: str, reason: str) -> None: ...
+    def show_done_disagreement(self, agent: str, other: str) -> None: ...
+    def show_completion(self, config: SessionConfig) -> None: ...
+    def prompt_user(self, question: str) -> str: ...
+    def show_proposal(self, agent: str, title: str, proposal_id: str) -> None: ...
+    def show_agreement_accepted(self, proposal_id: str, title: str) -> None: ...
+    def show_agreement_rejected(self, proposal_id: str, reason: str) -> None: ...
+    def show_revision_proposed(self, agent: str, agreement_id: str, new_id: str) -> None: ...
+    def show_deliverable_compile(self, deliverable_name: str) -> None: ...
+    def show_summary(self, summary: str) -> None: ...
+    def show_user_nudge(self, text: str) -> None: ...
+    def show_input_hint(self) -> None: ...
+    def thinking_status(self, label: str, timeout: int = 300, **kwargs: object) -> object: ...
+
+
+class PlainDisplay:
     """Manages Rich console output for a brainstorming session."""
 
     def __init__(self, console: Console | None = None) -> None:
@@ -197,51 +219,207 @@ class Display:
 
     def show_input_hint(self) -> None:
         """Display a hint at session start about nudge input."""
-        self.console.print("[bold yellow]▶ Type at any time to nudge the conversation.[/bold yellow]")
+        self.console.print("[bold yellow]\u25b6 Type at any time to nudge the conversation.[/bold yellow]")
 
     @contextmanager
     def thinking_status(
         self,
         label: str,
         timeout: int = 300,
-        input_buffer: InputBuffer | None = None,
+        **kwargs: object,
     ):
         """Show a live elapsed timer while an agent is working."""
         start = time.monotonic()
         short_label = _truncate_label(label)
 
-        if input_buffer is not None:
-            # Interactive mode: static prompt to avoid Live overwriting typed input
-            style = AGENT_STYLES.get("a", AGENT_STYLES["a"])
-            # Try to detect agent color from label
-            for key, s in AGENT_STYLES.items():
-                if key in label.lower():
-                    style = s
-                    break
-            color = style["border"]
-            self.console.print(
-                f"[yellow]▶[/yellow] [bold {color}]{short_label} thinking "
-                f"— type and press Enter to nudge[/bold {color}]"
+        # Non-interactive: use Live timer display
+        def get_renderable():
+            elapsed = int(time.monotonic() - start)
+            return Text(
+                f"  {short_label} is thinking... ({elapsed}s / {timeout}s)",
+                style="bold",
             )
-            try:
-                yield
-            finally:
-                elapsed = int(time.monotonic() - start)
-                self.console.print(f"[dim]  ({elapsed}s)[/dim]")
-        else:
-            # Non-interactive: use Live timer display
-            def get_renderable():
-                elapsed = int(time.monotonic() - start)
-                return Text(
-                    f"  {short_label} is thinking... ({elapsed}s / {timeout}s)",
-                    style="bold",
-                )
 
-            with Live(
-                get_renderable(),
-                console=self.console,
-                refresh_per_second=1,
-                get_renderable=get_renderable,
-                transient=True,
-            ):
-                yield
+        with Live(
+            get_renderable(),
+            console=self.console,
+            refresh_per_second=1,
+            get_renderable=get_renderable,
+            transient=True,
+        ):
+            yield
+
+
+class TextualDisplay:
+    """Display implementation that posts messages to a Textual StormApp."""
+
+    def __init__(self, app: object) -> None:
+        self._app = app  # StormApp instance
+
+    def _post(self, message: object) -> None:
+        self._app.post_message(message)  # type: ignore[union-attr]
+
+    def show_header(self, config: SessionConfig) -> None:
+        # No-op: the #header-bar widget already displays session info.
+        pass
+
+    def show_turn_start(self, config: SessionConfig, agent: str) -> None:
+        from claude_storm.messages import ShowRenderable
+        label = _truncate_label(config.agent_label(agent))
+        turn = config.current_turn + 1
+        style = AGENT_STYLES.get(agent, AGENT_STYLES["a"])
+        color = style["border"]
+        self._post(ShowRenderable(
+            Text(f"\n── Turn {turn}/{config.max_turns} · {label} ──", style=color)
+        ))
+
+    def show_agent_response(
+        self, config: SessionConfig, agent: str, text: str
+    ) -> None:
+        from claude_storm.messages import ShowRenderable
+        label = _truncate_label(config.agent_label(agent))
+        style = AGENT_STYLES.get(agent, AGENT_STYLES["a"])
+        panel = Panel(
+            Markdown(text),
+            title=label,
+            border_style=style["border"],
+            title_align="left",
+        )
+        self._post(ShowRenderable(panel))
+
+    def show_status(self, message: str) -> None:
+        from claude_storm.messages import ShowRenderable
+        self._post(ShowRenderable(Text(message, style="dim")))
+
+    def show_error(self, message: str) -> None:
+        from claude_storm.messages import ShowRenderable
+        self._post(ShowRenderable(Text(f"Error: {message}", style="bold red")))
+
+    def show_memory_save(self, agent: str, title: str) -> None:
+        from claude_storm.messages import ShowRenderable
+        style = AGENT_STYLES.get(agent, AGENT_STYLES["a"])
+        self._post(ShowRenderable(
+            Text(f'  Saved memory: "{title}"', style=style["border"])
+        ))
+
+    def show_artifact_save(self, filename: str) -> None:
+        from claude_storm.messages import ShowRenderable
+        self._post(ShowRenderable(
+            Text(f"  Saved artifact: {filename}", style="yellow")
+        ))
+
+    def show_done_signal(self, agent: str, reason: str) -> None:
+        from claude_storm.messages import ShowRenderable
+        label = agent.upper()
+        self._post(ShowRenderable(
+            Text(f"  {label} signals DONE: {reason}", style="bold magenta")
+        ))
+
+    def show_done_disagreement(self, agent: str, other: str) -> None:
+        from claude_storm.messages import ShowRenderable
+        label = agent.upper()
+        other_label = other.upper()
+        self._post(ShowRenderable(
+            Text(f"  {label} disagrees \u2014 {other_label}'s DONE signal cleared", style="bold yellow")
+        ))
+
+    def show_completion(self, config: SessionConfig) -> None:
+        from claude_storm.messages import ShowRenderable
+        self._post(ShowRenderable(
+            Text(f"Session complete after {config.current_turn} turns.", style="bold")
+        ))
+        self._post(ShowRenderable(
+            Text(f"Session directory: {config.session_dir()}")
+        ))
+
+    def prompt_user(self, question: str) -> str:
+        from claude_storm.messages import RequestUserInput
+        msg = RequestUserInput(question)
+        self._post(msg)
+        msg.event.wait()
+        return msg.response
+
+    def show_proposal(self, agent: str, title: str, proposal_id: str) -> None:
+        from claude_storm.messages import ShowRenderable
+        label = agent.upper()
+        style = AGENT_STYLES.get(agent, AGENT_STYLES["a"])
+        self._post(ShowRenderable(
+            Text(f"  Agent {label} proposed [{proposal_id}]: {title}", style=style["border"])
+        ))
+
+    def show_agreement_accepted(self, proposal_id: str, title: str) -> None:
+        from claude_storm.messages import ShowRenderable
+        self._post(ShowRenderable(
+            Text(f"  Agreement accepted [{proposal_id}]: {title}", style="bold cyan")
+        ))
+
+    def show_agreement_rejected(self, proposal_id: str, reason: str) -> None:
+        from claude_storm.messages import ShowRenderable
+        self._post(ShowRenderable(
+            Text(f"  Proposal rejected [{proposal_id}]: {reason}", style="bold yellow")
+        ))
+
+    def show_revision_proposed(
+        self, agent: str, agreement_id: str, new_id: str
+    ) -> None:
+        from claude_storm.messages import ShowRenderable
+        label = agent.upper()
+        style = AGENT_STYLES.get(agent, AGENT_STYLES["a"])
+        self._post(ShowRenderable(
+            Text(
+                f"  Agent {label} proposed revision [{new_id}] of [{agreement_id}]",
+                style=style["border"],
+            )
+        ))
+
+    def show_deliverable_compile(self, deliverable_name: str) -> None:
+        from claude_storm.messages import ShowRenderable
+        self._post(ShowRenderable(
+            Text(f"  Compiling deliverable: {deliverable_name}", style="bold cyan")
+        ))
+
+    def show_summary(self, summary: str) -> None:
+        from claude_storm.messages import ShowRenderable
+        panel = Panel(
+            Markdown(summary),
+            title="Session Summary",
+            border_style="magenta",
+            title_align="left",
+        )
+        self._post(ShowRenderable(panel))
+
+    def show_user_nudge(self, text: str) -> None:
+        from claude_storm.messages import ShowRenderable
+        panel = Panel(
+            text,
+            title="Your Input (injected)",
+            border_style="yellow",
+            title_align="left",
+        )
+        self._post(ShowRenderable(panel))
+
+    def show_input_hint(self) -> None:
+        # No-op: the InputBar placeholder already displays this hint.
+        pass
+
+    @contextmanager
+    def thinking_status(
+        self,
+        label: str,
+        timeout: int = 300,
+        **kwargs: object,
+    ):
+        """Post UpdateThinking/ClearThinking messages."""
+        from claude_storm.messages import UpdateThinking, ClearThinking
+        start = time.monotonic()
+        short_label = _truncate_label(label)
+        self._post(UpdateThinking(short_label, timeout=timeout))
+        try:
+            yield
+        finally:
+            elapsed = int(time.monotonic() - start)
+            self._post(ClearThinking(elapsed))
+
+
+# Backward-compatible alias
+Display = PlainDisplay
