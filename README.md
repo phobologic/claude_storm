@@ -60,6 +60,7 @@ max_turns = 20
 model = "sonnet"
 auto_complete = true
 interactive = false
+# truncate_conversation = true
 ```
 
 Sessions are stored in `.storms/` alongside `storm.toml` (add to `.gitignore`).
@@ -69,6 +70,7 @@ Sessions are stored in `.storms/` alongside `storm.toml` (add to `.gitignore`).
 ```bash
 # Initialize a project config
 uv run storm init [--topic "quick topic"]
+uv run storm init --force             # overwrite existing storm.toml
 
 # Migrate existing config to latest schema
 uv run storm init --update
@@ -87,15 +89,17 @@ uv run storm start --max-turns 6 --model opus
 # Give agents read-only access to reference materials (repeatable)
 uv run storm start --reference-dir ./research/notes --reference-dir ./design/specs
 
-# Interactive mode (agents can ask user questions)
+# Interactive mode — type nudges at any time to steer the conversation;
+# agents can ask you questions via [ASK_USER]
 uv run storm start --interactive
 
 # Resume a paused session (Ctrl+C to pause)
 uv run storm resume <session-id>
+uv run storm resume <session-id> --force  # recover after a hard kill
 
 # List and inspect sessions
 uv run storm list
-uv run storm show <session-id>
+uv run storm show <session-id>            # includes why the session stopped
 ```
 
 ## Conversation Pacing
@@ -116,9 +120,11 @@ When deliverables or a goal are defined, agents receive pacing guidance:
 2. Agents take strict alternating turns responding to each other
 3. Each agent can save notes to its memory filesystem for long-term retention
 4. Agents can produce shared artifacts (code, documents)
-5. Pacing nudges guide agents through exploration, convergence, and deliverable production
-6. In `--auto-complete` mode, agents signal `[DONE]` when the topic is well-explored
-7. Sessions can be paused with Ctrl+C and resumed later
+5. Agents can formalize shared decisions using an agreement protocol (`[PROPOSE]`/`[ACCEPT]`/`[REJECT]`/`[REVISE]`); confirmed agreements persist to `agreements.md` and feed into deliverable compilation
+6. Pacing nudges guide agents through exploration, convergence, and deliverable production
+7. In `--auto-complete` mode, agents signal `[DONE]` when the topic is well-explored
+8. Sessions can be paused with Ctrl+C and resumed later; each session records why it stopped (visible via `storm show`)
+9. When running in a terminal, a full-screen TUI provides scrollable output, an animated thinking timer, and a persistent input bar for nudges; piped/non-TTY output falls back to plain Rich console
 
 ## Security
 
