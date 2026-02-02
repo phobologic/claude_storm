@@ -120,13 +120,23 @@ def build_system_prompt(config: SessionConfig, agent: str) -> str:
             structure_parts.append("\n## Expected Deliverables")
             for d in config.deliverables:
                 structure_parts.append(f"- {d}")
-        structure_parts.append(
-            "\nPace yourself: explore broadly in the first half, then shift toward "
-            "concrete decisions and producing deliverables in the second half. "
-            "Start writing `[ARTIFACT]` files incrementally from the halfway point — "
-            "don't wait until the end. For large deliverables, break them into "
-            "multiple artifact files that you can refine over subsequent turns."
-        )
+        if config.interactive:
+            structure_parts.append(
+                "\nPace yourself: use the early turns to clarify goals and constraints "
+                "with the user (via [ASK_USER]), explore broadly through the first half, "
+                "then shift toward concrete decisions and producing deliverables in the "
+                "second half. Start writing `[ARTIFACT]` files incrementally from the "
+                "halfway point — don't wait until the end. For large deliverables, break "
+                "them into multiple artifact files that you can refine over subsequent turns."
+            )
+        else:
+            structure_parts.append(
+                "\nPace yourself: explore broadly in the first half, then shift toward "
+                "concrete decisions and producing deliverables in the second half. "
+                "Start writing `[ARTIFACT]` files incrementally from the halfway point — "
+                "don't wait until the end. For large deliverables, break them into "
+                "multiple artifact files that you can refine over subsequent turns."
+            )
         parts.append("\n".join(structure_parts))
 
     return "\n".join(parts)
@@ -194,6 +204,7 @@ def build_turn_prompt(
         max_turns=config.max_turns,
         deliverables=config.deliverables or None,
         session_id=config.session_id,
+        interactive=config.interactive,
     )
     sections.append(f"\n# Turn Progress\n{pacing}")
 

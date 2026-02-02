@@ -128,7 +128,7 @@ def get_storms_dir(config_path: Path | None) -> Path:
     return base / STORMS_DIR_NAME
 
 
-def format_pacing_block(turn: int, max_turns: int, deliverables: list[str] | None = None, session_id: str | None = None) -> str:
+def format_pacing_block(turn: int, max_turns: int, deliverables: list[str] | None = None, session_id: str | None = None, interactive: bool = False) -> str:
     """Compute percentage-based pacing nudge for a turn prompt.
 
     Args:
@@ -136,6 +136,7 @@ def format_pacing_block(turn: int, max_turns: int, deliverables: list[str] | Non
         max_turns: Total turn budget.
         deliverables: Optional list of expected deliverables.
         session_id: Optional session identifier to display.
+        interactive: Whether the session is in interactive mode.
 
     Returns:
         Formatted pacing block string.
@@ -177,6 +178,12 @@ def format_pacing_block(turn: int, max_turns: int, deliverables: list[str] | Non
             "Start producing draft `[ARTIFACT]` files for deliverables you have enough "
             "material for. For large deliverables, break them into parts "
             "(e.g., `act_1_chapters.md`, `act_2a_chapters.md`). You can revise artifacts later."
+        )
+    elif pct <= 20 and interactive:
+        parts.append(
+            "Early exploration phase — this is the best time to use [ASK_USER] to "
+            "confirm the user's intent, constraints, and preferences before the "
+            "session narrows. Continue brainstorming and save important ideas with [MEMORY]."
         )
     else:
         parts.append("Continue the brainstorm. Save important ideas with [MEMORY].")

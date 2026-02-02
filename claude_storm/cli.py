@@ -426,6 +426,7 @@ def run_session(
     current_agent = "a"
     search_query: str | None = None
     user_input: str | None = None
+    pending_answer_for: dict[str, str] = {}
 
     try:
         while True:
@@ -440,6 +441,14 @@ def run_session(
                     config.status = "completed"
                     display.show_status(f"Session ended: {stop_reason}")
                 break
+
+            # Merge any pending ASK_USER answer for this agent
+            pending = pending_answer_for.pop(current_agent, None)
+            if pending:
+                if user_input:
+                    user_input = f"{user_input}\n\n{pending}"
+                else:
+                    user_input = pending
 
             response, directives, turn_prompt, system_prompt = _run_turn(
                 config=config,
@@ -460,6 +469,11 @@ def run_session(
             search_query, user_input = _process_directives(
                 config, current_agent, directives, display
             )
+
+            # If this agent asked a question and got an answer, store it so
+            # the asking agent also sees the answer on its next turn.
+            if user_input and directives.get("ask_user"):
+                pending_answer_for[current_agent] = user_input
 
             # Append to conversation log
             _append_conversation(

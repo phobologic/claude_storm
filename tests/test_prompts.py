@@ -1,6 +1,7 @@
 """Tests for prompt construction."""
 
 from claude_storm.config import SessionConfig
+from claude_storm.project import format_pacing_block
 from claude_storm.prompts import (
     build_system_prompt,
     build_turn_prompt,
@@ -516,3 +517,41 @@ class TestBuildDeliverablePrompt:
         )
         assert "truncated" not in prompt
         assert len(prompt) > 60_000
+
+
+class TestEarlyPhasePacing:
+    def test_early_phase_nudge_interactive(self):
+        """At <=20% with interactive=True, should mention ASK_USER."""
+        result = format_pacing_block(turn=2, max_turns=20, interactive=True)
+        assert "[ASK_USER]" in result
+        assert "Early exploration phase" in result
+
+    def test_early_phase_no_nudge_non_interactive(self):
+        """At <=20% with interactive=False, should NOT mention ASK_USER."""
+        result = format_pacing_block(turn=2, max_turns=20, interactive=False)
+        assert "[ASK_USER]" not in result
+        assert "Continue the brainstorm" in result
+
+    def test_past_early_phase_interactive(self):
+        """At >20% with interactive=True, should show generic message."""
+        result = format_pacing_block(turn=8, max_turns=20, interactive=True)
+        assert "[ASK_USER]" not in result
+        assert "Continue the brainstorm" in result
+
+    def test_boundary_20_percent(self):
+        """At exactly 20%, should still show early-phase nudge if interactive."""
+        result = format_pacing_block(turn=4, max_turns=20, interactive=True)
+        assert "Early exploration phase" in result
+
+    def test_system_prompt_interactive_pacing(self):
+        """Interactive system prompt should mention early-turn clarification."""
+        config = _make_config(interactive=True, deliverables=["Doc A"])
+        prompt = build_system_prompt(config, "a")
+        assert "clarify goals and constraints" in prompt
+        assert "[ASK_USER]" in prompt
+
+    def test_system_prompt_non_interactive_pacing(self):
+        """Non-interactive system prompt should NOT mention early clarification."""
+        config = _make_config(interactive=False, deliverables=["Doc A"])
+        prompt = build_system_prompt(config, "a")
+        assert "clarify goals and constraints" not in prompt
