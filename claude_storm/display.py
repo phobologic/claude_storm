@@ -6,10 +6,10 @@ import time
 from contextlib import contextmanager
 from typing import Protocol, runtime_checkable
 
-from rich.console import Console
+from rich.console import Console, Group
 from rich.live import Live
 from rich.markdown import Markdown
-from rich.panel import Panel
+from rich.rule import Rule
 from rich.text import Text
 
 from claude_storm.config import SessionConfig
@@ -96,16 +96,13 @@ class PlainDisplay:
     def show_agent_response(
         self, config: SessionConfig, agent: str, text: str
     ) -> None:
-        """Display an agent's response in a colored panel."""
+        """Display an agent's response with a colored header."""
         label = _truncate_label(config.agent_label(agent))
         style = AGENT_STYLES.get(agent, AGENT_STYLES["a"])
-        panel = Panel(
-            Markdown(text),
-            title=label,
-            border_style=style["border"],
-            title_align="left",
-        )
-        self.console.print(panel)
+        color = style["border"]
+        self.console.print(Rule(label, style=color, align="left"))
+        self.console.print(Markdown(text))
+        self.console.print()
 
     def show_status(self, message: str) -> None:
         """Display a status message."""
@@ -153,9 +150,9 @@ class PlainDisplay:
 
     def prompt_user(self, question: str) -> str:
         """Prompt the user for input during interactive mode."""
-        self.console.print(
-            Panel(question, title="Agent Question", border_style="yellow")
-        )
+        self.console.print(Rule("Agent Question", style="yellow", align="left"))
+        self.console.print(question)
+        self.console.print()
         return self.console.input("[bold yellow]Your response: [/bold yellow]")
 
     def show_proposal(self, agent: str, title: str, proposal_id: str) -> None:
@@ -199,23 +196,15 @@ class PlainDisplay:
     def show_summary(self, summary: str) -> None:
         """Display the final session summary."""
         self.console.print()
-        panel = Panel(
-            Markdown(summary),
-            title="Session Summary",
-            border_style="magenta",
-            title_align="left",
-        )
-        self.console.print(panel)
+        self.console.print(Rule("Session Summary", style="magenta", align="left"))
+        self.console.print(Markdown(summary))
+        self.console.print()
 
     def show_user_nudge(self, text: str) -> None:
-        """Display a confirmation panel when user nudge input is injected."""
-        panel = Panel(
-            text,
-            title="Your Input (injected)",
-            border_style="yellow",
-            title_align="left",
-        )
-        self.console.print(panel)
+        """Display a confirmation when user nudge input is injected."""
+        self.console.print(Rule("Your Input (injected)", style="yellow", align="left"))
+        self.console.print(text)
+        self.console.print()
 
     def show_input_hint(self) -> None:
         """Display a hint at session start about nudge input."""
@@ -279,13 +268,12 @@ class TextualDisplay:
         from claude_storm.messages import ShowRenderable
         label = _truncate_label(config.agent_label(agent))
         style = AGENT_STYLES.get(agent, AGENT_STYLES["a"])
-        panel = Panel(
+        color = style["border"]
+        self._post(ShowRenderable(Group(
+            Rule(label, style=color, align="left"),
             Markdown(text),
-            title=label,
-            border_style=style["border"],
-            title_align="left",
-        )
-        self._post(ShowRenderable(panel))
+            Text(""),
+        )))
 
     def show_status(self, message: str) -> None:
         from claude_storm.messages import ShowRenderable
@@ -383,23 +371,19 @@ class TextualDisplay:
 
     def show_summary(self, summary: str) -> None:
         from claude_storm.messages import ShowRenderable
-        panel = Panel(
+        self._post(ShowRenderable(Group(
+            Rule("Session Summary", style="magenta", align="left"),
             Markdown(summary),
-            title="Session Summary",
-            border_style="magenta",
-            title_align="left",
-        )
-        self._post(ShowRenderable(panel))
+            Text(""),
+        )))
 
     def show_user_nudge(self, text: str) -> None:
         from claude_storm.messages import ShowRenderable
-        panel = Panel(
-            text,
-            title="Your Input (injected)",
-            border_style="yellow",
-            title_align="left",
-        )
-        self._post(ShowRenderable(panel))
+        self._post(ShowRenderable(Group(
+            Rule("Your Input (injected)", style="yellow", align="left"),
+            Text(text),
+            Text(""),
+        )))
 
     def show_input_hint(self) -> None:
         # No-op: the InputBar placeholder already displays this hint.
