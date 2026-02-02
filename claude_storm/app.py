@@ -108,8 +108,14 @@ class StormApp(App):
     def on_request_user_input(self, message: RequestUserInput) -> None:
         self._ask_request = message
         log = self.query_one("#output-log", RichLog)
-        from rich.panel import Panel
-        log.write(Panel(message.question, title="Agent Question", border_style="yellow"))
+        from rich.rule import Rule
+        from rich.console import Group
+        from rich.text import Text
+        log.write(Group(
+            Rule("Agent Question", style="yellow", align="left"),
+            Text(message.question),
+            Text(""),
+        ))
         try:
             input_bar = self.query_one(InputBar)
             input_bar.set_ask_mode(message.question)
@@ -135,8 +141,14 @@ class StormApp(App):
             # Nudge input
             self.nudge_queue.append(text)
             log = self.query_one("#output-log", RichLog)
-            from rich.panel import Panel
-            log.write(Panel(text, title="Your Input (queued)", border_style="yellow", title_align="left"))
+            from rich.rule import Rule
+            from rich.console import Group
+            from rich.text import Text
+            log.write(Group(
+                Rule("Your Input (queued)", style="yellow", align="left"),
+                Text(text),
+                Text(""),
+            ))
 
     def on_session_complete(self, message: SessionComplete) -> None:
         if message.error:
