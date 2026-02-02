@@ -8,7 +8,7 @@ from pathlib import Path
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.widgets import RichLog, Static, Input, Footer
+from textual.widgets import RichLog, Static, Footer
 
 from claude_storm.config import SessionConfig
 from claude_storm.messages import (
@@ -18,7 +18,7 @@ from claude_storm.messages import (
     RequestUserInput,
     SessionComplete,
 )
-from claude_storm.widgets import ThinkingBar, InputBar
+from claude_storm.widgets import ThinkingBar, InputBar, GrowingTextArea
 
 
 class StormApp(App):
@@ -119,9 +119,9 @@ class StormApp(App):
             message.response = ""
             message.event.set()
 
-    def on_input_submitted(self, event: Input.Submitted) -> None:
+    def on_growing_text_area_submitted(self, event: GrowingTextArea.Submitted) -> None:
         text = event.value.strip()
-        event.input.clear()
+        event.text_area.clear()
         if self._ask_request is not None:
             # Respond to ASK_USER
             self._ask_request.response = text
@@ -156,3 +156,4 @@ class StormApp(App):
         self.config.status = "paused"
         self.config.save()
         cancel_active()
+        self.exit()

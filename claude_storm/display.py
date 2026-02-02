@@ -334,9 +334,12 @@ class TextualDisplay:
 
     def prompt_user(self, question: str) -> str:
         from claude_storm.messages import RequestUserInput
+        from claude_storm.cli import _shutdown_requested
         msg = RequestUserInput(question)
         self._post(msg)
-        msg.event.wait()
+        while not msg.event.wait(timeout=0.5):
+            if _shutdown_requested:
+                return ""
         return msg.response
 
     def show_proposal(self, agent: str, title: str, proposal_id: str) -> None:
