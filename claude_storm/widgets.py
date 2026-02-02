@@ -143,7 +143,7 @@ class InputBar(Widget):
 
     def compose(self):
         self._input.border_title = "Nudge:"
-        self._input.border_subtitle = "^c Pause / Quit  |  ^p palette"
+        self._input.border_subtitle = "shift+↩ newline  |  ^c Pause / Quit  |  ^p palette"
         yield self._input
 
     def set_ask_mode(self, question: str) -> None:
