@@ -8,7 +8,7 @@ from pathlib import Path
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.widgets import RichLog, Static, Footer
+from textual.widgets import RichLog, Static
 
 from claude_storm.config import SessionConfig
 from claude_storm.messages import (
@@ -50,7 +50,6 @@ class StormApp(App):
         yield ThinkingBar()
         if self.config.interactive:
             yield InputBar()
-        yield Footer()
 
     def on_mount(self) -> None:
         """Set up header and start the session worker."""
