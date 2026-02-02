@@ -42,23 +42,38 @@ class TestParseDirectives:
         assert "openapi: 3.0" in result["artifacts"][0][1]
 
     def test_parse_done_with_reason(self):
-        text = 'I think we covered everything [DONE reason="Topic well explored"]'
+        text = 'I think we covered everything\n[DONE reason="Topic well explored"]'
         result = _parse_directives(text)
         assert result["done"] == "Topic well explored"
 
     def test_parse_done_without_reason(self):
-        text = "I think we're done here [DONE]"
+        text = "I think we're done here\n[DONE]"
         result = _parse_directives(text)
         assert result["done"] == "complete"
         assert "[DONE]" not in result["clean_text"]
 
     def test_parse_done_bare_cleans_text(self):
-        text = "Final thoughts. [DONE] That's all."
+        text = "Final thoughts.\n[DONE]\nThat's all."
         result = _parse_directives(text)
         assert result["done"] == "complete"
         assert "Final thoughts." in result["clean_text"]
         assert "That's all." in result["clean_text"]
         assert "[DONE]" not in result["clean_text"]
+
+    def test_parse_done_with_leading_whitespace(self):
+        text = "Some preamble\n  [DONE]\nMore text"
+        result = _parse_directives(text)
+        assert result["done"] == "complete"
+
+    def test_parse_done_mid_sentence_no_trigger(self):
+        text = 'Should we follow this plan or aim for [DONE] sooner?'
+        result = _parse_directives(text)
+        assert result["done"] is None
+
+    def test_parse_done_quoted_context_no_trigger(self):
+        text = 'The agent can signal [DONE reason="..."] when finished.'
+        result = _parse_directives(text)
+        assert result["done"] is None
 
     def test_parse_ask_user(self):
         text = "What do you think? [ASK_USER]Should we use JWT or OAuth?[/ASK_USER]"
@@ -158,6 +173,96 @@ class TestCheckStop:
             done_signals={"a": "complete"},
         )
         assert _check_stop(config, float("inf")) is None
+
+
+class TestStopReason:
+    def test_config_has_stop_reason_fields(self):
+        config = SessionConfig(session_id="t", topic="t")
+        assert config.stop_reason is None
+        assert config.stop_error is None
+
+    def test_stop_reason_persisted_in_json(self, tmp_storms):
+        config = SessionConfig(
+            session_id="sr-test", topic="t", storms_dir=str(tmp_storms),
+            stop_reason="max_turns", stop_error=None,
+        )
+        config.ensure_dirs()
+        config.save()
+        loaded = SessionConfig.load("sr-test", storms_dir=str(tmp_storms))
+        assert loaded.stop_reason == "max_turns"
+        assert loaded.stop_error is None
+
+    def test_stop_error_persisted_in_json(self, tmp_storms):
+        config = SessionConfig(
+            session_id="se-test", topic="t", storms_dir=str(tmp_storms),
+            stop_reason="agent_error", stop_error="[Agent error: connection reset]",
+        )
+        config.ensure_dirs()
+        config.save()
+        loaded = SessionConfig.load("se-test", storms_dir=str(tmp_storms))
+        assert loaded.stop_reason == "agent_error"
+        assert loaded.stop_error == "[Agent error: connection reset]"
+
+    def test_legacy_session_loads_without_stop_fields(self, tmp_storms):
+        """Sessions saved before stop_reason existed should load fine."""
+        session_dir = tmp_storms / "legacy-sr"
+        session_dir.mkdir()
+        data = {
+            "session_id": "legacy-sr",
+            "topic": "t",
+            "claude_session_a": "",
+            "claude_session_b": "",
+            "max_turns": 10,
+            "current_turn": 5,
+            "started_at": "",
+            "status": "paused",
+            "done_signals": {},
+            "deliverables": [],
+            "reference_dirs": [],
+            "truncate_conversation": True,
+            "storms_dir": str(tmp_storms),
+        }
+        (session_dir / "session.json").write_text(json.dumps(data))
+        loaded = SessionConfig.load("legacy-sr", storms_dir=str(tmp_storms))
+        assert loaded.stop_reason is None
+        assert loaded.stop_error is None
+
+    def test_show_displays_stop_reason(self, tmp_storms, monkeypatch):
+        monkeypatch.setattr("claude_storm.cli.get_storms_dir", lambda p: tmp_storms)
+        config = SessionConfig(
+            session_id="show-sr",
+            topic="Test topic",
+            max_turns=10,
+            current_turn=5,
+            status="paused",
+            started_at="2025-01-31T10:00:00",
+            stop_reason="agent_timeout",
+            stop_error="[Agent timed out]",
+            storms_dir=str(tmp_storms),
+        )
+        config.ensure_dirs()
+        config.save()
+        result = runner.invoke(app, ["show", "show-sr"])
+        assert result.exit_code == 0
+        assert "agent_timeout" in result.output
+        assert "[Agent timed out]" in result.output
+
+    def test_agent_timeout_sets_timed_out_flag(self):
+        resp = AgentResponse(
+            text="[Agent timed out]",
+            raw={"error": "timeout"},
+            is_error=True,
+            timed_out=True,
+        )
+        assert resp.timed_out is True
+
+    def test_agent_error_has_timed_out_false(self):
+        resp = AgentResponse(
+            text="[Agent error: bad]",
+            raw={"error": "bad"},
+            is_error=True,
+        )
+        assert resp.timed_out is False
 
 
 class TestCLICommands:

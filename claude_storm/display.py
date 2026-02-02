@@ -141,9 +141,12 @@ class PlainDisplay:
     def show_completion(self, config: SessionConfig) -> None:
         """Display session completion info."""
         self.console.rule()
-        self.console.print(
-            f"[bold]Session complete after {config.current_turn} turns.[/bold]"
-        )
+        status_msg = f"Session {config.status} after {config.current_turn} turns."
+        if config.stop_reason:
+            status_msg += f" (reason: {config.stop_reason})"
+        self.console.print(f"[bold]{status_msg}[/bold]")
+        if config.stop_error:
+            self.console.print(f"[red]Error: {config.stop_error}[/red]")
         self.console.print(
             f"Session directory: {config.session_dir()}"
         )
@@ -313,9 +316,16 @@ class TextualDisplay:
 
     def show_completion(self, config: SessionConfig) -> None:
         from claude_storm.messages import ShowRenderable
+        status_msg = f"Session {config.status} after {config.current_turn} turns."
+        if config.stop_reason:
+            status_msg += f" (reason: {config.stop_reason})"
         self._post(ShowRenderable(
-            Text(f"Session complete after {config.current_turn} turns.", style="bold")
+            Text(status_msg, style="bold")
         ))
+        if config.stop_error:
+            self._post(ShowRenderable(
+                Text(f"Error: {config.stop_error}", style="red")
+            ))
         self._post(ShowRenderable(
             Text(f"Session directory: {config.session_dir()}")
         ))

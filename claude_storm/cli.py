@@ -116,7 +116,7 @@ def _parse_directives(text: str) -> dict:
         result["artifacts"].append((match.group(1), match.group(2).strip()))
 
     # Parse [DONE] or [DONE reason="..."]
-    done_pattern = re.compile(r'\[DONE(?:\s+reason="([^"]+)")?\]')
+    done_pattern = re.compile(r'^\s*\[DONE(?:\s+reason="([^"]+)")?\]', re.MULTILINE)
     done_match = done_pattern.search(text)
     if done_match:
         result["done"] = done_match.group(1) or "complete"
@@ -432,6 +432,7 @@ def run_session(
         while True:
             stop_reason = _check_stop(config, start_time)
             if stop_reason:
+                config.stop_reason = stop_reason
                 if stop_reason == "interrupted":
                     config.status = "paused"
                     display.show_status(
@@ -463,6 +464,8 @@ def run_session(
             if response.is_error:
                 display.show_error(response.text)
                 config.status = "paused"
+                config.stop_reason = "agent_timeout" if response.timed_out else "agent_error"
+                config.stop_error = response.text
                 break
 
             # Process directives
@@ -488,6 +491,7 @@ def run_session(
             # Check stop after processing (for done signals)
             stop_reason = _check_stop(config, start_time)
             if stop_reason:
+                config.stop_reason = stop_reason
                 if stop_reason == "interrupted":
                     config.status = "paused"
                     display.show_status(
@@ -512,6 +516,12 @@ def run_session(
         _generate_summary(config, display)
 
     display.show_completion(config)
+
+    if config.interactive and isinstance(display, Display):
+        try:
+            display.console.input("[dim]Press Enter to exit...[/dim]")
+        except (EOFError, KeyboardInterrupt):
+            pass
 
 
 def _find_matching_artifacts(artifacts_dir: Path, deliverable_name: str) -> dict[str, str]:
@@ -979,6 +989,10 @@ def show(
         f"Agents: {config.agent_label('a')} vs {config.agent_label('b')}"
     )
     console.print(f"Status: {config.status}")
+    if config.stop_reason:
+        console.print(f"Stop reason: {config.stop_reason}")
+    if config.stop_error:
+        console.print(f"Stop error: {config.stop_error}")
     console.print(f"Turns: {config.current_turn}/{config.max_turns}")
     console.print(f"Model: {config.model}")
     if config.deliverables:

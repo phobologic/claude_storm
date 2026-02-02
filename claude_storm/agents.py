@@ -30,6 +30,7 @@ class AgentResponse:
     raw: dict
     cmd: list[str] = None
     is_error: bool = False
+    timed_out: bool = False
 
 
 def _get_session_id(config: SessionConfig, agent: str) -> str:
@@ -161,6 +162,7 @@ def invoke_agent(
             raw={"error": "timeout"},
             cmd=cmd,
             is_error=True,
+            timed_out=True,
         )
 
     if returncode != 0:

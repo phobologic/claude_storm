@@ -43,6 +43,7 @@ class StormApp(App):
         self.nudge_queue: deque[str] = deque()
         self._ask_request: RequestUserInput | None = None
         self._session_error: str | None = None
+        self._session_finished: bool = False
 
     def compose(self) -> ComposeResult:
         yield Static(id="header-bar")
@@ -151,20 +152,26 @@ class StormApp(App):
             ))
 
     def on_session_complete(self, message: SessionComplete) -> None:
+        log = self.query_one("#output-log", RichLog)
+        from rich.text import Text
         if message.error:
-            log = self.query_one("#output-log", RichLog)
-            from rich.text import Text
             log.write(Text(f"Session error: {message.error}", style="bold red"))
         self._session_error = message.error
-        self.exit()
+        self._session_finished = True
+        log.write(Text(""))
+        log.write(Text("Session ended. Press Ctrl+C to exit.", style="bold magenta"))
 
     def action_quit_session(self) -> None:
         """Handle Ctrl+C — request graceful shutdown and kill active subprocess."""
+        if self._session_finished:
+            self.exit()
+            return
         from claude_storm.cli import _signal_handler
         from claude_storm.agents import cancel_active
         _signal_handler(0, None)
         # Persist paused status immediately so it survives a hard exit.
         self.config.status = "paused"
+        self.config.stop_reason = "interrupted"
         self.config.save()
         cancel_active()
         self.exit()

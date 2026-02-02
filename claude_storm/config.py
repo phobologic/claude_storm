@@ -36,6 +36,8 @@ class SessionConfig:
     pending_proposals: list[dict] = field(default_factory=list)
     accepted_agreements: list[dict] = field(default_factory=list)
     storms_dir: str = ""
+    stop_reason: str | None = None
+    stop_error: str | None = None
 
     @classmethod
     def create(
@@ -116,6 +118,8 @@ class SessionConfig:
         # Ensure new agreement fields exist for legacy sessions
         data.setdefault("pending_proposals", [])
         data.setdefault("accepted_agreements", [])
+        data.setdefault("stop_reason", None)
+        data.setdefault("stop_error", None)
         return cls(**data)
 
     def ensure_dirs(self) -> None:
