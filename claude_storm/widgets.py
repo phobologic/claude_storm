@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import time
 
+from textual.events import Key
+from textual.message import Message
 from textual.widget import Widget
-from textual.widgets import Static, Input
-from textual.containers import Horizontal
+from textual.widgets import TextArea
 
 
 class ThinkingBar(Widget):
@@ -65,46 +66,94 @@ class ThinkingBar(Widget):
             self.refresh()
 
 
-class InputBar(Horizontal):
+class GrowingTextArea(TextArea):
+    """A TextArea that starts at 1 row and grows as content wraps, up to a max."""
+
+    DEFAULT_CSS = """
+    GrowingTextArea {
+        height: 3;
+        min-height: 3;
+        max-height: 8;
+        padding: 0;
+        width: 1fr;
+        border: tall $accent-muted;
+    }
+    GrowingTextArea:focus {
+        border: tall $accent;
+    }
+    """
+
+    class Submitted(Message):
+        """Posted when the user presses Enter to submit."""
+
+        def __init__(self, text_area: GrowingTextArea, value: str) -> None:
+            super().__init__()
+            self.text_area = text_area
+            self.value = value
+
+    def __init__(self, **kwargs: object) -> None:
+        super().__init__(
+            show_line_numbers=False,
+            soft_wrap=True,
+            theme="css",
+            **kwargs,
+        )
+
+    async def _on_key(self, event: Key) -> None:
+        if event.key == "enter":
+            event.prevent_default()
+            event.stop()
+            value = self.text
+            self.post_message(self.Submitted(self, value))
+            return
+        await super()._on_key(event)
+
+    def _on_text_area_changed(self, event: TextArea.Changed) -> None:
+        """Grow or shrink to fit content."""
+        line_count = self.document.line_count
+        # Use wrapped line count if available, otherwise raw line count
+        try:
+            line_count = self.wrapped_document.height
+        except AttributeError:
+            pass
+        clamped = max(1, min(6, line_count))
+        self.styles.height = clamped + 2  # +2 for tall border
+
+    def clear(self) -> None:
+        """Clear content and reset height."""
+        self.text = ""
+        self.styles.height = 3
+
+
+class InputBar(Widget):
     """Always-visible input bar for nudges and ASK_USER responses."""
 
     DEFAULT_CSS = """
     InputBar {
         dock: bottom;
         height: auto;
-        max-height: 3;
+        max-height: 10;
         padding: 0 1;
-    }
-    InputBar .input-label {
-        width: auto;
-        padding: 0 1 0 0;
-        color: $text-muted;
-    }
-    InputBar Input {
-        width: 1fr;
     }
     """
 
     def __init__(self, **kwargs: object) -> None:
         super().__init__(**kwargs)
-        self._label = Static("Nudge:", classes="input-label")
-        self._input = Input(placeholder="Type to nudge the conversation...")
+        self._input = GrowingTextArea()
 
     def compose(self):
-        yield self._label
+        self._input.border_title = "Nudge:"
         yield self._input
 
     def set_ask_mode(self, question: str) -> None:
         """Switch to ASK_USER mode."""
-        self._label.update("Your response:")
-        self._input.placeholder = question
+        self._input.border_title = f"Answer: {question}"
         self._input.focus()
 
     def set_nudge_mode(self) -> None:
         """Switch back to nudge mode."""
-        self._label.update("Nudge:")
-        self._input.placeholder = "Type to nudge the conversation..."
+        self._input.border_title = "Nudge:"
 
     @property
-    def input_widget(self) -> Input:
+    def input_widget(self) -> GrowingTextArea:
         return self._input
