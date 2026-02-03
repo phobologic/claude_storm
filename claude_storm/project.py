@@ -15,10 +15,12 @@ topic = """
 {topic}
 """
 
+# Overall goal or desired outcome (shapes pacing guidance)
 # goal = """
 # Produce a detailed document covering the key aspects of the topic.
 # """
 
+# Agent personas (appear in system prompts)
 # role_a = """
 # Subject Matter Expert - Deep domain knowledge and practical experience.
 # """
@@ -27,17 +29,24 @@ topic = """
 # Critical Analyst - Focuses on gaps, risks, and alternative perspectives.
 # """
 
+# Expected output documents (drives pacing and post-session compilation)
 # deliverables = [
 #     "Summary document",
 # ]
 
+# Read-only directories for background materials
 # reference_dirs = ["/path/to/notes"]
 
 [options]
+# Turn budget — shapes percentage-based pacing (default: 20)
 # max_turns = 20
+# Claude model: "sonnet", "opus", or full model ID
 # model = "sonnet"
+# Let agents signal [DONE] when topic is explored (default: true)
 # auto_complete = true
+# Enable user nudges and [ASK_USER] agent questions (default: false)
 # interactive = false
+# Truncate conversation log during deliverable compilation (default: true)
 # truncate_conversation = true
 '''
 

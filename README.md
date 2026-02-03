@@ -65,6 +65,28 @@ interactive = false
 
 Sessions are stored in `.storms/` alongside `storm.toml` (add to `.gitignore`).
 
+### Configuration Reference
+
+**\[session\]**
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `topic` | *(required)* | The brainstorming topic. Multi-line strings supported. |
+| `goal` | — | Overall goal. Shapes pacing guidance and summary prompt. |
+| `role_a` / `role_b` | — | Agent personas. Appear in system prompts. |
+| `deliverables` | `[]` | Expected output documents. Drives pacing nudges and post-session compilation. Draft artifacts with matching filenames are used as foundations. |
+| `reference_dirs` | `[]` | Read-only directories agents can browse via Read/Glob/Grep. |
+
+**\[options\]**
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `max_turns` | `20` | Turn budget. Shapes percentage-based pacing. |
+| `model` | `"sonnet"` | Claude model to use (`"sonnet"`, `"opus"`, or a full model ID). |
+| `auto_complete` | `true` | Allow agents to signal `[DONE]`. Requires both agents to agree. |
+| `interactive` | `false` | Enable user nudges and `[ASK_USER]` questions. |
+| `truncate_conversation` | `true` | Truncate conversation to last ~50k chars during deliverable compilation. |
+
 ## Usage
 
 ```bash
@@ -102,17 +124,51 @@ uv run storm list
 uv run storm show <session-id>            # includes why the session stopped
 ```
 
+## Agent Protocol
+
+Agents communicate via structured directives embedded in their responses.
+
+### Private Tools
+
+| Directive | Syntax | Description |
+|-----------|--------|-------------|
+| `[MEMORY]` | `[MEMORY title="..." tags="t1,t2"]content[/MEMORY]` | Save a note to the agent's private long-term memory. Use for working notes, open questions, and ideas in development. |
+| `[MEMORY_SEARCH]` | `[MEMORY_SEARCH query="..."]` | Search saved memories. Results appear in the agent's next turn. |
+
+### Shared Output
+
+| Directive | Syntax | Description |
+|-----------|--------|-------------|
+| `[PROPOSE]` | `[PROPOSE title="..."]content[/PROPOSE]` | Propose a shared agreement for the other agent to confirm. |
+| `[ACCEPT]` | `[ACCEPT id="..."]` | Accept a pending proposal by ID. |
+| `[REJECT]` | `[REJECT id="..." reason="..."]` | Reject a pending proposal with explanation. |
+| `[REVISE]` | `[REVISE id="..."]new content[/REVISE]` | Propose a revision to an existing confirmed agreement. Creates a new pending proposal. |
+| `[ARTIFACT]` | `[ARTIFACT filename="..."]content[/ARTIFACT]` | Produce a shared output file (code, document, etc.). |
+| `[DONE]` | `[DONE reason="..."]` | Signal that brainstorming is complete. The other agent must confirm; if they disagree, conversation continues. |
+| `[ASK_USER]` | `[ASK_USER]question[/ASK_USER]` | Pause to ask the human user a question (interactive mode only). |
+
 ## Conversation Pacing
 
-When deliverables or a goal are defined, agents receive pacing guidance:
+When deliverables or a goal are defined, agents receive pacing guidance based on turn progress:
 
-- **System prompt** includes the turn budget, expected deliverables, and a pacing overview
-- **Turn prompts** show percentage progress with escalating nudges:
-  - Early turns: standard "continue the brainstorm"
-  - 50%: "Start narrowing down and committing to approaches"
-  - 75%: "Focus on producing deliverables and resolving open questions"
-  - Final 2 turns: "Prioritize completing artifacts and capturing remaining decisions"
-- **Summary prompt** asks the summarizing agent to assess which deliverables were produced
+| Progress | Guidance |
+|----------|----------|
+| ≤20% (interactive) | Use `[ASK_USER]` to clarify intent before narrowing |
+| Default | Continue brainstorming, save ideas with `[MEMORY]` |
+| 50% | Start narrowing; produce draft `[ARTIFACT]` files |
+| 75% | Finalize artifacts, resolve open questions |
+| Final 2 turns | Complete all artifacts; produce any missing deliverables |
+
+**Agreement nudges:** After turn 3 with no agreements, agents are nudged to use `[PROPOSE]`. If 4+ turns pass since the last accepted agreement, agents get a reminder.
+
+**Deliverable compilation:** After the session ends, each deliverable is compiled by a separate Claude instance from agent memories, agreements, conversation log, and matching draft artifacts.
+
+## Interactive Mode
+
+- **User nudges**: Type at any time in the TUI to steer the conversation; queued and merged into the next turn prompt.
+- **Agent questions**: `[ASK_USER]` pauses the agent to ask the user. The TUI defers the question if the user is mid-typing.
+- **Early clarification pacing**: In interactive sessions, agents are encouraged to use `[ASK_USER]` in the first 20% of turns.
+- **Non-interactive**: No user input during the session; `[ASK_USER]` is not available to agents.
 
 ## How It Works
 
@@ -120,11 +176,11 @@ When deliverables or a goal are defined, agents receive pacing guidance:
 2. Agents take strict alternating turns responding to each other
 3. Each agent can save notes to its memory filesystem for long-term retention
 4. Agents can produce shared artifacts (code, documents)
-5. Agents can formalize shared decisions using an agreement protocol (`[PROPOSE]`/`[ACCEPT]`/`[REJECT]`/`[REVISE]`); confirmed agreements persist to `agreements.md` and feed into deliverable compilation
+5. Agents formalize shared decisions using an agreement protocol (`[PROPOSE]`/`[ACCEPT]`/`[REJECT]`/`[REVISE]`); confirmed agreements persist to `agreements.md` and feed into deliverable compilation. Verbal agreement alone ("I agree", "good point") does **not** create a shared record — only `[PROPOSE]` + `[ACCEPT]` does. Pacing nudges encourage `[PROPOSE]` usage when no agreements have been recorded recently.
 6. Pacing nudges guide agents through exploration, convergence, and deliverable production
 7. In `--auto-complete` mode, agents signal `[DONE]` when the topic is well-explored
 8. Sessions can be paused with Ctrl+C and resumed later; each session records why it stopped (visible via `storm show`)
-9. When running in a terminal, a full-screen TUI provides scrollable output, an animated thinking timer, and a persistent input bar for nudges; piped/non-TTY output falls back to plain Rich console
+9. When running in a terminal, a full-screen TUI provides scrollable output, an animated thinking timer, and a persistent input bar for nudges (Shift+Enter for newlines); the header shows the session ID. Piped/non-TTY output falls back to plain Rich console
 
 ## Security
 
