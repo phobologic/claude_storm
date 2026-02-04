@@ -73,7 +73,7 @@ Sessions are stored in `.storms/` alongside `storm.toml` (add to `.gitignore`).
 |-----|---------|-------------|
 | `topic` | *(required)* | The brainstorming topic. Multi-line strings supported. |
 | `goal` | — | Overall goal. Shapes pacing guidance and summary prompt. |
-| `role_a` / `role_b` | — | Agent personas. Appear in system prompts. |
+| `role_a` / `role_b` | — | Agent personas. Become the agent's system prompt, replacing Claude Code's default instructions. First line is used as the TUI display label — keep it short (a title); additional lines provide detailed persona guidance. |
 | `deliverables` | `[]` | Expected output documents. Drives pacing nudges and post-session compilation. Draft artifacts with matching filenames are used as foundations. |
 | `reference_dirs` | `[]` | Read-only directories agents can browse via Read/Glob/Grep. |
 
