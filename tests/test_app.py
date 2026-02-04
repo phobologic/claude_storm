@@ -5,9 +5,8 @@ from __future__ import annotations
 import pytest
 from unittest.mock import patch, MagicMock
 
-from textual.widgets import RichLog
-
 from claude_storm.app import StormApp
+from claude_storm.widgets import SelectableRichLog
 from claude_storm.config import SessionConfig
 from claude_storm.messages import ShowRenderable, SessionComplete
 
@@ -36,7 +35,7 @@ class TestStormApp:
         # Patch session worker to avoid running real session
         with patch.object(app, "_session_worker", return_value=None):
             async with app.run_test() as pilot:
-                assert pilot.app.query_one("#output-log", RichLog) is not None
+                assert pilot.app.query_one("#output-log", SelectableRichLog) is not None
                 assert pilot.app.query_one("#header-bar") is not None
 
     @pytest.mark.asyncio

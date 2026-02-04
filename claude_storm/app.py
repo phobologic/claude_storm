@@ -8,7 +8,7 @@ from pathlib import Path
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.widgets import RichLog, Static
+from textual.widgets import Static
 
 from claude_storm.config import SessionConfig
 from claude_storm.messages import (
@@ -18,7 +18,7 @@ from claude_storm.messages import (
     RequestUserInput,
     SessionComplete,
 )
-from claude_storm.widgets import ThinkingBar, InputBar, GrowingTextArea
+from claude_storm.widgets import SelectableRichLog, ThinkingBar, InputBar, GrowingTextArea
 
 
 class StormApp(App):
@@ -48,7 +48,7 @@ class StormApp(App):
 
     def compose(self) -> ComposeResult:
         yield Static(id="header-bar")
-        yield RichLog(id="output-log", highlight=True, markup=True, wrap=True)
+        yield SelectableRichLog(id="output-log", highlight=True, markup=True, wrap=True)
         yield ThinkingBar()
         if self.config.interactive:
             yield InputBar()
@@ -97,7 +97,7 @@ class StormApp(App):
     # ── Message handlers ──────────────────────────────────────────
 
     def on_show_renderable(self, message: ShowRenderable) -> None:
-        log = self.query_one("#output-log", RichLog)
+        log = self.query_one("#output-log", SelectableRichLog)
         log.write(message.renderable)
 
     def on_update_thinking(self, message: UpdateThinking) -> None:
@@ -126,7 +126,7 @@ class StormApp(App):
     def _activate_ask(self, message: RequestUserInput) -> None:
         """Display an agent question and switch the input bar to ask mode."""
         self._ask_request = message
-        log = self.query_one("#output-log", RichLog)
+        log = self.query_one("#output-log", SelectableRichLog)
         from rich.rule import Rule
         from rich.console import Group
         from rich.text import Text
@@ -157,7 +157,7 @@ class StormApp(App):
         elif text:
             # Nudge input
             self.nudge_queue.append(text)
-            log = self.query_one("#output-log", RichLog)
+            log = self.query_one("#output-log", SelectableRichLog)
             from rich.rule import Rule
             from rich.console import Group
             from rich.text import Text
@@ -173,7 +173,7 @@ class StormApp(App):
             self._activate_ask(ask)
 
     def on_session_complete(self, message: SessionComplete) -> None:
-        log = self.query_one("#output-log", RichLog)
+        log = self.query_one("#output-log", SelectableRichLog)
         from rich.text import Text
         if message.error:
             log.write(Text(f"Session error: {message.error}", style="bold red"))
@@ -183,7 +183,14 @@ class StormApp(App):
         log.write(Text("Session ended. Press Ctrl+C to exit.", style="bold magenta"))
 
     def action_quit_session(self) -> None:
-        """Handle Ctrl+C — request graceful shutdown and kill active subprocess."""
+        """Handle Ctrl+C — copy selection if active, otherwise quit."""
+        if self.screen.selections:
+            selected = self.screen.get_selected_text()
+            if selected:
+                self.copy_to_clipboard(selected)
+                self.notify("Copied to clipboard", timeout=2)
+            self.screen.selections = {}
+            return
         if self._session_finished:
             self.exit()
             return

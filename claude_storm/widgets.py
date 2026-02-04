@@ -4,10 +4,72 @@ from __future__ import annotations
 
 import time
 
+from rich.text import Text
 from textual.events import Key
 from textual.message import Message
+from textual.selection import Selection
+from textual.strip import Strip
 from textual.widget import Widget
-from textual.widgets import TextArea
+from textual.widgets import RichLog, TextArea
+
+
+class SelectableRichLog(RichLog):
+    """RichLog subclass that supports text selection and copy."""
+
+    def _render_line(self, y: int, scroll_x: int, width: int) -> Strip:
+        if y >= len(self.lines):
+            return Strip.blank(width, self.rich_style)
+
+        selection = self.text_selection
+
+        # Use the LRU cache only when there is no active selection.
+        key = (y + self._start_line, scroll_x, width, self._widest_line_width)
+        if selection is None and key in self._line_cache:
+            return self._line_cache[key]
+
+        line = self.lines[y]
+
+        # Apply selection highlighting if a span covers this line.
+        if selection is not None:
+            span = selection.get_span(y)
+            if span is not None:
+                start, end = span
+                # Reconstruct a Text object preserving per-segment Rich styles.
+                line_text = Text()
+                for segment in line:
+                    line_text.append(segment.text, style=segment.style)
+                if end == -1:
+                    end = len(line_text)
+                selection_style = self.screen.get_component_rich_style(
+                    "screen--selection"
+                )
+                line_text.stylize(selection_style, start, end)
+                line = Strip(
+                    line_text.render(self.app.console),
+                    line._cell_length,
+                )
+
+        line = line.crop_extend(scroll_x, scroll_x + width, self.rich_style)
+        line = line.apply_offsets(scroll_x, y)
+
+        if selection is None:
+            self._line_cache[key] = line
+        return line
+
+    def get_selection(self, selection: Selection) -> tuple[str, str] | None:
+        """Extract plain text under the selection."""
+        all_lines: list[str] = []
+        for strip in self.lines:
+            all_lines.append(
+                "".join(segment.text for segment in strip)
+            )
+        text = "\n".join(all_lines)
+        return selection.extract(text), "\n"
+
+    def selection_updated(self, selection: Selection | None) -> None:
+        """Invalidate cache and refresh when selection changes."""
+        self._line_cache.clear()
+        self.refresh()
 
 
 class ThinkingBar(Widget):
