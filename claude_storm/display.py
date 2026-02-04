@@ -68,6 +68,8 @@ class PlainDisplay:
         self.console.print(f"Topic: {config.topic}", style="bold")
         if config.goal:
             self.console.print(f"Goal: {config.goal}")
+        if config.deliverables:
+            self.console.print(f"Deliverables: {', '.join(config.deliverables)}")
         agents = f"{config.agent_label('a')} vs {config.agent_label('b')}"
         self.console.print(f"Agents: {agents}")
         mode_parts = [f"max {config.max_turns} turns"]

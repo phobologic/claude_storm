@@ -116,6 +116,8 @@ def build_system_prompt(config: SessionConfig, agent: str) -> str:
             f"\n# Session Structure\n"
             f"This session has a budget of {config.max_turns} turns total."
         ]
+        if config.goal:
+            structure_parts.append(f"\n**Session goal:** {config.goal}")
         if config.deliverables:
             structure_parts.append("\n## Expected Deliverables")
             for d in config.deliverables:
@@ -205,6 +207,7 @@ def build_turn_prompt(
         deliverables=config.deliverables or None,
         session_id=config.session_id,
         interactive=config.interactive,
+        goal=config.goal or None,
     )
     sections.append(f"\n# Turn Progress\n{pacing}")
 
@@ -246,14 +249,20 @@ def build_summary_prompt(config: SessionConfig) -> str:
     parts = [
         "# Session Summary Request\n",
         f"The brainstorming session on \"{config.topic}\" has concluded after "
-        f"{config.current_turn} turns.\n"
-        "Please provide a comprehensive summary of:\n\n"
+        f"{config.current_turn} turns.",
+    ]
+    if config.goal:
+        parts.append(f"**Session goal:** {config.goal}")
+    parts.append(
+        "\nPlease provide a comprehensive summary of:\n\n"
         "1. Key ideas discussed\n"
         "2. Decisions made\n"
         "3. Open questions remaining\n"
-        "4. Recommended next steps\n\n"
-        "Be concise but thorough. Format as markdown."
-    ]
+        "4. Recommended next steps\n"
+    )
+    if config.goal:
+        parts.append(f"5. Goal assessment — did the session achieve its stated goal?\n")
+    parts.append("Be concise but thorough. Format as markdown.")
 
     if config.deliverables:
         parts.append(
@@ -312,9 +321,11 @@ def build_deliverable_prompt(
             f"write the actual content here."
         )
 
+    goal_line = f"**Session goal:** {config.goal}\n\n" if config.goal else ""
     parts = [
         f"# Deliverable Compilation\n\n"
         f"The brainstorming session on \"{config.topic}\" has concluded.\n"
+        f"{goal_line}"
         f"Please compile the following deliverable from the session materials:\n\n"
         f"**Deliverable:** {deliverable_name}\n\n"
         f"{instruction}\n\n"

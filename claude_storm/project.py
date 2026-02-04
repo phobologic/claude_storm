@@ -15,9 +15,9 @@ topic = """
 {topic}
 """
 
-# Overall goal or desired outcome (shapes pacing guidance)
+# Desired outcome or success criterion (not a deliverable — describes direction/quality)
 # goal = """
-# Produce a detailed document covering the key aspects of the topic.
+# Favor battle-tested technologies; produce production-ready designs with clear trade-off analysis.
 # """
 
 # Agent personas (appear in system prompts)
@@ -29,7 +29,7 @@ topic = """
 # Critical Analyst - Focuses on gaps, risks, and alternative perspectives.
 # """
 
-# Expected output documents (drives pacing and post-session compilation)
+# Documents to produce as [ARTIFACT] files (drives pacing and post-session compilation)
 # deliverables = [
 #     "Summary document",
 # ]
@@ -137,7 +137,7 @@ def get_storms_dir(config_path: Path | None) -> Path:
     return base / STORMS_DIR_NAME
 
 
-def format_pacing_block(turn: int, max_turns: int, deliverables: list[str] | None = None, session_id: str | None = None, interactive: bool = False) -> str:
+def format_pacing_block(turn: int, max_turns: int, deliverables: list[str] | None = None, session_id: str | None = None, interactive: bool = False, goal: str | None = None) -> str:
     """Compute percentage-based pacing nudge for a turn prompt.
 
     Args:
@@ -146,6 +146,7 @@ def format_pacing_block(turn: int, max_turns: int, deliverables: list[str] | Non
         deliverables: Optional list of expected deliverables.
         session_id: Optional session identifier to display.
         interactive: Whether the session is in interactive mode.
+        goal: Optional session goal to reinforce in pacing nudges.
 
     Returns:
         Formatted pacing block string.
@@ -165,6 +166,8 @@ def format_pacing_block(turn: int, max_turns: int, deliverables: list[str] | Non
             "Your deliverable artifacts should already exist from earlier turns — "
             "finalize and update them now."
         )
+        if goal:
+            msg += f' Session goal: "{goal}" — ensure final output addresses this.'
         if deliverables:
             deliv_list = ", ".join(deliverables)
             msg += (
@@ -174,20 +177,26 @@ def format_pacing_block(turn: int, max_turns: int, deliverables: list[str] | Non
             )
         parts.append(msg)
     elif pct >= 75:
-        parts.append(
+        msg = (
             "Session is 75% complete. Finalize deliverable artifacts now. "
             "Update or produce `[ARTIFACT]` files for each expected deliverable. "
             "Break large deliverables into multiple files (e.g., `part_1.md`, `part_2.md`). "
             "Focus on resolving open questions."
         )
+        if goal:
+            msg += f' Ensure output addresses the session goal: "{goal}"'
+        parts.append(msg)
     elif pct >= 50:
-        parts.append(
+        msg = (
             "You're at the halfway point. Start narrowing down "
             "and committing to approaches. "
             "Start producing draft `[ARTIFACT]` files for deliverables you have enough "
             "material for. For large deliverables, break them into parts "
             "(e.g., `act_1_chapters.md`, `act_2a_chapters.md`). You can revise artifacts later."
         )
+        if goal:
+            msg += f' Keep the session goal in mind: "{goal}"'
+        parts.append(msg)
     elif pct <= 20 and interactive:
         parts.append(
             "Early exploration phase — this is the best time to use [ASK_USER] to "
@@ -201,6 +210,8 @@ def format_pacing_block(turn: int, max_turns: int, deliverables: list[str] | Non
         parts.append(
             "\n**Expected deliverables:** " + ", ".join(deliverables)
         )
+    elif goal:
+        parts.append(f"\n**Session goal:** {goal}")
 
     return "\n".join(parts)
 

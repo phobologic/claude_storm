@@ -555,3 +555,76 @@ class TestEarlyPhasePacing:
         config = _make_config(interactive=False, deliverables=["Doc A"])
         prompt = build_system_prompt(config, "a")
         assert "clarify goals and constraints" not in prompt
+
+
+class TestGoalThreading:
+    def test_summary_prompt_includes_goal(self):
+        config = _make_config(goal="Favor battle-tested tech", current_turn=8)
+        prompt = build_summary_prompt(config)
+        assert "Favor battle-tested tech" in prompt
+        assert "Goal assessment" in prompt
+
+    def test_summary_prompt_no_goal(self):
+        config = _make_config(goal="", current_turn=8)
+        prompt = build_summary_prompt(config)
+        assert "Goal assessment" not in prompt
+
+    def test_deliverable_prompt_includes_goal(self):
+        config = _make_config(goal="Production-ready designs")
+        prompt = build_deliverable_prompt(
+            config=config,
+            deliverable_name="Architecture doc",
+            memories_text="memories",
+            conversation_text="conversation",
+        )
+        assert "Production-ready designs" in prompt
+
+    def test_deliverable_prompt_no_goal(self):
+        config = _make_config(goal="")
+        prompt = build_deliverable_prompt(
+            config=config,
+            deliverable_name="Doc",
+            memories_text="memories",
+            conversation_text="conversation",
+        )
+        assert "Session goal" not in prompt
+
+    def test_pacing_block_includes_goal_at_50_pct(self):
+        result = format_pacing_block(
+            turn=10, max_turns=20, goal="Favor simplicity"
+        )
+        assert "Favor simplicity" in result
+        assert "Keep the session goal in mind" in result
+
+    def test_pacing_block_includes_goal_at_75_pct(self):
+        result = format_pacing_block(
+            turn=15, max_turns=20, goal="Favor simplicity"
+        )
+        assert "Favor simplicity" in result
+        assert "Ensure output addresses the session goal" in result
+
+    def test_pacing_block_includes_goal_at_final_turns(self):
+        result = format_pacing_block(
+            turn=19, max_turns=20, goal="Favor simplicity"
+        )
+        assert "Favor simplicity" in result
+        assert "ensure final output addresses this" in result
+
+    def test_pacing_block_goal_bottom_reminder_no_deliverables(self):
+        result = format_pacing_block(
+            turn=5, max_turns=20, goal="Favor simplicity"
+        )
+        assert "**Session goal:** Favor simplicity" in result
+
+    def test_pacing_block_no_goal_bottom_reminder_with_deliverables(self):
+        result = format_pacing_block(
+            turn=5, max_turns=20, deliverables=["Doc A"], goal="Favor simplicity"
+        )
+        assert "**Expected deliverables:**" in result
+        assert "**Session goal:**" not in result
+
+    def test_system_prompt_session_structure_shows_goal(self):
+        config = _make_config(goal="Favor simplicity", deliverables=["Doc A"])
+        prompt = build_system_prompt(config, "a")
+        assert "Session Structure" in prompt
+        assert "**Session goal:** Favor simplicity" in prompt

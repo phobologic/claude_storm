@@ -727,7 +727,7 @@ def start(
         None, "--config", "-c", help="Path to storm.toml"
     ),
     goal: Optional[str] = typer.Option(
-        None, "--goal", "-g", help="Session goal"
+        None, "--goal", "-g", help="Desired outcome or success criterion (not a deliverable — describes direction/quality)"
     ),
     roles: Optional[list[str]] = typer.Option(
         None, "--roles", "-r", help="Agent roles (provide two)"
@@ -746,6 +746,9 @@ def start(
     ),
     interactive: Optional[bool] = typer.Option(
         None, "--interactive/--no-interactive", help="Allow agents to ask user questions"
+    ),
+    deliverable: Optional[list[str]] = typer.Option(
+        None, "--deliverable", "-d", help="Expected output document (repeatable)"
     ),
     reference_dir: Optional[list[Path]] = typer.Option(
         None, "--reference-dir", "--ref", help="Read-only directory of reference materials (repeatable)"
@@ -824,6 +827,8 @@ def start(
         merged["interactive"] = interactive
     if model is not None:
         merged["model"] = model
+    if deliverable:
+        merged["deliverables"] = list(deliverable)
     if reference_dir:
         merged["reference_dirs"] = [str(p) for p in reference_dir]
 

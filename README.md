@@ -32,8 +32,8 @@ job prioritization, retry logic, and horizontal scaling.
 """
 
 goal = """
-Produce a detailed architecture document covering core
-data model, queue topology, and failure handling.
+Favor battle-tested technologies; produce production-ready designs
+with clear trade-off analysis for each decision.
 """
 
 role_a = """
@@ -71,10 +71,10 @@ Sessions are stored in `.storms/` alongside `storm.toml` (add to `.gitignore`).
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `topic` | *(required)* | The brainstorming topic. Multi-line strings supported. |
-| `goal` | — | Overall goal. Shapes pacing guidance and summary prompt. |
+| `topic` | *(required)* | The subject or question under discussion. Multi-line strings supported. |
+| `goal` | — | Desired outcome or success criterion. Reinforced in pacing, summary, and deliverable compilation. Describes direction/quality, not a specific document. |
 | `role_a` / `role_b` | — | Agent personas. Become the agent's system prompt, replacing Claude Code's default instructions. First line is used as the TUI display label — keep it short (a title); additional lines provide detailed persona guidance. |
-| `deliverables` | `[]` | Expected output documents. Drives pacing nudges and post-session compilation. Draft artifacts with matching filenames are used as foundations. |
+| `deliverables` | `[]` | Documents to produce as `[ARTIFACT]` files. Drives pacing and post-session compilation. Also settable via `--deliverable` CLI flag. Draft artifacts with matching filenames are used as foundations. |
 | `reference_dirs` | `[]` | Read-only directories agents can browse via Read/Glob/Grep. |
 
 **\[options\]**
