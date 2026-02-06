@@ -137,6 +137,8 @@ class StormApp(App):
             log.write(Text("[stream interrupted]", style="bold red"))
         else:
             full_text = "".join(self._stream_parts)
+            if not full_text.strip() and message.text:
+                full_text = message.text
             if full_text.strip():
                 log.write(Markdown(full_text))
         log.write(Text(""))

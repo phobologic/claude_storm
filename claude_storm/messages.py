@@ -66,9 +66,10 @@ class StreamDelta(Message):
 class StreamEnd(Message):
     """End of a streaming agent response."""
 
-    def __init__(self, error: bool = False) -> None:
+    def __init__(self, error: bool = False, text: str = "") -> None:
         super().__init__()
         self.error = error
+        self.text = text
 
 
 class SessionComplete(Message):

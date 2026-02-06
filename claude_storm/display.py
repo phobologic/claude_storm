@@ -57,7 +57,7 @@ class DisplayProtocol(Protocol):
     def show_input_hint(self) -> None: ...
     def show_agent_stream_start(self, config: SessionConfig, agent: str) -> None: ...
     def show_agent_stream_delta(self, text: str) -> None: ...
-    def show_agent_stream_end(self, error: bool = False) -> None: ...
+    def show_agent_stream_end(self, error: bool = False, text: str = "") -> None: ...
     def thinking_status(
         self, label: str, timeout: int = 600, **kwargs: object
     ) -> object: ...
@@ -68,6 +68,7 @@ class PlainDisplay:
 
     def __init__(self, console: Console | None = None) -> None:
         self.console = console or Console()
+        self._stream_has_content = False
 
     def show_header(self, config: SessionConfig) -> None:
         """Display the session header."""
@@ -226,17 +227,21 @@ class PlainDisplay:
         style = AGENT_STYLES.get(agent, AGENT_STYLES["a"])
         color = style["border"]
         self.console.print(Rule(label, style=color, align="left"))
+        self._stream_has_content = False
 
     def show_agent_stream_delta(self, text: str) -> None:
         """Print an incremental text chunk (no trailing newline)."""
+        self._stream_has_content = True
         sys.stdout.write(text)
         sys.stdout.flush()
 
-    def show_agent_stream_end(self, error: bool = False) -> None:
+    def show_agent_stream_end(self, error: bool = False, text: str = "") -> None:
         """Finalize the streamed response with a trailing newline."""
         if error:
             self.console.print("\n[bold red][stream interrupted][/bold red]")
         else:
+            if not self._stream_has_content and text.strip():
+                self.console.print(Markdown(text))
             self.console.print()
 
     @contextmanager
@@ -410,12 +415,13 @@ class TextualDisplay:
 
     def show_agent_stream_start(self, config: SessionConfig, agent: str) -> None:
         """Post a StreamStart message to the TUI."""
-        from claude_storm.messages import StreamStart
+        from claude_storm.messages import StreamStart, UpdateThinking
 
         label = _truncate_label(config.agent_label(agent))
         style = AGENT_STYLES.get(agent, AGENT_STYLES["a"])
         color = style["border"]
         self._post(StreamStart(label, color))
+        self._post(UpdateThinking(label, timeout=config.agent_timeout))
 
     def show_agent_stream_delta(self, text: str) -> None:
         """Post a StreamDelta message to the TUI."""
@@ -423,11 +429,12 @@ class TextualDisplay:
 
         self._post(StreamDelta(text))
 
-    def show_agent_stream_end(self, error: bool = False) -> None:
+    def show_agent_stream_end(self, error: bool = False, text: str = "") -> None:
         """Post a StreamEnd message to the TUI."""
-        from claude_storm.messages import StreamEnd
+        from claude_storm.messages import ClearThinking, StreamEnd
 
-        self._post(StreamEnd(error=error))
+        self._post(ClearThinking(0))
+        self._post(StreamEnd(error=error, text=text))
 
     @contextmanager
     def thinking_status(
