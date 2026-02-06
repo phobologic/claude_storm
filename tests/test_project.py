@@ -1,14 +1,13 @@
 """Tests for project directory configuration and pacing."""
 
 import pytest
-from pathlib import Path
 
 from claude_storm.project import (
-    load_project_config,
-    scaffold_config,
-    format_pacing_block,
-    migrate_config,
     STORM_CONFIG_FILENAME,
+    format_pacing_block,
+    load_project_config,
+    migrate_config,
+    scaffold_config,
 )
 
 
@@ -22,18 +21,18 @@ class TestLoadProjectConfig:
     def test_loads_full_toml(self, tmp_path):
         toml = tmp_path / STORM_CONFIG_FILENAME
         toml.write_text(
-            '[session]\n'
+            "[session]\n"
             'topic = "Design a queue"\n'
             'goal = "Produce architecture doc"\n'
             'role_a = "Architect"\n'
             'role_b = "Critic"\n'
             'deliverables = ["Doc A", "Doc B"]\n'
-            '\n'
-            '[options]\n'
-            'max_turns = 30\n'
+            "\n"
+            "[options]\n"
+            "max_turns = 30\n"
             'model = "opus"\n'
-            'auto_complete = true\n'
-            'interactive = false\n'
+            "auto_complete = true\n"
+            "interactive = false\n"
         )
         config = load_project_config(toml)
         assert config["topic"] == "Design a queue"
@@ -49,11 +48,7 @@ class TestLoadProjectConfig:
     def test_strips_multiline_whitespace(self, tmp_path):
         toml = tmp_path / STORM_CONFIG_FILENAME
         toml.write_text(
-            '[session]\n'
-            'topic = """\n'
-            '  Design a distributed\n'
-            '  task queue system\n'
-            '"""\n'
+            '[session]\ntopic = """\n  Design a distributed\n  task queue system\n"""\n'
         )
         config = load_project_config(toml)
         assert config["topic"].startswith("Design")
@@ -131,7 +126,8 @@ class TestFormatPacingBlock:
 
     def test_format_pacing_with_deliverables(self):
         block = format_pacing_block(
-            turn=5, max_turns=20,
+            turn=5,
+            max_turns=20,
             deliverables=["Doc A", "Doc B"],
         )
         assert "Expected deliverables" in block
@@ -140,7 +136,8 @@ class TestFormatPacingBlock:
 
     def test_format_pacing_final_with_deliverables_includes_artifact_instruction(self):
         block = format_pacing_block(
-            turn=19, max_turns=20,
+            turn=19,
+            max_turns=20,
             deliverables=["Doc A", "Doc B"],
         )
         assert "final turns" in block
@@ -170,9 +167,12 @@ class TestMigrateConfig:
     def test_renames_commented_reference_dir(self, tmp_path):
         config = tmp_path / STORM_CONFIG_FILENAME
         config.write_text(
-            '[session]\ntopic = "Test"\n# reference_dir = "/path/to/notes"\n\n[options]\n'
+            "[session]\n"
+            'topic = "Test"\n'
+            '# reference_dir = "/path/to/notes"\n'
+            "\n[options]\n"
         )
-        messages = migrate_config(config)
+        migrate_config(config)
         text = config.read_text()
         assert "# reference_dirs" in text
         assert "reference_dir =" not in text.replace("reference_dirs", "")
@@ -200,9 +200,9 @@ class TestMigrateConfig:
         config.write_text(
             '[session]\ntopic = "Test"\n# reference_dirs = []\n\n'
             '[options]\nmax_turns = 10\n# model = "opus"\n'
-            '# auto_complete = false\n# interactive = true\n'
+            "# auto_complete = false\n# interactive = true\n"
         )
-        messages = migrate_config(config)
+        migrate_config(config)
         # Only missing keys should be added, existing ones left alone
         text = config.read_text()
         assert text.count("max_turns") == 1

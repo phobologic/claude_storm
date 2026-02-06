@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import contextlib
 import signal
 import threading
 import time
 from collections import deque
 from dataclasses import asdict
 
-from claude_storm.agents import invoke_agent, AgentResponse
+from claude_storm.agents import AgentResponse, invoke_agent
 from claude_storm.agreements import (
     accept_proposal,
     create_proposal,
@@ -18,7 +19,7 @@ from claude_storm.agreements import (
 from claude_storm.compilation import compile_deliverables, generate_summary
 from claude_storm.config import SessionConfig
 from claude_storm.debug import write_debug_request, write_debug_response
-from claude_storm.directives import parse_directives, ParsedDirectives
+from claude_storm.directives import ParsedDirectives, parse_directives
 from claude_storm.display import Display, DisplayProtocol
 from claude_storm.memory import (
     format_memory_index,
@@ -95,7 +96,9 @@ def _run_turn(
         search_results = format_search_results(agent_dir, search_query)
 
     # Build agreements context
-    agreements_text = format_agreements_for_prompt(config, agent, current_turn=config.current_turn + 1)
+    agreements_text = format_agreements_for_prompt(
+        config, agent, current_turn=config.current_turn + 1
+    )
 
     # Merge buffered nudges with any ASK_USER response
     merged_input = merge_user_input(user_input, nudge_queue)
@@ -330,12 +333,9 @@ def run_session(
             # Merge any pending ASK_USER answer for this agent
             pending = pending_answer_for.pop(current_agent, None)
             if pending:
-                if user_input:
-                    user_input = f"{user_input}\n\n{pending}"
-                else:
-                    user_input = pending
+                user_input = f"{user_input}\n\n{pending}" if user_input else pending
 
-            response, directives, turn_prompt, system_prompt = _run_turn(
+            response, directives, _, _ = _run_turn(
                 config=config,
                 agent=current_agent,
                 other_response=other_response,
@@ -348,7 +348,9 @@ def run_session(
             if response.is_error:
                 display.show_error(response.text)
                 config.status = "paused"
-                config.stop_reason = "agent_timeout" if response.timed_out else "agent_error"
+                config.stop_reason = (
+                    "agent_timeout" if response.timed_out else "agent_error"
+                )
                 config.stop_error = response.text
                 break
 
@@ -363,9 +365,7 @@ def run_session(
                 pending_answer_for[current_agent] = user_input
 
             # Append to conversation log
-            _append_conversation(
-                config, current_agent, directives.clean_text
-            )
+            _append_conversation(config, current_agent, directives.clean_text)
 
             # Advance turn
             other_response = response.text
@@ -402,7 +402,5 @@ def run_session(
     display.show_completion(config)
 
     if config.interactive and isinstance(display, Display):
-        try:
+        with contextlib.suppress(EOFError, KeyboardInterrupt):
             display.console.input("[dim]Press Enter to exit...[/dim]")
-        except (EOFError, KeyboardInterrupt):
-            pass

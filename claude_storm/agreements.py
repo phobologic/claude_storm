@@ -34,14 +34,16 @@ def create_proposal(
         The generated proposal ID.
     """
     proposal_id = generate_proposal_id()
-    config.pending_proposals.append({
-        "id": proposal_id,
-        "title": title,
-        "content": content,
-        "proposed_by": agent,
-        "turn": turn,
-        "revises": revises,
-    })
+    config.pending_proposals.append(
+        {
+            "id": proposal_id,
+            "title": title,
+            "content": content,
+            "proposed_by": agent,
+            "turn": turn,
+            "revises": revises,
+        }
+    )
     return proposal_id
 
 
@@ -182,9 +184,13 @@ def format_agreements_for_prompt(
         if current_turn is not None and current_turn >= 3:
             return (
                 "# Shared Agreements\n\n"
-                "No agreements have been formalized yet. When you reach consensus on a decision, "
-                'use [PROPOSE title="..."]content[/PROPOSE] to create a shared agreement. '
-                "Verbal agreement alone does not create a shared record \u2014 only [PROPOSE] + [ACCEPT] does."
+                "No agreements have been formalized yet. "
+                "When you reach consensus on a decision, "
+                'use [PROPOSE title="..."]content[/PROPOSE] '
+                "to create a shared agreement. "
+                "Verbal agreement alone does not create "
+                "a shared record \u2014 only "
+                "[PROPOSE] + [ACCEPT] does."
             )
         return ""
 
@@ -193,13 +199,13 @@ def format_agreements_for_prompt(
     # Stale agreement nudge: if agreements exist but the last one was accepted
     # 4+ turns ago, remind the agent to formalize new consensus points
     if current_turn is not None and config.accepted_agreements and not pending_for_me:
-        last_accepted_turn = max(
-            a["accepted_turn"] for a in config.accepted_agreements
-        )
+        last_accepted_turn = max(a["accepted_turn"] for a in config.accepted_agreements)
         if current_turn - last_accepted_turn >= 4:
             result += (
-                "\n\n*Reminder: It has been several turns since the last agreement. "
-                "If you've reached new consensus points, formalize them with [PROPOSE].*"
+                "\n\n*Reminder: It has been several turns "
+                "since the last agreement. "
+                "If you've reached new consensus points, "
+                "formalize them with [PROPOSE].*"
             )
 
     return result

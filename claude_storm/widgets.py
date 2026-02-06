@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import time
 
 from rich.text import Text
@@ -60,9 +61,7 @@ class SelectableRichLog(RichLog):
         """Extract plain text under the selection."""
         all_lines: list[str] = []
         for strip in self.lines:
-            all_lines.append(
-                "".join(segment.text for segment in strip)
-            )
+            all_lines.append("".join(segment.text for segment in strip))
         text = "\n".join(all_lines)
         return selection.extract(text), "\n"
 
@@ -174,10 +173,8 @@ class GrowingTextArea(TextArea):
         """Grow or shrink to fit content."""
         line_count = self.document.line_count
         # Use wrapped line count if available, otherwise raw line count
-        try:
+        with contextlib.suppress(AttributeError):
             line_count = self.wrapped_document.height
-        except AttributeError:
-            pass
         clamped = max(1, min(6, line_count))
         self.styles.height = clamped + 2  # +2 for tall border
 
@@ -205,7 +202,9 @@ class InputBar(Widget):
 
     def compose(self):
         self._input.border_title = "Nudge:"
-        self._input.border_subtitle = "shift+↩ newline  |  ^c Pause / Quit  |  ^p palette"
+        self._input.border_subtitle = (
+            "shift+↩ newline  |  ^c Pause / Quit  |  ^p palette"
+        )
         yield self._input
 
     def set_ask_mode(self, question: str) -> None:

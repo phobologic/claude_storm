@@ -12,9 +12,14 @@ def _build_role_section(config: SessionConfig, agent: str) -> str:
     other = config.agent_label("b" if agent == "a" else "a")
 
     if role:
-        persona = f"You are playing the role of **{role}** in a structured brainstorming session."
+        persona = (
+            f"You are playing the role of **{role}** "
+            "in a structured brainstorming session."
+        )
     else:
-        persona = "You are a brainstorming partner in a structured two-agent discussion."
+        persona = (
+            "You are a brainstorming partner in a structured two-agent discussion."
+        )
 
     parts = [
         "# Role and Context\n",
@@ -26,8 +31,9 @@ def _build_role_section(config: SessionConfig, agent: str) -> str:
 
     parts.append(
         f"\nYou are having a rigorous debate with another agent ({other}). "
-        "You take strict alternating turns. Read their latest message, identify where you "
-        "agree and where you disagree, and respond with a clear position."
+        "You take strict alternating turns. Read their latest "
+        "message, identify where you agree and where you disagree, "
+        "and respond with a clear position."
     )
     return "\n".join(parts)
 
@@ -38,33 +44,49 @@ def _build_directives_section(config: SessionConfig) -> str:
         "\n# Directives\n"
         "You may use these special directives in your responses:\n\n"
         "## Private Tools\n"
-        '- `[MEMORY title="..." tags="t1,t2"]content[/MEMORY]` — Save a note to your '
-        "**private** long-term memory (only visible to you). Use this for your own working "
-        "notes, open questions, and ideas you're still developing.\n"
-        '- `[MEMORY_SEARCH query="..."]` — Request a search of your saved memories. '
-        "Results will appear in your next turn.\n\n"
+        '- `[MEMORY title="..." tags="t1,t2"]content[/MEMORY]`'
+        " — Save a note to your **private** long-term memory "
+        "(only visible to you). Use this for your own working "
+        "notes, open questions, and ideas you're still "
+        "developing.\n"
+        '- `[MEMORY_SEARCH query="..."]` — Request a search '
+        "of your saved memories. Results will appear in your "
+        "next turn.\n\n"
         "## Shared Output\n"
-        '- `[PROPOSE title="..."]content[/PROPOSE]` — Propose a shared agreement for the '
-        "other agent to confirm or reject. **Make bold, specific proposals — take a strong "
-        "position and defend it.** Verbal agreement ('I agree', 'good point', "
-        "'I'm sold') does NOT create a shared record. Only [PROPOSE] + [ACCEPT] does. "
-        "Confirmed agreements become part of the session's formal output. "
-        "Propose early and forcefully — if the other agent disagrees, that sharpens the debate.\n"
-        '- `[ACCEPT id="..."]` — Accept a pending agreement proposal by its ID.\n'
-        '- `[REJECT id="..." reason="..."]` — Reject a pending proposal with an explanation.\n'
-        '- `[REVISE id="..."]new content[/REVISE]` — Propose revising an existing confirmed '
-        "agreement. Creates a new pending proposal the other agent must accept.\n"
-        '- `[ARTIFACT filename="..."]content[/ARTIFACT]` — Produce a shared output file '
+        '- `[PROPOSE title="..."]content[/PROPOSE]` — Propose '
+        "a shared agreement for the other agent to confirm or "
+        "reject. **Make bold, specific proposals — take a "
+        "strong position and defend it.** Verbal agreement "
+        "('I agree', 'good point', 'I'm sold') does NOT "
+        "create a shared record. Only [PROPOSE] + [ACCEPT] "
+        "does. Confirmed agreements become part of the "
+        "session's formal output. Propose early and "
+        "forcefully — if the other agent disagrees, that "
+        "sharpens the debate.\n"
+        '- `[ACCEPT id="..."]` — Accept a pending agreement '
+        "proposal by its ID.\n"
+        '- `[REJECT id="..." reason="..."]` — Reject a '
+        "pending proposal with an explanation.\n"
+        '- `[REVISE id="..."]new content[/REVISE]` — Propose '
+        "revising an existing confirmed agreement. Creates a "
+        "new pending proposal the other agent must accept.\n"
+        '- `[ARTIFACT filename="..."]content[/ARTIFACT]`'
+        " — Produce a shared output file "
         "(code, document, etc.).\n"
-        '- `[DONE reason="..."]` — Signal that you believe the brainstorming is complete '
-        "and the topic is well-explored. The other agent will be asked to confirm. "
-        "If they disagree, the conversation continues.\n"
+        '- `[DONE reason="..."]` — Signal that you believe '
+        "the brainstorming is complete and the topic is "
+        "well-explored. The other agent will be asked to "
+        "confirm. If they disagree, the conversation "
+        "continues.\n"
     )
     if config.interactive:
         text += (
-            "- `[ASK_USER]question[/ASK_USER]` — Pause to ask the human user a question. "
-            "A human operator is available and monitoring this session. Use this when you "
-            "need clarification, want input on a decision, or are unsure which direction to take.\n"
+            "- `[ASK_USER]question[/ASK_USER]` — Pause to "
+            "ask the human user a question. A human operator "
+            "is available and monitoring this session. Use "
+            "this when you need clarification, want input on "
+            "a decision, or are unsure which direction to "
+            "take.\n"
         )
     return text
 
@@ -88,7 +110,7 @@ def _build_guidelines_section(config: SessionConfig) -> str:
         "create shared, confirmed output that both agents endorse.\n"
         "- Propose early and with conviction. A proposal that gets "
         "rejected sharpens the discussion and is more valuable than vague agreement.\n"
-        "- Good proposals are specific and assertive: *\"Use PostgreSQL for the data "
+        '- Good proposals are specific and assertive: *"Use PostgreSQL for the data '
         'layer because X, Y, Z"* rather than *"We discussed database options."*\n'
         "- Always review and respond to pending proposals from the other agent"
         " — accepting without scrutiny is worse than rejecting with good reasons"
@@ -98,7 +120,7 @@ def _build_guidelines_section(config: SessionConfig) -> str:
             "\n- If you're uncertain about a direction or need user preferences, "
             "ask with [ASK_USER]"
             "\n- The user may type nudges at any time during the session. These "
-            "appear in the \"User Input\" section of your turn prompt and should be "
+            'appear in the "User Input" section of your turn prompt and should be '
             "treated as steering guidance — acknowledge and incorporate them."
         )
     return text
@@ -139,7 +161,8 @@ def _build_session_structure_section(config: SessionConfig) -> str:
             "then shift toward concrete decisions and producing deliverables in the "
             "second half. Start writing `[ARTIFACT]` files incrementally from the "
             "halfway point — don't wait until the end. For large deliverables, break "
-            "them into multiple artifact files that you can refine over subsequent turns."
+            "them into multiple artifact files that you can "
+            "refine over subsequent turns."
         )
     else:
         structure_parts.append(
@@ -252,15 +275,14 @@ def build_turn_prompt(
     if other_done_reason and config.auto_complete:
         sections.append(
             f"\n# Completion Check\n"
-            f"{other_label} has signaled that they believe the brainstorming is complete.\n"
+            f"{other_label} has signaled that they believe "
+            "the brainstorming is complete.\n"
             f'Their reason: "{other_done_reason}"\n\n'
             f"If you agree, signal [DONE]. If not, continue normally and explain "
             f"what still needs attention."
         )
     elif config.auto_complete:
-        sections.append(
-            "Signal [DONE] when you believe the topic is well-explored."
-        )
+        sections.append("Signal [DONE] when you believe the topic is well-explored.")
 
     # Interactive mode reminder
     if config.interactive:
@@ -283,7 +305,7 @@ def build_summary_prompt(config: SessionConfig) -> str:
     """
     parts = [
         "# Session Summary Request\n",
-        f"The brainstorming session on \"{config.topic}\" has concluded after "
+        f'The brainstorming session on "{config.topic}" has concluded after '
         f"{config.current_turn} turns.",
     ]
     if config.goal:
@@ -296,7 +318,7 @@ def build_summary_prompt(config: SessionConfig) -> str:
         "4. Recommended next steps\n"
     )
     if config.goal:
-        parts.append(f"5. Goal assessment — did the session achieve its stated goal?\n")
+        parts.append("5. Goal assessment — did the session achieve its stated goal?\n")
     parts.append("Be concise but thorough. Format as markdown.")
 
     if config.deliverables:
@@ -338,28 +360,32 @@ def build_deliverable_prompt(
     """
     if existing_artifacts:
         instruction = (
-            f"Produce a clean, well-structured markdown document. "
-            f"Draft artifact files from the session are included below — "
-            f"refine, merge, and complete them into the final deliverable. "
-            f"Do not start from scratch; use the drafts as your foundation.\n\n"
-            f"IMPORTANT: Output the full deliverable content directly in your response.\n"
-            f"Do NOT use Write or Edit tools. Do NOT summarize what you would write —\n"
-            f"write the actual content here."
+            "Produce a clean, well-structured markdown document. "
+            "Draft artifact files from the session are included below — "
+            "refine, merge, and complete them into the final deliverable. "
+            "Do not start from scratch; use the drafts as your foundation.\n\n"
+            "IMPORTANT: Output the full deliverable content "
+            "directly in your response.\n"
+            "Do NOT use Write or Edit tools. Do NOT summarize "
+            "what you would write —\n"
+            "write the actual content here."
         )
     else:
         instruction = (
-            f"Produce a clean, well-structured markdown document. Include all relevant\n"
-            f"information discussed during the session. Do not include preamble or\n"
-            f"meta-commentary — just the deliverable content.\n\n"
-            f"IMPORTANT: Output the full deliverable content directly in your response.\n"
-            f"Do NOT use Write or Edit tools. Do NOT summarize what you would write —\n"
-            f"write the actual content here."
+            "Produce a clean, well-structured markdown document. Include all relevant\n"
+            "information discussed during the session. Do not include preamble or\n"
+            "meta-commentary — just the deliverable content.\n\n"
+            "IMPORTANT: Output the full deliverable content "
+            "directly in your response.\n"
+            "Do NOT use Write or Edit tools. Do NOT summarize "
+            "what you would write —\n"
+            "write the actual content here."
         )
 
     goal_line = f"**Session goal:** {config.goal}\n\n" if config.goal else ""
     parts = [
         f"# Deliverable Compilation\n\n"
-        f"The brainstorming session on \"{config.topic}\" has concluded.\n"
+        f'The brainstorming session on "{config.topic}" has concluded.\n'
         f"{goal_line}"
         f"Please compile the following deliverable from the session materials:\n\n"
         f"**Deliverable:** {deliverable_name}\n\n"
@@ -376,7 +402,7 @@ def build_deliverable_prompt(
         for filename, content in existing_artifacts.items():
             draft_parts.append(f"### {filename}\n\n{content}")
         parts.append(
-            f"---\n\n## Draft Content (from session artifacts)\n\n"
+            "---\n\n## Draft Content (from session artifacts)\n\n"
             + "\n\n---\n\n".join(draft_parts)
         )
 

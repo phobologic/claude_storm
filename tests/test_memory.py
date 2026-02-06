@@ -1,15 +1,13 @@
 """Tests for the memory system."""
 
-import json
-
 from claude_storm.memory import (
-    save_memory,
-    get_memory_index,
-    get_recent_memories,
-    search_memory,
     format_memory_index,
     format_recent_memories,
     format_search_results,
+    get_memory_index,
+    get_recent_memories,
+    save_memory,
+    search_memory,
 )
 
 

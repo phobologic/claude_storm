@@ -2,13 +2,13 @@
 
 import json
 import subprocess as _subprocess
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
-from claude_storm.agents import invoke_agent, _extract_text, _build_allowed_tools
+from claude_storm.agents import _build_allowed_tools, _extract_text, invoke_agent
 
 
 def _mock_popen(stdout="", stderr="", returncode=0):
-    """Create a mock Popen instance that returns given stdout/stderr from communicate()."""
+    """Create a mock Popen that returns given stdout/stderr."""
     mock_proc = MagicMock()
     mock_proc.communicate.return_value = (stdout, stderr)
     mock_proc.returncode = returncode
@@ -22,9 +22,13 @@ class TestInvokeAgent:
             stdout=json.dumps({"result": "Hello from agent A"}),
         )
 
-        with patch("claude_storm.agents.subprocess.Popen", return_value=mock_proc) as mock_popen_cls:
+        with patch(
+            "claude_storm.agents.subprocess.Popen", return_value=mock_proc
+        ) as mock_popen_cls:
             response = invoke_agent(
-                config, "a", "Start the brainstorm",
+                config,
+                "a",
+                "Start the brainstorm",
                 system_prompt="You are an architect",
             )
 
@@ -44,7 +48,9 @@ class TestInvokeAgent:
             stdout=json.dumps({"result": "ok"}),
         )
 
-        with patch("claude_storm.agents.subprocess.Popen", return_value=mock_proc) as mock_popen_cls:
+        with patch(
+            "claude_storm.agents.subprocess.Popen", return_value=mock_proc
+        ) as mock_popen_cls:
             invoke_agent(config, "a", "prompt", system_prompt="sys")
 
         cmd = mock_popen_cls.call_args[0][0]
@@ -67,7 +73,9 @@ class TestInvokeAgent:
             stdout=json.dumps({"result": "Continuing..."}),
         )
 
-        with patch("claude_storm.agents.subprocess.Popen", return_value=mock_proc) as mock_popen_cls:
+        with patch(
+            "claude_storm.agents.subprocess.Popen", return_value=mock_proc
+        ) as mock_popen_cls:
             response = invoke_agent(config, "b", "Your turn")
 
         cmd = mock_popen_cls.call_args[0][0]
@@ -80,7 +88,8 @@ class TestInvokeAgent:
         config = make_config()
         mock_proc = MagicMock()
         mock_proc.communicate.side_effect = _subprocess.TimeoutExpired(
-            cmd="claude", timeout=300,
+            cmd="claude",
+            timeout=300,
         )
 
         with patch("claude_storm.agents.subprocess.Popen", return_value=mock_proc):
@@ -161,7 +170,6 @@ class TestBuildAllowedTools:
         assert not any("Write" in t and "ref/two" in t for t in tools)
         # 11 total: 3 read tools * 3 dirs + 2 write tools * 1 dir
         assert len(tools) == 11
-
 
     def test_readonly_excludes_write_edit(self, make_config):
         config = make_config()

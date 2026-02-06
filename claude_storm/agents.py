@@ -6,7 +6,6 @@ import json
 import subprocess
 import threading
 from dataclasses import dataclass
-from pathlib import Path
 
 from claude_storm.config import SessionConfig
 
@@ -49,9 +48,7 @@ def _abs_pattern(path: str) -> str:
     return f"//{stripped}/**"
 
 
-def _build_allowed_tools(
-    config: SessionConfig, readonly: bool = False
-) -> list[str]:
+def _build_allowed_tools(config: SessionConfig, readonly: bool = False) -> list[str]:
     """Build path-scoped --allowedTools list.
 
     Write/Edit are restricted to the session directory.
@@ -123,12 +120,12 @@ def invoke_agent(
         cmd.extend(["--session-id", resolved_session_id])
         cmd.extend(["--system-prompt", system_prompt])
         cmd.extend(["--model", config.model])
-        cmd.extend(["--allowedTools"] + _build_allowed_tools(config, readonly=readonly))
+        cmd.extend(["--allowedTools", *_build_allowed_tools(config, readonly=readonly)])
     elif session_id is not None:
         # Fresh one-shot session (no system prompt, no resume)
         cmd.extend(["--session-id", resolved_session_id])
         cmd.extend(["--model", config.model])
-        cmd.extend(["--allowedTools"] + _build_allowed_tools(config, readonly=readonly))
+        cmd.extend(["--allowedTools", *_build_allowed_tools(config, readonly=readonly)])
     else:
         # Subsequent turns: resume existing session
         cmd.extend(["--resume", resolved_session_id])
@@ -145,9 +142,7 @@ def invoke_agent(
                 cwd=cwd,
             )
         try:
-            stdout, stderr = _active_process.communicate(
-                input=prompt, timeout=timeout
-            )
+            stdout, stderr = _active_process.communicate(input=prompt, timeout=timeout)
             returncode = _active_process.returncode
         finally:
             with _process_lock:

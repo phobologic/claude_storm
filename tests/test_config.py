@@ -130,8 +130,9 @@ class TestSessionConfig:
         assert loaded.reference_dirs == ["/some/path", "/other/path"]
 
     def test_load_migrates_legacy_reference_dir(self, tmp_storms):
-        """Loading a session.json with old reference_dir key migrates to reference_dirs."""
+        """Old reference_dir key migrates to reference_dirs."""
         import json
+
         session_dir = tmp_storms / "legacy123"
         session_dir.mkdir()
         data = {
@@ -147,6 +148,7 @@ class TestSessionConfig:
     def test_load_migrates_empty_reference_dir(self, tmp_storms):
         """Loading a session.json with empty reference_dir results in empty list."""
         import json
+
         session_dir = tmp_storms / "legacy456"
         session_dir.mkdir()
         data = {
@@ -174,7 +176,7 @@ class TestSessionConfig:
         assert loaded.done_signals == {"a": "complete"}
 
     def test_load_migrates_empty_done_signals_list(self, tmp_storms):
-        """Loading a session.json with empty list done_signals migrates to empty dict."""
+        """Empty list done_signals migrates to empty dict."""
         session_dir = tmp_storms / "legacy000"
         session_dir.mkdir()
         data = {

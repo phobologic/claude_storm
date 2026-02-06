@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-import pytest
 from unittest.mock import patch
 
+import pytest
+
 from claude_storm.app import StormApp
+from claude_storm.messages import SessionComplete, ShowRenderable
 from claude_storm.widgets import SelectableRichLog
-from claude_storm.messages import ShowRenderable, SessionComplete
 
 
 class TestStormApp:
@@ -27,6 +28,7 @@ class TestStormApp:
         with patch.object(app, "_session_worker", return_value=None):
             async with app.run_test() as pilot:
                 from rich.text import Text
+
                 app.post_message(ShowRenderable(Text("Hello")))
                 await pilot.pause()
                 log = pilot.app.query_one("#output-log", SelectableRichLog)
@@ -49,4 +51,5 @@ class TestStormApp:
         with patch.object(app, "_session_worker", return_value=None):
             async with app.run_test() as pilot:
                 from claude_storm.widgets import InputBar
+
                 assert pilot.app.query_one(InputBar) is not None

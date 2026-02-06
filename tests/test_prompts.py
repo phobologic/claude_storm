@@ -2,10 +2,10 @@
 
 from claude_storm.project import format_pacing_block
 from claude_storm.prompts import (
+    build_deliverable_prompt,
+    build_summary_prompt,
     build_system_prompt,
     build_turn_prompt,
-    build_summary_prompt,
-    build_deliverable_prompt,
 )
 
 
@@ -115,7 +115,9 @@ class TestBuildSystemPrompt:
         assert "read-only" in prompt
 
     def test_system_prompt_multiple_reference_dirs(self, make_config):
-        config = make_config(ensure_dirs=False, reference_dirs=["/tmp/notes", "/tmp/docs"])
+        config = make_config(
+            ensure_dirs=False, reference_dirs=["/tmp/notes", "/tmp/docs"]
+        )
         prompt = build_system_prompt(config, "a")
         assert "Reference Materials" in prompt
         assert "/tmp/notes" in prompt
@@ -236,7 +238,8 @@ class TestBuildTurnPrompt:
 
     def test_turn_prompt_deliverables_reminder(self, make_config):
         config = make_config(
-            ensure_dirs=False, current_turn=3,
+            ensure_dirs=False,
+            current_turn=3,
             deliverables=["Architecture doc", "Data model"],
         )
         prompt = build_turn_prompt(
@@ -250,10 +253,10 @@ class TestBuildTurnPrompt:
         assert "Architecture doc" in prompt
         assert "Data model" in prompt
 
-
     def test_completion_check_shown_when_other_done(self, make_config):
         config = make_config(
-            ensure_dirs=False, auto_complete=True,
+            ensure_dirs=False,
+            auto_complete=True,
             done_signals={"a": "All topics covered"},
         )
         prompt = build_turn_prompt(
@@ -289,7 +292,9 @@ class TestBuildTurnPrompt:
             other_response="response",
             memory_index="You have no saved notes.",
             recent_memories="",
-            agreements_text="# Shared Agreements\n\n## Confirmed\n- [a3f2] **Use REST**",
+            agreements_text=(
+                "# Shared Agreements\n\n## Confirmed\n- [a3f2] **Use REST**"
+            ),
         )
         assert "Shared Agreements" in prompt
         assert "[a3f2]" in prompt
@@ -332,7 +337,8 @@ class TestBuildTurnPrompt:
 
     def test_completion_check_not_shown_without_auto_complete(self, make_config):
         config = make_config(
-            ensure_dirs=False, auto_complete=False,
+            ensure_dirs=False,
+            auto_complete=False,
             done_signals={"a": "Done"},
         )
         prompt = build_turn_prompt(
@@ -355,7 +361,8 @@ class TestBuildSummaryPrompt:
 
     def test_summary_prompt_deliverables(self, make_config):
         config = make_config(
-            ensure_dirs=False, current_turn=8,
+            ensure_dirs=False,
+            current_turn=8,
             deliverables=["Doc A", "Doc B"],
         )
         prompt = build_summary_prompt(config)
@@ -523,21 +530,27 @@ class TestEarlyPhasePacing:
 
     def test_system_prompt_interactive_pacing(self, make_config):
         """Interactive system prompt should mention early-turn clarification."""
-        config = make_config(ensure_dirs=False, interactive=True, deliverables=["Doc A"])
+        config = make_config(
+            ensure_dirs=False, interactive=True, deliverables=["Doc A"]
+        )
         prompt = build_system_prompt(config, "a")
         assert "clarify goals and constraints" in prompt
         assert "[ASK_USER]" in prompt
 
     def test_system_prompt_non_interactive_pacing(self, make_config):
         """Non-interactive system prompt should NOT mention early clarification."""
-        config = make_config(ensure_dirs=False, interactive=False, deliverables=["Doc A"])
+        config = make_config(
+            ensure_dirs=False, interactive=False, deliverables=["Doc A"]
+        )
         prompt = build_system_prompt(config, "a")
         assert "clarify goals and constraints" not in prompt
 
 
 class TestGoalThreading:
     def test_summary_prompt_includes_goal(self, make_config):
-        config = make_config(ensure_dirs=False, goal="Favor battle-tested tech", current_turn=8)
+        config = make_config(
+            ensure_dirs=False, goal="Favor battle-tested tech", current_turn=8
+        )
         prompt = build_summary_prompt(config)
         assert "Favor battle-tested tech" in prompt
         assert "Goal assessment" in prompt
@@ -568,30 +581,22 @@ class TestGoalThreading:
         assert "Session goal" not in prompt
 
     def test_pacing_block_includes_goal_at_50_pct(self):
-        result = format_pacing_block(
-            turn=10, max_turns=20, goal="Favor simplicity"
-        )
+        result = format_pacing_block(turn=10, max_turns=20, goal="Favor simplicity")
         assert "Favor simplicity" in result
         assert "Keep the session goal in mind" in result
 
     def test_pacing_block_includes_goal_at_75_pct(self):
-        result = format_pacing_block(
-            turn=15, max_turns=20, goal="Favor simplicity"
-        )
+        result = format_pacing_block(turn=15, max_turns=20, goal="Favor simplicity")
         assert "Favor simplicity" in result
         assert "Ensure output addresses the session goal" in result
 
     def test_pacing_block_includes_goal_at_final_turns(self):
-        result = format_pacing_block(
-            turn=19, max_turns=20, goal="Favor simplicity"
-        )
+        result = format_pacing_block(turn=19, max_turns=20, goal="Favor simplicity")
         assert "Favor simplicity" in result
         assert "ensure final output addresses this" in result
 
     def test_pacing_block_goal_bottom_reminder_no_deliverables(self):
-        result = format_pacing_block(
-            turn=5, max_turns=20, goal="Favor simplicity"
-        )
+        result = format_pacing_block(turn=5, max_turns=20, goal="Favor simplicity")
         assert "**Session goal:** Favor simplicity" in result
 
     def test_pacing_block_no_goal_bottom_reminder_with_deliverables(self):
@@ -602,7 +607,9 @@ class TestGoalThreading:
         assert "**Session goal:**" not in result
 
     def test_system_prompt_session_structure_shows_goal(self, make_config):
-        config = make_config(ensure_dirs=False, goal="Favor simplicity", deliverables=["Doc A"])
+        config = make_config(
+            ensure_dirs=False, goal="Favor simplicity", deliverables=["Doc A"]
+        )
         prompt = build_system_prompt(config, "a")
         assert "Session Structure" in prompt
         assert "**Session goal:** Favor simplicity" in prompt

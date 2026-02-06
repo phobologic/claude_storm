@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 
@@ -35,9 +35,7 @@ def _slugify(title: str) -> str:
     return slug[:60] if slug else "note"
 
 
-def save_memory(
-    agent_dir: Path, title: str, tags: list[str], content: str
-) -> str:
+def save_memory(agent_dir: Path, title: str, tags: list[str], content: str) -> str:
     """Save a memory note and update the index.
 
     Args:
@@ -67,7 +65,7 @@ def save_memory(
             "title": title,
             "tags": tags,
             "summary": summary,
-            "updated": datetime.now(timezone.utc).isoformat(),
+            "updated": datetime.now(UTC).isoformat(),
         }
     )
     _save_index(agent_dir, index)

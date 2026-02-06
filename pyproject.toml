@@ -23,7 +23,36 @@ dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
     "textual-dev>=1.0.0",
+    "ruff>=0.9.0",
 ]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 88
+
+[tool.ruff.lint]
+select = [
+    "F",     # pyflakes
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "I",     # isort
+    "UP",    # pyupgrade
+    "B",     # flake8-bugbear
+    "SIM",   # flake8-simplify
+    "C4",    # flake8-comprehensions
+    "RUF",   # ruff-specific rules
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*"              = ["D", "S101", "I002"]   # no docstrings, assert warnings, or required-imports in tests
+"claude_storm/cli.py"  = ["UP007", "B008"]      # allow Optional[str] and typer.Option() defaults
+
+[tool.ruff.lint.isort]
+required-imports = ["from __future__ import annotations"]
+known-first-party = ["claude_storm"]
+
+[tool.ruff.format]
+quote-style = "double"
 
 [build-system]
 requires = ["hatchling"]

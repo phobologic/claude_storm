@@ -12,6 +12,8 @@ uv run storm resume <session-id>      # Resume a paused session
 uv run storm list                     # List sessions in .storms/
 uv run storm show <session-id>        # Show session details
 uv run pytest                         # Run all tests
+uv run ruff check .                   # Lint
+uv run ruff format .                  # Format
 ```
 
 ## Module Dependency Hierarchy

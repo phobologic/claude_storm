@@ -16,7 +16,9 @@ from claude_storm.prompts import build_deliverable_prompt, build_summary_prompt
 MIN_WORD_OVERLAP_DIVISOR = 2
 
 
-def find_matching_artifacts(artifacts_dir: Path, deliverable_name: str) -> dict[str, str]:
+def find_matching_artifacts(
+    artifacts_dir: Path, deliverable_name: str
+) -> dict[str, str]:
     """Find existing artifact files whose names fuzzy-match a deliverable.
 
     Compares normalized words from the deliverable name against each artifact
@@ -34,13 +36,13 @@ def find_matching_artifacts(artifacts_dir: Path, deliverable_name: str) -> dict[
         return {}
 
     # Normalize deliverable name into lowercase tokens
-    deliv_words = set(re.sub(r'[^\w\s]', '', deliverable_name).lower().split())
+    deliv_words = set(re.sub(r"[^\w\s]", "", deliverable_name).lower().split())
     if not deliv_words:
         return {}
 
     matches: dict[str, str] = {}
     for path in sorted(artifacts_dir.glob("*.md")):
-        stem_words = set(re.sub(r'[_\-]', ' ', path.stem).lower().split())
+        stem_words = set(re.sub(r"[_\-]", " ", path.stem).lower().split())
         overlap = deliv_words & stem_words
         if len(overlap) >= max(1, len(deliv_words) // MIN_WORD_OVERLAP_DIVISOR):
             matches[path.name] = path.read_text()
@@ -68,11 +70,15 @@ def compile_deliverables(config: SessionConfig, display: DisplayProtocol) -> Non
                 memories_parts.append(
                     f"### {label}: {md_file.stem}\n\n{md_file.read_text()}"
                 )
-    memories_text = "\n\n---\n\n".join(memories_parts) if memories_parts else "(no memories)"
+    memories_text = (
+        "\n\n---\n\n".join(memories_parts) if memories_parts else "(no memories)"
+    )
 
     # Read conversation log
     conv_path = config.session_dir() / "conversation.md"
-    conversation_text = conv_path.read_text() if conv_path.exists() else "(no conversation)"
+    conversation_text = (
+        conv_path.read_text() if conv_path.exists() else "(no conversation)"
+    )
 
     # Build agreements text for deliverable compilation
     agreements_text = format_agreements_for_prompt(config, "a")
@@ -125,8 +131,8 @@ def compile_deliverables(config: SessionConfig, display: DisplayProtocol) -> Non
 
         if not response.is_error:
             # Sanitize filename
-            safe_name = re.sub(r'[^\w\s-]', '', deliverable).strip()
-            safe_name = re.sub(r'[\s]+', '_', safe_name).lower()
+            safe_name = re.sub(r"[^\w\s-]", "", deliverable).strip()
+            safe_name = re.sub(r"[\s]+", "_", safe_name).lower()
             artifact_path = artifacts_dir / f"{safe_name}.md"
             artifact_path.write_text(response.text + "\n")
             display.show_artifact_save(f"{safe_name}.md")

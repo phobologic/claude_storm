@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Optional
 
 import typer
 from rich.console import Console
@@ -12,11 +11,11 @@ from rich.console import Console
 from claude_storm.config import SessionConfig
 from claude_storm.display import Display
 from claude_storm.project import (
-    load_project_config,
-    scaffold_config,
-    get_storms_dir,
-    migrate_config,
     STORM_CONFIG_FILENAME,
+    get_storms_dir,
+    load_project_config,
+    migrate_config,
+    scaffold_config,
 )
 from claude_storm.session import run_session
 
@@ -41,7 +40,7 @@ def main(
 
 @app.command()
 def init(
-    topic: Optional[str] = typer.Option(
+    topic: str | None = typer.Option(
         None, "--topic", "-t", help="Pre-fill topic in the config"
     ),
     force: bool = typer.Option(
@@ -57,7 +56,9 @@ def init(
     if update:
         config_file = Path.cwd() / STORM_CONFIG_FILENAME
         if not config_file.exists():
-            console.print(f"[bold red]No {STORM_CONFIG_FILENAME} found to update.[/bold red]")
+            console.print(
+                f"[bold red]No {STORM_CONFIG_FILENAME} found to update.[/bold red]"
+            )
             raise typer.Exit(1)
         messages = migrate_config(config_file)
         if messages:
@@ -73,41 +74,47 @@ def init(
     except FileExistsError as e:
         console.print(f"[bold red]{e}[/bold red]")
         console.print("Use --force to overwrite.")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
 
 
 @app.command()
 def start(
-    topic: Optional[str] = typer.Argument(default=None, help="The brainstorming topic"),
-    config_path: Optional[Path] = typer.Option(
+    topic: str | None = typer.Argument(default=None, help="The brainstorming topic"),
+    config_path: Path | None = typer.Option(
         None, "--config", "-c", help="Path to storm.toml"
     ),
-    goal: Optional[str] = typer.Option(
-        None, "--goal", "-g", help="Desired outcome or success criterion (not a deliverable — describes direction/quality)"
+    goal: str | None = typer.Option(
+        None,
+        "--goal",
+        "-g",
+        help="Desired outcome or success criterion (describes direction/quality)",
     ),
-    roles: Optional[list[str]] = typer.Option(
+    roles: list[str] | None = typer.Option(
         None, "--roles", "-r", help="Agent roles (provide two)"
     ),
-    max_turns: Optional[int] = typer.Option(
+    max_turns: int | None = typer.Option(
         None, "--max-turns", "-t", help="Maximum turns"
     ),
-    auto_complete: Optional[bool] = typer.Option(
+    auto_complete: bool | None = typer.Option(
         None, "--auto-complete/--no-auto-complete", help="Let agents decide when done"
     ),
-    max_minutes: Optional[int] = typer.Option(
+    max_minutes: int | None = typer.Option(
         None, "--max-minutes", "-m", help="Wall-clock time limit"
     ),
-    model: Optional[str] = typer.Option(
-        None, "--model", help="Claude model to use"
+    model: str | None = typer.Option(None, "--model", help="Claude model to use"),
+    interactive: bool | None = typer.Option(
+        None,
+        "--interactive/--no-interactive",
+        help="Allow agents to ask user questions",
     ),
-    interactive: Optional[bool] = typer.Option(
-        None, "--interactive/--no-interactive", help="Allow agents to ask user questions"
-    ),
-    deliverable: Optional[list[str]] = typer.Option(
+    deliverable: list[str] | None = typer.Option(
         None, "--deliverable", "-d", help="Expected output document (repeatable)"
     ),
-    reference_dir: Optional[list[Path]] = typer.Option(
-        None, "--reference-dir", "--ref", help="Read-only directory of reference materials (repeatable)"
+    reference_dir: list[Path] | None = typer.Option(
+        None,
+        "--reference-dir",
+        "--ref",
+        help="Read-only directory of reference materials (repeatable)",
     ),
 ) -> None:
     """Start a new brainstorming session."""
@@ -142,7 +149,7 @@ def start(
             toml_config = load_project_config(resolved_config_path)
         except (FileNotFoundError, ValueError) as e:
             console.print(f"[bold red]{e}[/bold red]")
-            raise typer.Exit(1)
+            raise typer.Exit(1) from None
 
         # Run migration on the config file
         migration_messages = migrate_config(resolved_config_path)
@@ -203,7 +210,8 @@ def start(
     # Validate: topic is required
     if not merged["topic"]:
         console.print(
-            "[bold red]No topic provided. Pass a topic argument or create a storm.toml.[/bold red]"
+            "[bold red]No topic provided. "
+            "Pass a topic argument or create a storm.toml.[/bold red]"
         )
         raise typer.Exit(1)
 
@@ -229,6 +237,7 @@ def start(
 
     if sys.stdout.isatty():
         from claude_storm.app import StormApp
+
         tui = StormApp(config)
         tui.run()
     else:
@@ -239,11 +248,13 @@ def start(
 @app.command()
 def resume(
     session_id: str = typer.Argument(help="Session ID to resume"),
-    config_path: Optional[Path] = typer.Option(
+    config_path: Path | None = typer.Option(
         None, "--config", "-c", help="Path to storm.toml (to locate .storms/)"
     ),
     force: bool = typer.Option(
-        False, "--force", "-f",
+        False,
+        "--force",
+        "-f",
         help="Force resume even if session is not paused (e.g. after a hard kill)",
     ),
 ) -> None:
@@ -255,11 +266,12 @@ def resume(
         config = SessionConfig.load(session_id, storms_dir=storms_dir)
     except FileNotFoundError:
         console.print(f"[bold red]Session not found: {session_id}[/bold red]")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
 
     if config.status == "completed":
         console.print(
-            f"[bold red]Session {session_id} is completed and cannot be resumed[/bold red]"
+            f"[bold red]Session {session_id} is completed "
+            f"and cannot be resumed[/bold red]"
         )
         raise typer.Exit(1)
 
@@ -267,7 +279,9 @@ def resume(
         console.print(
             f"[bold red]Session {session_id} is {config.status}, not paused[/bold red]"
         )
-        console.print("[dim]Use --force to resume anyway (e.g. after a hard kill)[/dim]")
+        console.print(
+            "[dim]Use --force to resume anyway (e.g. after a hard kill)[/dim]"
+        )
         raise typer.Exit(1)
 
     config.status = "active"
@@ -276,6 +290,7 @@ def resume(
 
     if sys.stdout.isatty():
         from claude_storm.app import StormApp
+
         tui = StormApp(config, resume=True)
         tui.run()
     else:
@@ -285,7 +300,7 @@ def resume(
 
 @app.command(name="list")
 def list_sessions(
-    config_path: Optional[Path] = typer.Option(
+    config_path: Path | None = typer.Option(
         None, "--config", "-c", help="Path to storm.toml (to locate .storms/)"
     ),
 ) -> None:
@@ -328,7 +343,7 @@ def list_sessions(
 @app.command()
 def show(
     session_id: str = typer.Argument(help="Session ID to display"),
-    config_path: Optional[Path] = typer.Option(
+    config_path: Path | None = typer.Option(
         None, "--config", "-c", help="Path to storm.toml (to locate .storms/)"
     ),
 ) -> None:
@@ -340,15 +355,13 @@ def show(
         config = SessionConfig.load(session_id, storms_dir=storms_dir)
     except FileNotFoundError:
         console.print(f"[bold red]Session not found: {session_id}[/bold red]")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
 
     console.print(f"[bold]Session: {config.session_id}[/bold]")
     console.print(f"Topic: {config.topic}")
     if config.goal:
         console.print(f"Goal: {config.goal}")
-    console.print(
-        f"Agents: {config.agent_label('a')} vs {config.agent_label('b')}"
-    )
+    console.print(f"Agents: {config.agent_label('a')} vs {config.agent_label('b')}")
     console.print(f"Status: {config.status}")
     if config.stop_reason:
         console.print(f"Stop reason: {config.stop_reason}")

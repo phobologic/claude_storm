@@ -22,22 +22,22 @@ def make_config(tmp_storms):
     """Factory fixture for SessionConfig with test defaults and optional dirs."""
 
     def _factory(*, ensure_dirs=True, save=False, **overrides):
-        defaults = dict(
-            session_id="test",
-            topic="Test topic",
-            goal="Test goal",
-            role_a="Architect",
-            role_b="Critic",
-            claude_session_a="sess-a-uuid",
-            claude_session_b="sess-b-uuid",
-            max_turns=10,
-            current_turn=0,
-            auto_complete=False,
-            interactive=False,
-            model="sonnet",
-            status="active",
-            storms_dir=str(tmp_storms),
-        )
+        defaults = {
+            "session_id": "test",
+            "topic": "Test topic",
+            "goal": "Test goal",
+            "role_a": "Architect",
+            "role_b": "Critic",
+            "claude_session_a": "sess-a-uuid",
+            "claude_session_b": "sess-b-uuid",
+            "max_turns": 10,
+            "current_turn": 0,
+            "auto_complete": False,
+            "interactive": False,
+            "model": "sonnet",
+            "status": "active",
+            "storms_dir": str(tmp_storms),
+        }
         defaults.update(overrides)
         config = SessionConfig(**defaults)
         if ensure_dirs:

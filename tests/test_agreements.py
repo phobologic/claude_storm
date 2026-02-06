@@ -36,7 +36,7 @@ class TestCreateProposal:
 
     def test_creates_revision_proposal(self, make_config):
         config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
-        pid = create_proposal(
+        create_proposal(
             config, "Use REST v2", "REST with pagination", "b", 8, revises="a3f2"
         )
         assert config.pending_proposals[0]["revises"] == "a3f2"

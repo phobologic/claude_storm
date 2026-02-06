@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from textual.app import App, ComposeResult
 
-from claude_storm.widgets import ThinkingBar, InputBar, GrowingTextArea
+from claude_storm.widgets import GrowingTextArea, InputBar, ThinkingBar
 
 
 class ThinkingBarApp(App):

@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field, asdict
-from datetime import datetime, timezone
+from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
@@ -72,7 +72,7 @@ class SessionConfig:
             interactive=interactive,
             debug=debug,
             model=model,
-            started_at=datetime.now(timezone.utc).isoformat(),
+            started_at=datetime.now(UTC).isoformat(),
             status="active",
             deliverables=deliverables or [],
             reference_dirs=reference_dirs or [],
@@ -114,7 +114,7 @@ class SessionConfig:
                 data["reference_dirs"] = [old]
         # Migrate legacy done_signals list → dict
         if isinstance(data.get("done_signals"), list):
-            data["done_signals"] = {a: "complete" for a in data["done_signals"]}
+            data["done_signals"] = dict.fromkeys(data["done_signals"], "complete")
         # Ensure new agreement fields exist for legacy sessions
         data.setdefault("pending_proposals", [])
         data.setdefault("accepted_agreements", [])

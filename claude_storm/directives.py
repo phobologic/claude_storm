@@ -8,9 +8,7 @@ from dataclasses import dataclass, field
 # ---------------------------------------------------------------------------
 # Known tag names (alternation used by both block and self-closing patterns)
 # ---------------------------------------------------------------------------
-_TAGS = (
-    "MEMORY|MEMORY_SEARCH|ARTIFACT|DONE|ASK_USER|PROPOSE|ACCEPT|REJECT|REVISE"
-)
+_TAGS = "MEMORY|MEMORY_SEARCH|ARTIFACT|DONE|ASK_USER|PROPOSE|ACCEPT|REJECT|REVISE"
 
 # ---------------------------------------------------------------------------
 # Generic compiled regex patterns
@@ -21,8 +19,8 @@ _TAGS = (
 # Example: [ARTIFACT filename="x" title="y"]content[/ARTIFACT]
 _BLOCK_PATTERN = re.compile(
     rf"\[({_TAGS})((?:\s+[a-zA-Z_]+=(?:\"[^\"]*\"))*)\s*\]"  # open tag + attrs
-    r"(.*?)"                                                    # body (lazy)
-    r"\[/\1\]",                                                 # matching close tag
+    r"(.*?)"  # body (lazy)
+    r"\[/\1\]",  # matching close tag
     re.DOTALL,
 )
 
@@ -34,7 +32,8 @@ _SELF_CLOSING_PATTERN = re.compile(
 )
 
 # Extracts key="value" pairs from an attribute string.
-# Example: ' filename="api.yaml" title="API Spec"' -> {filename: api.yaml, title: API Spec}
+# Example: ' filename="api.yaml" title="API Spec"'
+# -> {filename: api.yaml, title: API Spec}
 _ATTR_PATTERN = re.compile(r'([a-zA-Z_]+)="([^"]*)"')
 
 
@@ -68,7 +67,9 @@ def _parse_attrs(attr_string: str) -> dict[str, str]:
 
 
 def _is_line_start(text: str, pos: int) -> bool:
-    """Check whether *pos* is at the start of a line (optionally preceded by whitespace).
+    """Check whether *pos* is at the start of a line.
+
+    Checks if *pos* is optionally preceded only by whitespace.
 
     Used to enforce the DONE directive's line-start requirement so that
     mid-sentence occurrences like ``aim for [DONE] sooner`` are ignored.

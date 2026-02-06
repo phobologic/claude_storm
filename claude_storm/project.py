@@ -21,9 +21,11 @@ topic = """
 {topic}
 """
 
-# Desired outcome or success criterion (not a deliverable — describes direction/quality)
+# Desired outcome or success criterion
+# (not a deliverable — describes direction/quality)
 # goal = """
-# Favor battle-tested technologies; produce production-ready designs with clear trade-off analysis.
+# Favor battle-tested technologies; produce production-ready
+# designs with clear trade-off analysis.
 # """
 
 # Agent personas (appear in system prompts)
@@ -136,10 +138,7 @@ def get_storms_dir(config_path: Path | None) -> Path:
     Returns:
         Absolute path to the .storms/ directory.
     """
-    if config_path is not None:
-        base = config_path.parent
-    else:
-        base = Path.cwd()
+    base = config_path.parent if config_path is not None else Path.cwd()
     return base / STORMS_DIR_NAME
 
 
@@ -157,7 +156,8 @@ def _final_turn_message(goal: str | None, deliverables: list[str] | None) -> str
         deliv_list = ", ".join(deliverables)
         msg += (
             f"\n\nIMPORTANT: Before signaling [DONE], produce an "
-            f'[ARTIFACT filename="..."] for each deliverable not yet produced: {deliv_list}. '
+            f'[ARTIFACT filename="..."] for each deliverable '
+            f"not yet produced: {deliv_list}. "
             f"If you've already produced them, signal [DONE]."
         )
     return msg
@@ -168,7 +168,8 @@ def _high_progress_message(goal: str | None) -> str:
     msg = (
         "Session is 75% complete. Finalize deliverable artifacts now. "
         "Update or produce `[ARTIFACT]` files for each expected deliverable. "
-        "Break large deliverables into multiple files (e.g., `part_1.md`, `part_2.md`). "
+        "Break large deliverables into multiple files "
+        "(e.g., `part_1.md`, `part_2.md`). "
         "Focus on resolving open questions."
     )
     if goal:
@@ -183,7 +184,8 @@ def _mid_progress_message(goal: str | None) -> str:
         "and committing to approaches. "
         "Start producing draft `[ARTIFACT]` files for deliverables you have enough "
         "material for. For large deliverables, break them into parts "
-        "(e.g., `act_1_chapters.md`, `act_2a_chapters.md`). You can revise artifacts later."
+        "(e.g., `act_1_chapters.md`, `act_2a_chapters.md`). "
+        "You can revise artifacts later."
     )
     if goal:
         msg += f' Keep the session goal in mind: "{goal}"'
@@ -194,8 +196,9 @@ def _early_phase_message() -> str:
     """Build pacing message for early interactive exploration."""
     return (
         "Early exploration phase — this is the best time to use [ASK_USER] to "
-        "confirm the user's intent, constraints, and preferences before the "
-        "session narrows. Continue brainstorming and save important ideas with [MEMORY]."
+        "confirm the user's intent, constraints, and preferences "
+        "before the session narrows. "
+        "Continue brainstorming and save important ideas with [MEMORY]."
     )
 
 
@@ -204,7 +207,14 @@ def _default_message() -> str:
     return "Continue the brainstorm. Save important ideas with [MEMORY]."
 
 
-def format_pacing_block(turn: int, max_turns: int, deliverables: list[str] | None = None, session_id: str | None = None, interactive: bool = False, goal: str | None = None) -> str:
+def format_pacing_block(
+    turn: int,
+    max_turns: int,
+    deliverables: list[str] | None = None,
+    session_id: str | None = None,
+    interactive: bool = False,
+    goal: str | None = None,
+) -> str:
     """Compute percentage-based pacing nudge for a turn prompt.
 
     Args:
@@ -238,9 +248,7 @@ def format_pacing_block(turn: int, max_turns: int, deliverables: list[str] | Non
         parts.append(_default_message())
 
     if deliverables:
-        parts.append(
-            "\n**Expected deliverables:** " + ", ".join(deliverables)
-        )
+        parts.append("\n**Expected deliverables:** " + ", ".join(deliverables))
     elif goal:
         parts.append(f"\n**Session goal:** {goal}")
 
@@ -283,7 +291,7 @@ def migrate_config(config_path: Path) -> list[str]:
         messages.append("Renamed reference_dir → reference_dirs")
     else:
         # Commented: # reference_dir = "..."  →  # reference_dirs = ["/path/to/notes"]
-        commented = re.search(r'^#\s*reference_dir\s*=', text, re.MULTILINE)
+        commented = re.search(r"^#\s*reference_dir\s*=", text, re.MULTILINE)
         if commented:
             text = (
                 text[: commented.start()]
@@ -291,17 +299,21 @@ def migrate_config(config_path: Path) -> list[str]:
                 + text[commented.end() :]
             )
             # Trim the rest of the old commented line
-            # The end() above points past '# reference_dir =', need to eat the rest of line
-            rest_match = re.search(r'^.*$', text[commented.start():], re.MULTILINE)
+            # end() points past '# reference_dir ='; eat rest of line
+            rest_match = re.search(r"^.*$", text[commented.start() :], re.MULTILINE)
             if rest_match:
                 line_end = commented.start() + rest_match.end()
-                text = text[:commented.start()] + '# reference_dirs = ["/path/to/notes"]' + text[line_end:]
+                text = (
+                    text[: commented.start()]
+                    + '# reference_dirs = ["/path/to/notes"]'
+                    + text[line_end:]
+                )
             messages.append("Updated commented reference_dir → reference_dirs")
 
     # --- Migration 2: Append missing keys ---
     for key_name, section, commented_default in _KNOWN_KEYS:
         # Check if key already present (commented or uncommented)
-        pattern = rf'^#?\s*{re.escape(key_name)}\s*='
+        pattern = rf"^#?\s*{re.escape(key_name)}\s*="
         if re.search(pattern, text, re.MULTILINE):
             continue
 
@@ -311,7 +323,7 @@ def migrate_config(config_path: Path) -> list[str]:
             # Insert before the next section header or at end of file
             idx = text.index(section_header) + len(section_header)
             # Find the next section header
-            next_section = re.search(r'^\[', text[idx:], re.MULTILINE)
+            next_section = re.search(r"^\[", text[idx:], re.MULTILINE)
             if next_section:
                 insert_pos = idx + next_section.start()
                 text = text[:insert_pos] + commented_default + "\n" + text[insert_pos:]

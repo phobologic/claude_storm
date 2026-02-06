@@ -8,18 +8,25 @@ from typer.testing import CliRunner
 
 from claude_storm.agents import AgentResponse
 from claude_storm.cli import app
-from claude_storm.compilation import compile_deliverables, find_matching_artifacts, generate_summary
+from claude_storm.compilation import (
+    compile_deliverables,
+    find_matching_artifacts,
+    generate_summary,
+)
 from claude_storm.config import SessionConfig
 from claude_storm.directives import _parse_attrs, _remove_spans, parse_directives
 from claude_storm.project import STORM_CONFIG_FILENAME
-from claude_storm.session import check_stop, process_directives, merge_user_input
+from claude_storm.session import check_stop, merge_user_input, process_directives
 
 runner = CliRunner()
 
 
 class TestParseDirectives:
     def test_parse_memory(self):
-        text = 'Some text [MEMORY title="API Design" tags="api,rest"]Use REST[/MEMORY] more text'
+        text = (
+            'Some text [MEMORY title="API Design" tags="api,rest"]'
+            "Use REST[/MEMORY] more text"
+        )
         result = parse_directives(text)
         assert len(result.memories) == 1
         assert result.memories[0] == ("API Design", ["api", "rest"], "Use REST")
@@ -64,7 +71,7 @@ class TestParseDirectives:
         assert result.done == "complete"
 
     def test_parse_done_mid_sentence_no_trigger(self):
-        text = 'Should we follow this plan or aim for [DONE] sooner?'
+        text = "Should we follow this plan or aim for [DONE] sooner?"
         result = parse_directives(text)
         assert result.done is None
 
@@ -97,7 +104,10 @@ class TestParseDirectives:
         assert len(result.memories) == 2
 
     def test_parse_propose(self):
-        text = 'Let me propose [PROPOSE title="Use REST"]We should use REST for the API[/PROPOSE] done'
+        text = (
+            'Let me propose [PROPOSE title="Use REST"]'
+            "We should use REST for the API[/PROPOSE] done"
+        )
         result = parse_directives(text)
         assert len(result.proposals) == 1
         assert result.proposals[0] == ("Use REST", "We should use REST for the API")
@@ -175,7 +185,7 @@ class TestParseDirectives:
     def test_mixed_block_and_self_closing(self):
         """Block and self-closing directives coexist in one response."""
         text = (
-            'Here is my analysis.\n'
+            "Here is my analysis.\n"
             '[MEMORY title="Key Point" tags="design"]Important insight[/MEMORY]\n'
             '[ACCEPT id="prop1"]\n'
             '[ARTIFACT filename="out.md"]# Output[/ARTIFACT]'
@@ -235,15 +245,11 @@ class TestRemoveSpans:
 
 class TestCheckStop:
     def test_max_turns(self):
-        config = SessionConfig(
-            session_id="t", topic="t", max_turns=5, current_turn=5
-        )
+        config = SessionConfig(session_id="t", topic="t", max_turns=5, current_turn=5)
         assert check_stop(config, 0) == "max_turns"
 
     def test_below_max_turns(self):
-        config = SessionConfig(
-            session_id="t", topic="t", max_turns=5, current_turn=3
-        )
+        config = SessionConfig(session_id="t", topic="t", max_turns=5, current_turn=3)
         assert check_stop(config, float("inf")) is None
 
     def test_auto_complete(self):
@@ -278,7 +284,8 @@ class TestStopReason:
     def test_stop_reason_persisted_in_json(self, make_config):
         config = make_config(
             session_id="sr-test",
-            stop_reason="max_turns", stop_error=None,
+            stop_reason="max_turns",
+            stop_error=None,
         )
         config.save()
         loaded = SessionConfig.load("sr-test", storms_dir=config.storms_dir)
@@ -288,7 +295,8 @@ class TestStopReason:
     def test_stop_error_persisted_in_json(self, make_config):
         config = make_config(
             session_id="se-test",
-            stop_reason="agent_error", stop_error="[Agent error: connection reset]",
+            stop_reason="agent_error",
+            stop_error="[Agent error: connection reset]",
         )
         config.save()
         loaded = SessionConfig.load("se-test", storms_dir=config.storms_dir)
@@ -341,7 +349,9 @@ class TestStopReason:
 
 class TestCLICommands:
     def test_list_no_sessions(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("claude_storm.cli.get_storms_dir", lambda p: tmp_path / "empty")
+        monkeypatch.setattr(
+            "claude_storm.cli.get_storms_dir", lambda p: tmp_path / "empty"
+        )
         result = runner.invoke(app, ["list"])
         assert result.exit_code == 0
         assert "No sessions" in result.output
@@ -428,7 +438,7 @@ class TestCLICommands:
         toml = tmp_path / STORM_CONFIG_FILENAME
         toml.write_text(
             '[session]\ntopic = "From TOML"\ngoal = "TOML goal"\n'
-            '\n[options]\nmax_turns = 5\n'
+            "\n[options]\nmax_turns = 5\n"
         )
         result = runner.invoke(app, ["start"])
         assert result.exit_code == 0
@@ -456,9 +466,7 @@ class TestCLICommands:
         monkeypatch.chdir(tmp_path)
         ref_dir = tmp_path / "notes"
         ref_dir.mkdir()
-        result = runner.invoke(
-            app, ["start", "Topic", "--reference-dir", str(ref_dir)]
-        )
+        result = runner.invoke(app, ["start", "Topic", "--reference-dir", str(ref_dir)])
         assert result.exit_code == 0
         config = mock_run.call_args[0][0]
         assert config.reference_dirs == [str(ref_dir)]
@@ -472,7 +480,14 @@ class TestCLICommands:
         ref2.mkdir()
         result = runner.invoke(
             app,
-            ["start", "Topic", "--reference-dir", str(ref1), "--reference-dir", str(ref2)],
+            [
+                "start",
+                "Topic",
+                "--reference-dir",
+                str(ref1),
+                "--reference-dir",
+                str(ref2),
+            ],
         )
         assert result.exit_code == 0
         config = mock_run.call_args[0][0]
@@ -491,7 +506,9 @@ class TestCLICommands:
     def test_init_update_migrates_config(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         config_file = tmp_path / STORM_CONFIG_FILENAME
-        config_file.write_text('[session]\ntopic = "Test"\nreference_dir = "/old"\n\n[options]\n')
+        config_file.write_text(
+            '[session]\ntopic = "Test"\nreference_dir = "/old"\n\n[options]\n'
+        )
         result = runner.invoke(app, ["init", "--update"])
         assert result.exit_code == 0
         assert "reference_dirs" in config_file.read_text()
@@ -504,14 +521,24 @@ class TestCLICommands:
 
 class TestConsensus:
     def test_done_signal_stored_in_dict(self, make_config, capture_display):
-        config = make_config(session_id="consensus-test", max_turns=20, current_turn=5, auto_complete=True)
+        config = make_config(
+            session_id="consensus-test",
+            max_turns=20,
+            current_turn=5,
+            auto_complete=True,
+        )
         display, _buf = capture_display
         directives = parse_directives('[DONE reason="All covered"]')
         process_directives(config, "a", directives, display)
         assert config.done_signals == {"a": "All covered"}
 
     def test_both_agents_agree(self, make_config, capture_display):
-        config = make_config(session_id="consensus-test", max_turns=20, current_turn=5, auto_complete=True)
+        config = make_config(
+            session_id="consensus-test",
+            max_turns=20,
+            current_turn=5,
+            auto_complete=True,
+        )
         display, _buf = capture_display
         # Agent A signals DONE
         dir_a = parse_directives('[DONE reason="All covered"]')
@@ -522,7 +549,12 @@ class TestConsensus:
         assert len(config.done_signals) == 2
 
     def test_disagreement_clears_done(self, make_config, capture_display):
-        config = make_config(session_id="consensus-test", max_turns=20, current_turn=5, auto_complete=True)
+        config = make_config(
+            session_id="consensus-test",
+            max_turns=20,
+            current_turn=5,
+            auto_complete=True,
+        )
         display, _buf = capture_display
         # Agent A signals DONE
         dir_a = parse_directives('[DONE reason="All covered"]')
@@ -534,7 +566,12 @@ class TestConsensus:
         assert config.done_signals == {}
 
     def test_disagreement_display_message(self, make_config, capture_display):
-        config = make_config(session_id="consensus-test", max_turns=20, current_turn=5, auto_complete=True)
+        config = make_config(
+            session_id="consensus-test",
+            max_turns=20,
+            current_turn=5,
+            auto_complete=True,
+        )
         display, buf = capture_display
         # Agent A signals DONE
         dir_a = parse_directives('[DONE reason="All covered"]')
@@ -550,7 +587,9 @@ class TestConsensus:
 class TestCompileDeliverables:
     def test_skips_when_no_deliverables(self, make_config, capture_display):
         config = make_config(
-            session_id="compile-test", current_turn=10, status="completed",
+            session_id="compile-test",
+            current_turn=10,
+            status="completed",
             deliverables=[],
         )
         display, _buf = capture_display
@@ -560,7 +599,9 @@ class TestCompileDeliverables:
 
     def test_writes_artifact_files(self, make_config, capture_display):
         config = make_config(
-            session_id="compile-test", current_turn=10, status="completed",
+            session_id="compile-test",
+            current_turn=10,
+            status="completed",
             deliverables=["Chapter Summaries", "Character Profiles"],
         )
         # Create some memory files
@@ -572,7 +613,9 @@ class TestCompileDeliverables:
 
         display, _buf = capture_display
 
-        mock_response = AgentResponse(text="# Chapter Summaries\n\nChapter 1...", raw={})
+        mock_response = AgentResponse(
+            text="# Chapter Summaries\n\nChapter 1...", raw={}
+        )
         with patch("claude_storm.compilation.invoke_agent", return_value=mock_response):
             compile_deliverables(config, display)
 
@@ -583,7 +626,9 @@ class TestCompileDeliverables:
 
     def test_shows_error_on_failed_deliverable(self, make_config, capture_display):
         config = make_config(
-            session_id="compile-test", current_turn=10, status="completed",
+            session_id="compile-test",
+            current_turn=10,
+            status="completed",
             deliverables=["Chapter Summaries", "Character Profiles"],
         )
         (config.session_dir() / "conversation.md").write_text("")
@@ -592,7 +637,9 @@ class TestCompileDeliverables:
         error_response = AgentResponse(
             text="[Agent error: timeout]", raw={"error": "timeout"}, is_error=True
         )
-        with patch("claude_storm.compilation.invoke_agent", return_value=error_response):
+        with patch(
+            "claude_storm.compilation.invoke_agent", return_value=error_response
+        ):
             compile_deliverables(config, display)
 
         output = buf.getvalue()
@@ -604,7 +651,9 @@ class TestCompileDeliverables:
 
     def test_uses_distinct_session_ids(self, make_config, capture_display):
         config = make_config(
-            session_id="compile-test", current_turn=10, status="completed",
+            session_id="compile-test",
+            current_turn=10,
+            status="completed",
             deliverables=["Chapter Summaries", "Character Profiles"],
         )
         (config.session_dir() / "conversation.md").write_text("")
@@ -629,7 +678,9 @@ class TestCompileDeliverables:
 
     def test_sanitizes_filenames(self, make_config, capture_display):
         config = make_config(
-            session_id="compile-test", current_turn=10, status="completed",
+            session_id="compile-test",
+            current_turn=10,
+            status="completed",
             deliverables=["Chapter: Summaries (All)"],
         )
         (config.session_dir() / "conversation.md").write_text("")
@@ -648,18 +699,25 @@ class TestCompileDeliverables:
 
 
 class TestCompileDeliverablesDebug:
-    def test_debug_logging_called_during_compilation(self, make_config, capture_display):
+    def test_debug_logging_called_during_compilation(
+        self, make_config, capture_display
+    ):
         config = make_config(
-            session_id="debug-test", current_turn=10, status="completed",
-            deliverables=["Summary Doc"], debug=True,
+            session_id="debug-test",
+            current_turn=10,
+            status="completed",
+            deliverables=["Summary Doc"],
+            debug=True,
         )
         (config.session_dir() / "conversation.md").write_text("")
         display, _buf = capture_display
 
         mock_response = AgentResponse(text="content", raw={})
-        with patch("claude_storm.compilation.invoke_agent", return_value=mock_response), \
-             patch("claude_storm.compilation.write_debug_request") as mock_req, \
-             patch("claude_storm.compilation.write_debug_response") as mock_resp:
+        with (
+            patch("claude_storm.compilation.invoke_agent", return_value=mock_response),
+            patch("claude_storm.compilation.write_debug_request") as mock_req,
+            patch("claude_storm.compilation.write_debug_response") as mock_resp,
+        ):
             compile_deliverables(config, display)
 
         assert mock_req.call_count == 1
@@ -667,15 +725,20 @@ class TestCompileDeliverablesDebug:
 
     def test_debug_logging_called_during_summary(self, make_config, capture_display):
         config = make_config(
-            session_id="debug-test", current_turn=10, status="completed",
-            deliverables=["Summary Doc"], debug=True,
+            session_id="debug-test",
+            current_turn=10,
+            status="completed",
+            deliverables=["Summary Doc"],
+            debug=True,
         )
         display, _buf = capture_display
 
         mock_response = AgentResponse(text="summary content", raw={})
-        with patch("claude_storm.compilation.invoke_agent", return_value=mock_response), \
-             patch("claude_storm.compilation.write_debug_request") as mock_req, \
-             patch("claude_storm.compilation.write_debug_response") as mock_resp:
+        with (
+            patch("claude_storm.compilation.invoke_agent", return_value=mock_response),
+            patch("claude_storm.compilation.write_debug_request") as mock_req,
+            patch("claude_storm.compilation.write_debug_response") as mock_resp,
+        ):
             generate_summary(config, display)
 
         assert mock_req.call_count == 1
@@ -683,27 +746,37 @@ class TestCompileDeliverablesDebug:
 
     def test_readonly_passed_during_compilation(self, make_config, capture_display):
         config = make_config(
-            session_id="debug-test", current_turn=10, status="completed",
-            deliverables=["Summary Doc"], debug=True,
+            session_id="debug-test",
+            current_turn=10,
+            status="completed",
+            deliverables=["Summary Doc"],
+            debug=True,
         )
         (config.session_dir() / "conversation.md").write_text("")
         display, _buf = capture_display
 
         mock_response = AgentResponse(text="content", raw={})
-        with patch("claude_storm.compilation.invoke_agent", return_value=mock_response) as mock_invoke:
+        with patch(
+            "claude_storm.compilation.invoke_agent", return_value=mock_response
+        ) as mock_invoke:
             compile_deliverables(config, display)
 
         assert mock_invoke.call_args.kwargs.get("readonly") is True
 
     def test_readonly_passed_during_summary(self, make_config, capture_display):
         config = make_config(
-            session_id="debug-test", current_turn=10, status="completed",
-            deliverables=["Summary Doc"], debug=True,
+            session_id="debug-test",
+            current_turn=10,
+            status="completed",
+            deliverables=["Summary Doc"],
+            debug=True,
         )
         display, _buf = capture_display
 
         mock_response = AgentResponse(text="summary content", raw={})
-        with patch("claude_storm.compilation.invoke_agent", return_value=mock_response) as mock_invoke:
+        with patch(
+            "claude_storm.compilation.invoke_agent", return_value=mock_response
+        ) as mock_invoke:
             generate_summary(config, display)
 
         assert mock_invoke.call_args.kwargs.get("readonly") is True
@@ -748,12 +821,19 @@ class TestProcessDirectivesAskUser:
     def test_ask_user_includes_question_and_answer(self, make_config, capture_display):
         """process_directives formats user_input with both Q and A."""
         config = make_config(
-            session_id="ask-test", max_turns=20, current_turn=5, interactive=True,
+            session_id="ask-test",
+            max_turns=20,
+            current_turn=5,
+            interactive=True,
         )
         display, _buf = capture_display
-        directives = parse_directives("[ASK_USER]Should we use JWT or OAuth?[/ASK_USER]")
+        directives = parse_directives(
+            "[ASK_USER]Should we use JWT or OAuth?[/ASK_USER]"
+        )
 
-        with patch.object(display, "prompt_user", return_value="Use JWT") as mock_prompt:
+        with patch.object(
+            display, "prompt_user", return_value="Use JWT"
+        ) as mock_prompt:
             _, user_input = process_directives(config, "a", directives, display)
 
         mock_prompt.assert_called_once_with("Should we use JWT or OAuth?")
@@ -796,7 +876,9 @@ class TestFindMatchingArtifacts:
 
     def test_compile_passes_existing_artifacts(self, make_config, capture_display):
         config = make_config(
-            session_id="artifact-test", current_turn=10, status="completed",
+            session_id="artifact-test",
+            current_turn=10,
+            status="completed",
             deliverables=["Chapter Summaries"],
         )
 

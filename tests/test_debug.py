@@ -1,13 +1,10 @@
 """Tests for debug logging utilities."""
 
-from pathlib import Path
-
 from claude_storm.debug import (
     write_debug_entry,
     write_debug_request,
     write_debug_response,
 )
-
 
 SAMPLE_DIRECTIVES = {
     "memories": [("Key Idea", ["design"], "Use REST")],
@@ -142,7 +139,9 @@ class TestRequestThenResponse:
         cmd_pos = content.index("--- CLI COMMAND ---")
         response_pos = content.index("--- RAW RESPONSE ---")
         directives_pos = content.index("--- DIRECTIVES ---")
-        assert header_pos < system_pos < turn_pos < cmd_pos < response_pos < directives_pos
+        assert (
+            header_pos < system_pos < turn_pos < cmd_pos < response_pos < directives_pos
+        )
 
 
 class TestWriteDebugEntry:

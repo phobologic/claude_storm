@@ -3,7 +3,7 @@
 import re
 from io import StringIO
 
-from claude_storm.display import PlainDisplay, DisplayProtocol, _truncate_label
+from claude_storm.display import DisplayProtocol, PlainDisplay, _truncate_label
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 

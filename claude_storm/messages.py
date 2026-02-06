@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from textual.message import Message
 from rich.console import RenderableType
+from textual.message import Message
 
 
 class ShowRenderable(Message):
@@ -41,6 +41,7 @@ class RequestUserInput(Message):
         super().__init__()
         self.question = question
         import threading
+
         self.event = threading.Event()
         self.response: str = ""
 

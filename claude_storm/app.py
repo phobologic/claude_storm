@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import threading
 from collections import deque
-from pathlib import Path
+from typing import ClassVar
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -12,13 +11,18 @@ from textual.widgets import Static
 
 from claude_storm.config import SessionConfig
 from claude_storm.messages import (
-    ShowRenderable,
-    UpdateThinking,
     ClearThinking,
     RequestUserInput,
     SessionComplete,
+    ShowRenderable,
+    UpdateThinking,
 )
-from claude_storm.widgets import SelectableRichLog, ThinkingBar, InputBar, GrowingTextArea
+from claude_storm.widgets import (
+    GrowingTextArea,
+    InputBar,
+    SelectableRichLog,
+    ThinkingBar,
+)
 
 
 class StormApp(App):
@@ -27,7 +31,7 @@ class StormApp(App):
     CSS_PATH = "storm_app.tcss"
     TITLE = "Claude Storm"
 
-    BINDINGS = [
+    BINDINGS: ClassVar[list[Binding]] = [
         Binding("ctrl+c", "quit_session", "Pause / Quit", priority=True),
     ]
 
@@ -78,8 +82,8 @@ class StormApp(App):
 
     def _session_worker(self) -> None:
         """Run the session loop in a worker thread."""
-        from claude_storm.session import run_session
         from claude_storm.display import TextualDisplay
+        from claude_storm.session import run_session
 
         display = TextualDisplay(self)
         try:
@@ -87,6 +91,7 @@ class StormApp(App):
         except Exception as exc:
             if self.config.debug:
                 import traceback
+
                 debug_log = self.config.session_dir() / "debug.log"
                 with open(debug_log, "a") as f:
                     f.write(f"\n=== Worker Exception ===\n{traceback.format_exc()}\n")
@@ -127,14 +132,17 @@ class StormApp(App):
         """Display an agent question and switch the input bar to ask mode."""
         self._ask_request = message
         log = self.query_one("#output-log", SelectableRichLog)
-        from rich.rule import Rule
         from rich.console import Group
+        from rich.rule import Rule
         from rich.text import Text
-        log.write(Group(
-            Rule("Agent Question", style="yellow", align="left"),
-            Text(message.question),
-            Text(""),
-        ))
+
+        log.write(
+            Group(
+                Rule("Agent Question", style="yellow", align="left"),
+                Text(message.question),
+                Text(""),
+            )
+        )
         try:
             input_bar = self.query_one(InputBar)
             input_bar.set_ask_mode(message.question)
@@ -158,14 +166,17 @@ class StormApp(App):
             # Nudge input
             self.nudge_queue.append(text)
             log = self.query_one("#output-log", SelectableRichLog)
-            from rich.rule import Rule
             from rich.console import Group
+            from rich.rule import Rule
             from rich.text import Text
-            log.write(Group(
-                Rule("Your Input (queued)", style="yellow", align="left"),
-                Text(text),
-                Text(""),
-            ))
+
+            log.write(
+                Group(
+                    Rule("Your Input (queued)", style="yellow", align="left"),
+                    Text(text),
+                    Text(""),
+                )
+            )
         # Activate any deferred ASK_USER now that the input has been submitted.
         if self._deferred_ask is not None:
             ask = self._deferred_ask
@@ -175,6 +186,7 @@ class StormApp(App):
     def on_session_complete(self, message: SessionComplete) -> None:
         log = self.query_one("#output-log", SelectableRichLog)
         from rich.text import Text
+
         if message.error:
             log.write(Text(f"Session error: {message.error}", style="bold red"))
         self._session_error = message.error
@@ -194,8 +206,9 @@ class StormApp(App):
         if self._session_finished:
             self.exit()
             return
-        from claude_storm.session import _signal_handler
         from claude_storm.agents import cancel_active
+        from claude_storm.session import _signal_handler
+
         _signal_handler(0, None)
         # Persist paused status immediately so it survives a hard exit.
         self.config.status = "paused"
