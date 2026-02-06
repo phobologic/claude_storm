@@ -266,103 +266,75 @@ class TextualDisplay:
     def _post(self, message: object) -> None:
         self._app.post_message(message)  # type: ignore[union-attr]
 
+    def _show(self, renderable: object) -> None:
+        """Post a renderable to the TUI output log."""
+        from claude_storm.messages import ShowRenderable
+
+        self._post(ShowRenderable(renderable))
+
     def show_header(self, config: SessionConfig) -> None:
         # No-op: the #header-bar widget already displays session info.
         pass
 
     def show_turn_start(self, config: SessionConfig, agent: str) -> None:
-        from claude_storm.messages import ShowRenderable
-
         label = _truncate_label(config.agent_label(agent))
         turn = config.current_turn + 1
         style = AGENT_STYLES.get(agent, AGENT_STYLES["a"])
         color = style["border"]
-        self._post(
-            ShowRenderable(
-                Text(f"\n── Turn {turn}/{config.max_turns} · {label} ──", style=color)
-            )
+        self._show(
+            Text(f"\n── Turn {turn}/{config.max_turns} · {label} ──", style=color)
         )
 
     def show_agent_response(self, config: SessionConfig, agent: str, text: str) -> None:
-        from claude_storm.messages import ShowRenderable
-
         label = _truncate_label(config.agent_label(agent))
         style = AGENT_STYLES.get(agent, AGENT_STYLES["a"])
         color = style["border"]
-        self._post(
-            ShowRenderable(
-                Group(
-                    Rule(label, style=color, align="left"),
-                    Markdown(text),
-                    Text(""),
-                )
+        self._show(
+            Group(
+                Rule(label, style=color, align="left"),
+                Markdown(text),
+                Text(""),
             )
         )
 
     def show_status(self, message: str) -> None:
-        from claude_storm.messages import ShowRenderable
-
-        self._post(ShowRenderable(Text(message, style="dim")))
+        self._show(Text(message, style="dim"))
 
     def show_error(self, message: str) -> None:
-        from claude_storm.messages import ShowRenderable
-
-        self._post(ShowRenderable(Text(f"Error: {message}", style="bold red")))
+        self._show(Text(f"Error: {message}", style="bold red"))
 
     def show_warning(self, message: str) -> None:
-        from claude_storm.messages import ShowRenderable
-
-        self._post(ShowRenderable(Text(f"Warning: {message}", style="bold yellow")))
+        self._show(Text(f"Warning: {message}", style="bold yellow"))
 
     def show_memory_save(self, agent: str, title: str) -> None:
-        from claude_storm.messages import ShowRenderable
-
         style = AGENT_STYLES.get(agent, AGENT_STYLES["a"])
-        self._post(
-            ShowRenderable(Text(f'  Saved memory: "{title}"', style=style["border"]))
-        )
+        self._show(Text(f'  Saved memory: "{title}"', style=style["border"]))
 
     def show_artifact_save(self, filename: str) -> None:
-        from claude_storm.messages import ShowRenderable
-
-        self._post(
-            ShowRenderable(Text(f"  Saved artifact: {filename}", style="yellow"))
-        )
+        self._show(Text(f"  Saved artifact: {filename}", style="yellow"))
 
     def show_done_signal(self, agent: str, reason: str) -> None:
-        from claude_storm.messages import ShowRenderable
-
         label = agent.upper()
-        self._post(
-            ShowRenderable(
-                Text(f"  {label} signals DONE: {reason}", style="bold magenta")
-            )
-        )
+        self._show(Text(f"  {label} signals DONE: {reason}", style="bold magenta"))
 
     def show_done_disagreement(self, agent: str, other: str) -> None:
-        from claude_storm.messages import ShowRenderable
-
         label = agent.upper()
         other_label = other.upper()
-        self._post(
-            ShowRenderable(
-                Text(
-                    f"  {label} disagrees \u2014 {other_label}'s DONE signal cleared",
-                    style="bold yellow",
-                )
+        self._show(
+            Text(
+                f"  {label} disagrees \u2014 {other_label}'s DONE signal cleared",
+                style="bold yellow",
             )
         )
 
     def show_completion(self, config: SessionConfig) -> None:
-        from claude_storm.messages import ShowRenderable
-
         status_msg = f"Session {config.status} after {config.current_turn} turns."
         if config.stop_reason:
             status_msg += f" (reason: {config.stop_reason})"
-        self._post(ShowRenderable(Text(status_msg, style="bold")))
+        self._show(Text(status_msg, style="bold"))
         if config.stop_error:
-            self._post(ShowRenderable(Text(f"Error: {config.stop_error}", style="red")))
-        self._post(ShowRenderable(Text(f"Session directory: {config.session_dir()}")))
+            self._show(Text(f"Error: {config.stop_error}", style="red"))
+        self._show(Text(f"Session directory: {config.session_dir()}"))
 
     def prompt_user(self, question: str) -> str:
         from claude_storm.messages import RequestUserInput
@@ -376,90 +348,60 @@ class TextualDisplay:
         return msg.response
 
     def show_proposal(self, agent: str, title: str, proposal_id: str) -> None:
-        from claude_storm.messages import ShowRenderable
-
         label = agent.upper()
         style = AGENT_STYLES.get(agent, AGENT_STYLES["a"])
-        self._post(
-            ShowRenderable(
-                Text(
-                    f"  Agent {label} proposed [{proposal_id}]: {title}",
-                    style=style["border"],
-                )
+        self._show(
+            Text(
+                f"  Agent {label} proposed [{proposal_id}]: {title}",
+                style=style["border"],
             )
         )
 
     def show_agreement_accepted(self, proposal_id: str, title: str) -> None:
-        from claude_storm.messages import ShowRenderable
-
-        self._post(
-            ShowRenderable(
-                Text(
-                    f"  Agreement accepted [{proposal_id}]: {title}", style="bold cyan"
-                )
-            )
+        self._show(
+            Text(f"  Agreement accepted [{proposal_id}]: {title}", style="bold cyan")
         )
 
     def show_agreement_rejected(self, proposal_id: str, reason: str) -> None:
-        from claude_storm.messages import ShowRenderable
-
-        self._post(
-            ShowRenderable(
-                Text(
-                    f"  Proposal rejected [{proposal_id}]: {reason}",
-                    style="bold yellow",
-                )
+        self._show(
+            Text(
+                f"  Proposal rejected [{proposal_id}]: {reason}",
+                style="bold yellow",
             )
         )
 
     def show_revision_proposed(
         self, agent: str, agreement_id: str, new_id: str
     ) -> None:
-        from claude_storm.messages import ShowRenderable
-
         label = agent.upper()
         style = AGENT_STYLES.get(agent, AGENT_STYLES["a"])
-        self._post(
-            ShowRenderable(
-                Text(
-                    f"  Agent {label} proposed revision [{new_id}] of [{agreement_id}]",
-                    style=style["border"],
-                )
+        self._show(
+            Text(
+                f"  Agent {label} proposed revision [{new_id}] of [{agreement_id}]",
+                style=style["border"],
             )
         )
 
     def show_deliverable_compile(self, deliverable_name: str) -> None:
-        from claude_storm.messages import ShowRenderable
-
-        self._post(
-            ShowRenderable(
-                Text(f"  Compiling deliverable: {deliverable_name}", style="bold cyan")
-            )
+        self._show(
+            Text(f"  Compiling deliverable: {deliverable_name}", style="bold cyan")
         )
 
     def show_summary(self, summary: str) -> None:
-        from claude_storm.messages import ShowRenderable
-
-        self._post(
-            ShowRenderable(
-                Group(
-                    Rule("Session Summary", style="magenta", align="left"),
-                    Markdown(summary),
-                    Text(""),
-                )
+        self._show(
+            Group(
+                Rule("Session Summary", style="magenta", align="left"),
+                Markdown(summary),
+                Text(""),
             )
         )
 
     def show_user_nudge(self, text: str) -> None:
-        from claude_storm.messages import ShowRenderable
-
-        self._post(
-            ShowRenderable(
-                Group(
-                    Rule("Your Input (injected)", style="yellow", align="left"),
-                    Text(text),
-                    Text(""),
-                )
+        self._show(
+            Group(
+                Rule("Your Input (injected)", style="yellow", align="left"),
+                Text(text),
+                Text(""),
             )
         )
 
