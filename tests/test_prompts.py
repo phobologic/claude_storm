@@ -1,6 +1,5 @@
 """Tests for prompt construction."""
 
-from claude_storm.config import SessionConfig
 from claude_storm.project import format_pacing_block
 from claude_storm.prompts import (
     build_system_prompt,
@@ -10,45 +9,24 @@ from claude_storm.prompts import (
 )
 
 
-def _make_config(**kwargs):
-    defaults = dict(
-        session_id="test",
-        topic="Design an API",
-        goal="RESTful todo app",
-        role_a="Architect",
-        role_b="Critic",
-        claude_session_a="a-uuid",
-        claude_session_b="b-uuid",
-        max_turns=10,
-        current_turn=0,
-        auto_complete=False,
-        interactive=False,
-        model="sonnet",
-        status="active",
-        deliverables=[],
-    )
-    defaults.update(kwargs)
-    return SessionConfig(**defaults)
-
-
 class TestBuildSystemPrompt:
-    def test_includes_role(self):
-        config = _make_config()
+    def test_includes_role(self, make_config):
+        config = make_config(ensure_dirs=False)
         prompt = build_system_prompt(config, "a")
         assert "Architect" in prompt
 
-    def test_includes_topic(self):
-        config = _make_config()
+    def test_includes_topic(self, make_config):
+        config = make_config(ensure_dirs=False)
         prompt = build_system_prompt(config, "a")
-        assert "Design an API" in prompt
+        assert "Test topic" in prompt
 
-    def test_includes_goal(self):
-        config = _make_config()
+    def test_includes_goal(self, make_config):
+        config = make_config(ensure_dirs=False)
         prompt = build_system_prompt(config, "a")
-        assert "RESTful todo app" in prompt
+        assert "Test goal" in prompt
 
-    def test_includes_directives(self):
-        config = _make_config()
+    def test_includes_directives(self, make_config):
+        config = make_config(ensure_dirs=False)
         prompt = build_system_prompt(config, "a")
         assert "[MEMORY" in prompt
         assert "[ARTIFACT" in prompt
@@ -58,100 +36,100 @@ class TestBuildSystemPrompt:
         assert "[REJECT" in prompt
         assert "[REVISE" in prompt
 
-    def test_includes_agreement_guidelines(self):
-        config = _make_config()
+    def test_includes_agreement_guidelines(self, make_config):
+        config = make_config(ensure_dirs=False)
         prompt = build_system_prompt(config, "a")
         assert "shared agreement" in prompt
         assert "pending proposals" in prompt
         assert "Verbal agreement" in prompt
         assert "does NOT create a shared record" in prompt
 
-    def test_ask_user_shown_when_interactive(self):
-        config = _make_config(interactive=True)
+    def test_ask_user_shown_when_interactive(self, make_config):
+        config = make_config(ensure_dirs=False, interactive=True)
         prompt = build_system_prompt(config, "a")
         assert "[ASK_USER]" in prompt
         assert "human operator is available" in prompt
 
-    def test_ask_user_hidden_when_not_interactive(self):
-        config = _make_config(interactive=False)
+    def test_ask_user_hidden_when_not_interactive(self, make_config):
+        config = make_config(ensure_dirs=False, interactive=False)
         prompt = build_system_prompt(config, "a")
         assert "[ASK_USER]" not in prompt
 
-    def test_interactive_guideline_shown(self):
-        config = _make_config(interactive=True)
+    def test_interactive_guideline_shown(self, make_config):
+        config = make_config(ensure_dirs=False, interactive=True)
         prompt = build_system_prompt(config, "a")
         assert "uncertain about a direction" in prompt
 
-    def test_interactive_guideline_hidden(self):
-        config = _make_config(interactive=False)
+    def test_interactive_guideline_hidden(self, make_config):
+        config = make_config(ensure_dirs=False, interactive=False)
         prompt = build_system_prompt(config, "a")
         assert "uncertain about a direction" not in prompt
 
-    def test_nudge_guidance_shown_when_interactive(self):
-        config = _make_config(interactive=True)
+    def test_nudge_guidance_shown_when_interactive(self, make_config):
+        config = make_config(ensure_dirs=False, interactive=True)
         prompt = build_system_prompt(config, "a")
         assert "nudge" in prompt.lower()
         assert "steering guidance" in prompt
 
-    def test_nudge_guidance_hidden_when_not_interactive(self):
-        config = _make_config(interactive=False)
+    def test_nudge_guidance_hidden_when_not_interactive(self, make_config):
+        config = make_config(ensure_dirs=False, interactive=False)
         prompt = build_system_prompt(config, "a")
         assert "steering guidance" not in prompt
 
-    def test_no_role_uses_default(self):
-        config = _make_config(role_a=None)
+    def test_no_role_uses_default(self, make_config):
+        config = make_config(ensure_dirs=False, role_a=None)
         prompt = build_system_prompt(config, "a")
         assert "brainstorming partner" in prompt
 
-    def test_mentions_other_agent(self):
-        config = _make_config()
+    def test_mentions_other_agent(self, make_config):
+        config = make_config(ensure_dirs=False)
         prompt = build_system_prompt(config, "a")
         assert "Critic" in prompt  # The other agent's role
 
-    def test_system_prompt_includes_deliverables(self):
-        config = _make_config(deliverables=["Doc A", "Doc B"])
+    def test_system_prompt_includes_deliverables(self, make_config):
+        config = make_config(ensure_dirs=False, deliverables=["Doc A", "Doc B"])
         prompt = build_system_prompt(config, "a")
         assert "Expected Deliverables" in prompt
         assert "Doc A" in prompt
         assert "Doc B" in prompt
 
-    def test_system_prompt_no_deliverables(self):
-        config = _make_config(goal="", deliverables=[])
+    def test_system_prompt_no_deliverables(self, make_config):
+        config = make_config(ensure_dirs=False, goal="", deliverables=[])
         prompt = build_system_prompt(config, "a")
         assert "Expected Deliverables" not in prompt
         assert "Session Structure" not in prompt
 
-    def test_system_prompt_includes_pacing_overview(self):
-        config = _make_config(deliverables=["Doc A"])
+    def test_system_prompt_includes_pacing_overview(self, make_config):
+        config = make_config(ensure_dirs=False, deliverables=["Doc A"])
         prompt = build_system_prompt(config, "a")
         assert "budget of 10 turns" in prompt
         assert "Pace yourself" in prompt
         assert "incrementally" in prompt
         assert "[ARTIFACT]" in prompt
 
-    def test_system_prompt_includes_reference_dirs(self):
-        config = _make_config(reference_dirs=["/tmp/notes"])
+    def test_system_prompt_includes_reference_dirs(self, make_config):
+        config = make_config(ensure_dirs=False, reference_dirs=["/tmp/notes"])
         prompt = build_system_prompt(config, "a")
         assert "Reference Materials" in prompt
         assert "/tmp/notes" in prompt
         assert "read-only" in prompt
 
-    def test_system_prompt_multiple_reference_dirs(self):
-        config = _make_config(reference_dirs=["/tmp/notes", "/tmp/docs"])
+    def test_system_prompt_multiple_reference_dirs(self, make_config):
+        config = make_config(ensure_dirs=False, reference_dirs=["/tmp/notes", "/tmp/docs"])
         prompt = build_system_prompt(config, "a")
         assert "Reference Materials" in prompt
         assert "/tmp/notes" in prompt
         assert "/tmp/docs" in prompt
 
-    def test_system_prompt_no_reference_dirs(self):
-        config = _make_config()
+    def test_system_prompt_no_reference_dirs(self, make_config):
+        config = make_config(ensure_dirs=False)
         prompt = build_system_prompt(config, "a")
         assert "Reference Materials" not in prompt
 
 
 class TestBuildTurnPrompt:
-    def test_first_turn_agent_a(self):
-        config = _make_config(current_turn=0)
+    def test_first_turn_agent_a(self, make_config):
+        config = make_config(ensure_dirs=False, current_turn=0)
         prompt = build_turn_prompt(
             config=config,
             agent="a",
@@ -162,8 +140,8 @@ class TestBuildTurnPrompt:
         assert "start of the conversation" in prompt
         assert "Turn 1 of 10" in prompt
 
-    def test_includes_other_response(self):
-        config = _make_config(current_turn=2)
+    def test_includes_other_response(self, make_config):
+        config = make_config(ensure_dirs=False, current_turn=2)
         prompt = build_turn_prompt(
             config=config,
             agent="a",
@@ -173,8 +151,8 @@ class TestBuildTurnPrompt:
         )
         assert "I think we should use pagination" in prompt
 
-    def test_includes_memory_index(self):
-        config = _make_config(current_turn=3)
+    def test_includes_memory_index(self, make_config):
+        config = make_config(ensure_dirs=False, current_turn=3)
         prompt = build_turn_prompt(
             config=config,
             agent="a",
@@ -185,8 +163,8 @@ class TestBuildTurnPrompt:
         assert "Memory Index" in prompt
         assert '"Note 1"' in prompt
 
-    def test_includes_search_results(self):
-        config = _make_config(current_turn=3)
+    def test_includes_search_results(self, make_config):
+        config = make_config(ensure_dirs=False, current_turn=3)
         prompt = build_turn_prompt(
             config=config,
             agent="a",
@@ -198,8 +176,8 @@ class TestBuildTurnPrompt:
         assert "Search Results" in prompt
         assert "Auth Notes" in prompt
 
-    def test_includes_user_input(self):
-        config = _make_config(current_turn=3)
+    def test_includes_user_input(self, make_config):
+        config = make_config(ensure_dirs=False, current_turn=3)
         prompt = build_turn_prompt(
             config=config,
             agent="a",
@@ -211,8 +189,8 @@ class TestBuildTurnPrompt:
         assert "User Input" in prompt
         assert "Use JWT tokens" in prompt
 
-    def test_auto_complete_message(self):
-        config = _make_config(auto_complete=True)
+    def test_auto_complete_message(self, make_config):
+        config = make_config(ensure_dirs=False, auto_complete=True)
         prompt = build_turn_prompt(
             config=config,
             agent="a",
@@ -222,8 +200,8 @@ class TestBuildTurnPrompt:
         )
         assert "[DONE]" in prompt
 
-    def test_turn_prompt_shows_percentage(self):
-        config = _make_config(current_turn=2, max_turns=20)
+    def test_turn_prompt_shows_percentage(self, make_config):
+        config = make_config(ensure_dirs=False, current_turn=2, max_turns=20)
         prompt = build_turn_prompt(
             config=config,
             agent="a",
@@ -234,8 +212,8 @@ class TestBuildTurnPrompt:
         assert "15%" in prompt
         assert "Turn 3 of 20" in prompt
 
-    def test_turn_prompt_halfway_nudge(self):
-        config = _make_config(current_turn=9, max_turns=20)
+    def test_turn_prompt_halfway_nudge(self, make_config):
+        config = make_config(ensure_dirs=False, current_turn=9, max_turns=20)
         prompt = build_turn_prompt(
             config=config,
             agent="a",
@@ -245,8 +223,8 @@ class TestBuildTurnPrompt:
         )
         assert "halfway" in prompt
 
-    def test_turn_prompt_final_nudge(self):
-        config = _make_config(current_turn=18, max_turns=20)
+    def test_turn_prompt_final_nudge(self, make_config):
+        config = make_config(ensure_dirs=False, current_turn=18, max_turns=20)
         prompt = build_turn_prompt(
             config=config,
             agent="a",
@@ -256,9 +234,9 @@ class TestBuildTurnPrompt:
         )
         assert "final turns" in prompt
 
-    def test_turn_prompt_deliverables_reminder(self):
-        config = _make_config(
-            current_turn=3,
+    def test_turn_prompt_deliverables_reminder(self, make_config):
+        config = make_config(
+            ensure_dirs=False, current_turn=3,
             deliverables=["Architecture doc", "Data model"],
         )
         prompt = build_turn_prompt(
@@ -273,9 +251,9 @@ class TestBuildTurnPrompt:
         assert "Data model" in prompt
 
 
-    def test_completion_check_shown_when_other_done(self):
-        config = _make_config(
-            auto_complete=True,
+    def test_completion_check_shown_when_other_done(self, make_config):
+        config = make_config(
+            ensure_dirs=False, auto_complete=True,
             done_signals={"a": "All topics covered"},
         )
         prompt = build_turn_prompt(
@@ -291,8 +269,8 @@ class TestBuildTurnPrompt:
         # Should NOT show the generic DONE hint
         assert "Signal [DONE] when you believe" not in prompt
 
-    def test_no_completion_check_when_no_pending_done(self):
-        config = _make_config(auto_complete=True)
+    def test_no_completion_check_when_no_pending_done(self, make_config):
+        config = make_config(ensure_dirs=False, auto_complete=True)
         prompt = build_turn_prompt(
             config=config,
             agent="b",
@@ -303,8 +281,8 @@ class TestBuildTurnPrompt:
         assert "Completion Check" not in prompt
         assert "Signal [DONE] when you believe" in prompt
 
-    def test_includes_agreements_text(self):
-        config = _make_config(current_turn=5)
+    def test_includes_agreements_text(self, make_config):
+        config = make_config(ensure_dirs=False, current_turn=5)
         prompt = build_turn_prompt(
             config=config,
             agent="a",
@@ -317,8 +295,8 @@ class TestBuildTurnPrompt:
         assert "[a3f2]" in prompt
         assert "Use REST" in prompt
 
-    def test_no_agreements_text_when_empty(self):
-        config = _make_config(current_turn=5)
+    def test_no_agreements_text_when_empty(self, make_config):
+        config = make_config(ensure_dirs=False, current_turn=5)
         prompt = build_turn_prompt(
             config=config,
             agent="a",
@@ -329,8 +307,8 @@ class TestBuildTurnPrompt:
         )
         assert "Shared Agreements" not in prompt
 
-    def test_interactive_reminder_shown(self):
-        config = _make_config(interactive=True, current_turn=3)
+    def test_interactive_reminder_shown(self, make_config):
+        config = make_config(ensure_dirs=False, interactive=True, current_turn=3)
         prompt = build_turn_prompt(
             config=config,
             agent="a",
@@ -341,8 +319,8 @@ class TestBuildTurnPrompt:
         assert "interactive mode" in prompt
         assert "[ASK_USER]" in prompt
 
-    def test_interactive_reminder_hidden(self):
-        config = _make_config(interactive=False, current_turn=3)
+    def test_interactive_reminder_hidden(self, make_config):
+        config = make_config(ensure_dirs=False, interactive=False, current_turn=3)
         prompt = build_turn_prompt(
             config=config,
             agent="a",
@@ -352,9 +330,9 @@ class TestBuildTurnPrompt:
         )
         assert "interactive mode" not in prompt
 
-    def test_completion_check_not_shown_without_auto_complete(self):
-        config = _make_config(
-            auto_complete=False,
+    def test_completion_check_not_shown_without_auto_complete(self, make_config):
+        config = make_config(
+            ensure_dirs=False, auto_complete=False,
             done_signals={"a": "Done"},
         )
         prompt = build_turn_prompt(
@@ -368,16 +346,16 @@ class TestBuildTurnPrompt:
 
 
 class TestBuildSummaryPrompt:
-    def test_includes_topic_and_turns(self):
-        config = _make_config(current_turn=8)
+    def test_includes_topic_and_turns(self, make_config):
+        config = make_config(ensure_dirs=False, current_turn=8)
         prompt = build_summary_prompt(config)
-        assert "Design an API" in prompt
+        assert "Test topic" in prompt
         assert "8 turns" in prompt
         assert "summary" in prompt.lower()
 
-    def test_summary_prompt_deliverables(self):
-        config = _make_config(
-            current_turn=8,
+    def test_summary_prompt_deliverables(self, make_config):
+        config = make_config(
+            ensure_dirs=False, current_turn=8,
             deliverables=["Doc A", "Doc B"],
         )
         prompt = build_summary_prompt(config)
@@ -388,8 +366,8 @@ class TestBuildSummaryPrompt:
 
 
 class TestBuildDeliverablePrompt:
-    def test_includes_deliverable_name(self):
-        config = _make_config()
+    def test_includes_deliverable_name(self, make_config):
+        config = make_config(ensure_dirs=False)
         prompt = build_deliverable_prompt(
             config=config,
             deliverable_name="Chapter Summaries",
@@ -398,18 +376,18 @@ class TestBuildDeliverablePrompt:
         )
         assert "Chapter Summaries" in prompt
 
-    def test_includes_topic(self):
-        config = _make_config()
+    def test_includes_topic(self, make_config):
+        config = make_config(ensure_dirs=False)
         prompt = build_deliverable_prompt(
             config=config,
             deliverable_name="Doc",
             memories_text="memories",
             conversation_text="conversation",
         )
-        assert "Design an API" in prompt
+        assert "Test topic" in prompt
 
-    def test_includes_memories_and_conversation(self):
-        config = _make_config()
+    def test_includes_memories_and_conversation(self, make_config):
+        config = make_config(ensure_dirs=False)
         prompt = build_deliverable_prompt(
             config=config,
             deliverable_name="Doc",
@@ -419,8 +397,8 @@ class TestBuildDeliverablePrompt:
         assert "key insight about caching" in prompt
         assert "turn 1: discussed caching" in prompt
 
-    def test_includes_agreements_text(self):
-        config = _make_config()
+    def test_includes_agreements_text(self, make_config):
+        config = make_config(ensure_dirs=False)
         prompt = build_deliverable_prompt(
             config=config,
             deliverable_name="Doc",
@@ -431,8 +409,8 @@ class TestBuildDeliverablePrompt:
         assert "Shared Agreements" in prompt
         assert "[a3f2] Use REST API" in prompt
 
-    def test_includes_no_write_instruction(self):
-        config = _make_config()
+    def test_includes_no_write_instruction(self, make_config):
+        config = make_config(ensure_dirs=False)
         prompt = build_deliverable_prompt(
             config=config,
             deliverable_name="Doc",
@@ -442,8 +420,8 @@ class TestBuildDeliverablePrompt:
         assert "Output the full deliverable content directly" in prompt
         assert "Do NOT use Write or Edit tools" in prompt
 
-    def test_no_agreements_section_when_empty(self):
-        config = _make_config()
+    def test_no_agreements_section_when_empty(self, make_config):
+        config = make_config(ensure_dirs=False)
         prompt = build_deliverable_prompt(
             config=config,
             deliverable_name="Doc",
@@ -453,8 +431,8 @@ class TestBuildDeliverablePrompt:
         )
         assert "Shared Agreements" not in prompt
 
-    def test_includes_existing_artifacts(self):
-        config = _make_config()
+    def test_includes_existing_artifacts(self, make_config):
+        config = make_config(ensure_dirs=False)
         artifacts = {
             "chapter_1.md": "# Chapter 1\nContent here",
             "chapter_2.md": "# Chapter 2\nMore content",
@@ -472,8 +450,8 @@ class TestBuildDeliverablePrompt:
         assert "chapter_2.md" in prompt
         assert "refine" in prompt.lower()
 
-    def test_no_draft_section_without_artifacts(self):
-        config = _make_config()
+    def test_no_draft_section_without_artifacts(self, make_config):
+        config = make_config(ensure_dirs=False)
         prompt = build_deliverable_prompt(
             config=config,
             deliverable_name="Doc",
@@ -482,8 +460,8 @@ class TestBuildDeliverablePrompt:
         )
         assert "Draft Content" not in prompt
 
-    def test_truncation_when_conversation_exceeds_threshold(self):
-        config = _make_config(truncate_conversation=True)
+    def test_truncation_when_conversation_exceeds_threshold(self, make_config):
+        config = make_config(ensure_dirs=False, truncate_conversation=True)
         long_conversation = "x" * 60_000
         prompt = build_deliverable_prompt(
             config=config,
@@ -495,8 +473,8 @@ class TestBuildDeliverablePrompt:
         # Memories and agreements should be fully included regardless
         assert "memories" in prompt
 
-    def test_no_truncation_when_under_threshold(self):
-        config = _make_config(truncate_conversation=True)
+    def test_no_truncation_when_under_threshold(self, make_config):
+        config = make_config(ensure_dirs=False, truncate_conversation=True)
         short_conversation = "x" * 1000
         prompt = build_deliverable_prompt(
             config=config,
@@ -506,8 +484,8 @@ class TestBuildDeliverablePrompt:
         )
         assert "truncated" not in prompt
 
-    def test_no_truncation_when_disabled(self):
-        config = _make_config(truncate_conversation=False)
+    def test_no_truncation_when_disabled(self, make_config):
+        config = make_config(ensure_dirs=False, truncate_conversation=False)
         long_conversation = "x" * 60_000
         prompt = build_deliverable_prompt(
             config=config,
@@ -543,34 +521,34 @@ class TestEarlyPhasePacing:
         result = format_pacing_block(turn=4, max_turns=20, interactive=True)
         assert "Early exploration phase" in result
 
-    def test_system_prompt_interactive_pacing(self):
+    def test_system_prompt_interactive_pacing(self, make_config):
         """Interactive system prompt should mention early-turn clarification."""
-        config = _make_config(interactive=True, deliverables=["Doc A"])
+        config = make_config(ensure_dirs=False, interactive=True, deliverables=["Doc A"])
         prompt = build_system_prompt(config, "a")
         assert "clarify goals and constraints" in prompt
         assert "[ASK_USER]" in prompt
 
-    def test_system_prompt_non_interactive_pacing(self):
+    def test_system_prompt_non_interactive_pacing(self, make_config):
         """Non-interactive system prompt should NOT mention early clarification."""
-        config = _make_config(interactive=False, deliverables=["Doc A"])
+        config = make_config(ensure_dirs=False, interactive=False, deliverables=["Doc A"])
         prompt = build_system_prompt(config, "a")
         assert "clarify goals and constraints" not in prompt
 
 
 class TestGoalThreading:
-    def test_summary_prompt_includes_goal(self):
-        config = _make_config(goal="Favor battle-tested tech", current_turn=8)
+    def test_summary_prompt_includes_goal(self, make_config):
+        config = make_config(ensure_dirs=False, goal="Favor battle-tested tech", current_turn=8)
         prompt = build_summary_prompt(config)
         assert "Favor battle-tested tech" in prompt
         assert "Goal assessment" in prompt
 
-    def test_summary_prompt_no_goal(self):
-        config = _make_config(goal="", current_turn=8)
+    def test_summary_prompt_no_goal(self, make_config):
+        config = make_config(ensure_dirs=False, goal="", current_turn=8)
         prompt = build_summary_prompt(config)
         assert "Goal assessment" not in prompt
 
-    def test_deliverable_prompt_includes_goal(self):
-        config = _make_config(goal="Production-ready designs")
+    def test_deliverable_prompt_includes_goal(self, make_config):
+        config = make_config(ensure_dirs=False, goal="Production-ready designs")
         prompt = build_deliverable_prompt(
             config=config,
             deliverable_name="Architecture doc",
@@ -579,8 +557,8 @@ class TestGoalThreading:
         )
         assert "Production-ready designs" in prompt
 
-    def test_deliverable_prompt_no_goal(self):
-        config = _make_config(goal="")
+    def test_deliverable_prompt_no_goal(self, make_config):
+        config = make_config(ensure_dirs=False, goal="")
         prompt = build_deliverable_prompt(
             config=config,
             deliverable_name="Doc",
@@ -623,8 +601,8 @@ class TestGoalThreading:
         assert "**Expected deliverables:**" in result
         assert "**Session goal:**" not in result
 
-    def test_system_prompt_session_structure_shows_goal(self):
-        config = _make_config(goal="Favor simplicity", deliverables=["Doc A"])
+    def test_system_prompt_session_structure_shows_goal(self, make_config):
+        config = make_config(ensure_dirs=False, goal="Favor simplicity", deliverables=["Doc A"])
         prompt = build_system_prompt(config, "a")
         assert "Session Structure" in prompt
         assert "**Session goal:** Favor simplicity" in prompt

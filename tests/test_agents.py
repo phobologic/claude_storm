@@ -4,23 +4,7 @@ import json
 import subprocess as _subprocess
 from unittest.mock import patch, MagicMock
 
-from claude_storm.agents import invoke_agent, _extract_text, _build_allowed_tools, AgentResponse
-from claude_storm.config import SessionConfig
-
-
-def _make_config(tmp_path, monkeypatch):
-    storms_dir = tmp_path / ".storms"
-    storms_dir.mkdir(exist_ok=True)
-    config = SessionConfig(
-        session_id="test",
-        topic="Test",
-        claude_session_a="sess-a",
-        claude_session_b="sess-b",
-        model="sonnet",
-        storms_dir=str(storms_dir),
-    )
-    config.ensure_dirs()
-    return config
+from claude_storm.agents import invoke_agent, _extract_text, _build_allowed_tools
 
 
 def _mock_popen(stdout="", stderr="", returncode=0):
@@ -32,8 +16,8 @@ def _mock_popen(stdout="", stderr="", returncode=0):
 
 
 class TestInvokeAgent:
-    def test_first_turn_uses_session_id(self, tmp_path, monkeypatch):
-        config = _make_config(tmp_path, monkeypatch)
+    def test_first_turn_uses_session_id(self, make_config):
+        config = make_config()
         mock_proc = _mock_popen(
             stdout=json.dumps({"result": "Hello from agent A"}),
         )
@@ -46,7 +30,7 @@ class TestInvokeAgent:
 
         cmd = mock_popen_cls.call_args[0][0]
         assert "--session-id" in cmd
-        assert "sess-a" in cmd
+        assert "sess-a-uuid" in cmd
         assert "--system-prompt" in cmd
         assert "--model" in cmd
         assert "--allowedTools" in cmd
@@ -54,8 +38,8 @@ class TestInvokeAgent:
         assert response.cmd is not None
         assert "claude" in response.cmd
 
-    def test_first_turn_has_path_scoped_tools(self, tmp_path, monkeypatch):
-        config = _make_config(tmp_path, monkeypatch)
+    def test_first_turn_has_path_scoped_tools(self, make_config):
+        config = make_config()
         mock_proc = _mock_popen(
             stdout=json.dumps({"result": "ok"}),
         )
@@ -77,8 +61,8 @@ class TestInvokeAgent:
             if arg in ("Read", "Write", "Edit", "Glob", "Grep"):
                 raise AssertionError(f"Found unscoped tool: {arg}")
 
-    def test_subsequent_turn_uses_resume(self, tmp_path, monkeypatch):
-        config = _make_config(tmp_path, monkeypatch)
+    def test_subsequent_turn_uses_resume(self, make_config):
+        config = make_config()
         mock_proc = _mock_popen(
             stdout=json.dumps({"result": "Continuing..."}),
         )
@@ -88,12 +72,12 @@ class TestInvokeAgent:
 
         cmd = mock_popen_cls.call_args[0][0]
         assert "--resume" in cmd
-        assert "sess-b" in cmd
+        assert "sess-b-uuid" in cmd
         assert "--session-id" not in cmd
         assert response.text == "Continuing..."
 
-    def test_timeout_returns_error(self, tmp_path, monkeypatch):
-        config = _make_config(tmp_path, monkeypatch)
+    def test_timeout_returns_error(self, make_config):
+        config = make_config()
         mock_proc = MagicMock()
         mock_proc.communicate.side_effect = _subprocess.TimeoutExpired(
             cmd="claude", timeout=300,
@@ -105,8 +89,8 @@ class TestInvokeAgent:
         assert response.is_error
         assert "timed out" in response.text
 
-    def test_nonzero_exit_returns_error(self, tmp_path, monkeypatch):
-        config = _make_config(tmp_path, monkeypatch)
+    def test_nonzero_exit_returns_error(self, make_config):
+        config = make_config()
         mock_proc = _mock_popen(stderr="Some error", returncode=1)
 
         with patch("claude_storm.agents.subprocess.Popen", return_value=mock_proc):
@@ -115,8 +99,8 @@ class TestInvokeAgent:
         assert response.is_error
         assert "Some error" in response.text
 
-    def test_cmd_populated_on_error(self, tmp_path, monkeypatch):
-        config = _make_config(tmp_path, monkeypatch)
+    def test_cmd_populated_on_error(self, make_config):
+        config = make_config()
         mock_proc = _mock_popen(stderr="fail", returncode=1)
 
         with patch("claude_storm.agents.subprocess.Popen", return_value=mock_proc):
@@ -125,8 +109,8 @@ class TestInvokeAgent:
         assert response.cmd is not None
         assert "claude" in response.cmd
 
-    def test_invalid_json_falls_back(self, tmp_path, monkeypatch):
-        config = _make_config(tmp_path, monkeypatch)
+    def test_invalid_json_falls_back(self, make_config):
+        config = make_config()
         mock_proc = _mock_popen(stdout="Plain text response")
 
         with patch("claude_storm.agents.subprocess.Popen", return_value=mock_proc):
@@ -137,8 +121,8 @@ class TestInvokeAgent:
 
 
 class TestBuildAllowedTools:
-    def test_session_dir_only(self, tmp_path, monkeypatch):
-        config = _make_config(tmp_path, monkeypatch)
+    def test_session_dir_only(self, make_config):
+        config = make_config()
         tools = _build_allowed_tools(config)
         session_path = str(config.session_dir().resolve()).lstrip("/")
         assert f"Read(//{session_path}/**)" in tools
@@ -149,8 +133,8 @@ class TestBuildAllowedTools:
         # Only 5 tool entries when no reference dir
         assert len(tools) == 5
 
-    def test_with_reference_dir(self, tmp_path, monkeypatch):
-        config = _make_config(tmp_path, monkeypatch)
+    def test_with_reference_dir(self, make_config):
+        config = make_config()
         config.reference_dirs = ["/some/ref/dir"]
         tools = _build_allowed_tools(config)
         # Read tools for both dirs
@@ -163,8 +147,8 @@ class TestBuildAllowedTools:
         # 8 total: 3 read tools * 2 dirs + 2 write tools * 1 dir
         assert len(tools) == 8
 
-    def test_with_multiple_reference_dirs(self, tmp_path, monkeypatch):
-        config = _make_config(tmp_path, monkeypatch)
+    def test_with_multiple_reference_dirs(self, make_config):
+        config = make_config()
         config.reference_dirs = ["/ref/one", "/ref/two"]
         tools = _build_allowed_tools(config)
         # Read tools for all 3 dirs (session + 2 ref)
@@ -179,8 +163,8 @@ class TestBuildAllowedTools:
         assert len(tools) == 11
 
 
-    def test_readonly_excludes_write_edit(self, tmp_path, monkeypatch):
-        config = _make_config(tmp_path, monkeypatch)
+    def test_readonly_excludes_write_edit(self, make_config):
+        config = make_config()
         tools = _build_allowed_tools(config, readonly=True)
         assert not any("Write" in t for t in tools)
         assert not any("Edit" in t for t in tools)
@@ -191,8 +175,8 @@ class TestBuildAllowedTools:
         # Only 3 tool entries (read-only for session dir)
         assert len(tools) == 3
 
-    def test_readonly_with_reference_dir(self, tmp_path, monkeypatch):
-        config = _make_config(tmp_path, monkeypatch)
+    def test_readonly_with_reference_dir(self, make_config):
+        config = make_config()
         config.reference_dirs = ["/some/ref/dir"]
         tools = _build_allowed_tools(config, readonly=True)
         assert not any("Write" in t for t in tools)

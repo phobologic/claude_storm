@@ -2,10 +2,8 @@
 
 import json
 from collections import deque
-from io import StringIO
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
-from rich.console import Console
 from typer.testing import CliRunner
 
 from claude_storm.agents import AgentResponse
@@ -13,7 +11,6 @@ from claude_storm.cli import app
 from claude_storm.compilation import compile_deliverables, find_matching_artifacts, generate_summary
 from claude_storm.config import SessionConfig
 from claude_storm.directives import parse_directives
-from claude_storm.display import Display
 from claude_storm.project import STORM_CONFIG_FILENAME
 from claude_storm.session import check_stop, process_directives, merge_user_input
 
@@ -182,25 +179,23 @@ class TestStopReason:
         assert config.stop_reason is None
         assert config.stop_error is None
 
-    def test_stop_reason_persisted_in_json(self, tmp_storms):
-        config = SessionConfig(
-            session_id="sr-test", topic="t", storms_dir=str(tmp_storms),
+    def test_stop_reason_persisted_in_json(self, make_config):
+        config = make_config(
+            session_id="sr-test",
             stop_reason="max_turns", stop_error=None,
         )
-        config.ensure_dirs()
         config.save()
-        loaded = SessionConfig.load("sr-test", storms_dir=str(tmp_storms))
+        loaded = SessionConfig.load("sr-test", storms_dir=config.storms_dir)
         assert loaded.stop_reason == "max_turns"
         assert loaded.stop_error is None
 
-    def test_stop_error_persisted_in_json(self, tmp_storms):
-        config = SessionConfig(
-            session_id="se-test", topic="t", storms_dir=str(tmp_storms),
+    def test_stop_error_persisted_in_json(self, make_config):
+        config = make_config(
+            session_id="se-test",
             stop_reason="agent_error", stop_error="[Agent error: connection reset]",
         )
-        config.ensure_dirs()
         config.save()
-        loaded = SessionConfig.load("se-test", storms_dir=str(tmp_storms))
+        loaded = SessionConfig.load("se-test", storms_dir=config.storms_dir)
         assert loaded.stop_reason == "agent_error"
         assert loaded.stop_error == "[Agent error: connection reset]"
 
@@ -228,8 +223,7 @@ class TestStopReason:
         assert loaded.stop_reason is None
         assert loaded.stop_error is None
 
-    def test_show_displays_stop_reason(self, tmp_storms, monkeypatch):
-        monkeypatch.setattr("claude_storm.cli.get_storms_dir", lambda p: tmp_storms)
+    def test_show_displays_stop_reason(self, mock_storms_dir):
         config = SessionConfig(
             session_id="show-sr",
             topic="Test topic",
@@ -239,7 +233,7 @@ class TestStopReason:
             started_at="2025-01-31T10:00:00",
             stop_reason="agent_timeout",
             stop_error="[Agent timed out]",
-            storms_dir=str(tmp_storms),
+            storms_dir=str(mock_storms_dir),
         )
         config.ensure_dirs()
         config.save()
@@ -247,23 +241,6 @@ class TestStopReason:
         assert result.exit_code == 0
         assert "agent_timeout" in result.output
         assert "[Agent timed out]" in result.output
-
-    def test_agent_timeout_sets_timed_out_flag(self):
-        resp = AgentResponse(
-            text="[Agent timed out]",
-            raw={"error": "timeout"},
-            is_error=True,
-            timed_out=True,
-        )
-        assert resp.timed_out is True
-
-    def test_agent_error_has_timed_out_false(self):
-        resp = AgentResponse(
-            text="[Agent error: bad]",
-            raw={"error": "bad"},
-            is_error=True,
-        )
-        assert resp.timed_out is False
 
 
 class TestCLICommands:
@@ -273,15 +250,14 @@ class TestCLICommands:
         assert result.exit_code == 0
         assert "No sessions" in result.output
 
-    def test_list_with_sessions(self, tmp_storms, monkeypatch):
-        monkeypatch.setattr("claude_storm.cli.get_storms_dir", lambda p: tmp_storms)
+    def test_list_with_sessions(self, mock_storms_dir):
         config = SessionConfig(
             session_id="abc123",
             topic="Test brainstorm",
             max_turns=10,
             current_turn=3,
             status="completed",
-            storms_dir=str(tmp_storms),
+            storms_dir=str(mock_storms_dir),
         )
         config.ensure_dirs()
         config.save()
@@ -291,8 +267,7 @@ class TestCLICommands:
         assert "abc123" in result.output
         assert "Test brainstorm" in result.output
 
-    def test_show_session(self, tmp_storms, monkeypatch):
-        monkeypatch.setattr("claude_storm.cli.get_storms_dir", lambda p: tmp_storms)
+    def test_show_session(self, mock_storms_dir):
         config = SessionConfig(
             session_id="show123",
             topic="Show me",
@@ -303,7 +278,7 @@ class TestCLICommands:
             status="completed",
             model="sonnet",
             started_at="2025-01-31T10:00:00",
-            storms_dir=str(tmp_storms),
+            storms_dir=str(mock_storms_dir),
         )
         config.ensure_dirs()
         config.save()
@@ -314,13 +289,11 @@ class TestCLICommands:
         assert "Thinker" in result.output
         assert "completed" in result.output
 
-    def test_show_nonexistent(self, tmp_storms, monkeypatch):
-        monkeypatch.setattr("claude_storm.cli.get_storms_dir", lambda p: tmp_storms)
+    def test_show_nonexistent(self, mock_storms_dir):
         result = runner.invoke(app, ["show", "nonexistent"])
         assert result.exit_code == 1
 
-    def test_resume_nonexistent(self, tmp_storms, monkeypatch):
-        monkeypatch.setattr("claude_storm.cli.get_storms_dir", lambda p: tmp_storms)
+    def test_resume_nonexistent(self, mock_storms_dir):
         result = runner.invoke(app, ["resume", "nonexistent"])
         assert result.exit_code == 1
 
@@ -434,30 +407,16 @@ class TestCLICommands:
 
 
 class TestConsensus:
-    def _make_config(self, tmp_storms, **kwargs):
-        defaults = dict(
-            session_id="consensus-test",
-            topic="Test topic",
-            max_turns=20,
-            current_turn=5,
-            auto_complete=True,
-            storms_dir=str(tmp_storms),
-        )
-        defaults.update(kwargs)
-        config = SessionConfig(**defaults)
-        config.ensure_dirs()
-        return config
-
-    def test_done_signal_stored_in_dict(self, tmp_storms):
-        config = self._make_config(tmp_storms)
-        display = Display(console=Console(file=StringIO(), force_terminal=True, no_color=True))
+    def test_done_signal_stored_in_dict(self, make_config, capture_display):
+        config = make_config(session_id="consensus-test", max_turns=20, current_turn=5, auto_complete=True)
+        display, _buf = capture_display
         directives = parse_directives('[DONE reason="All covered"]')
         process_directives(config, "a", directives, display)
         assert config.done_signals == {"a": "All covered"}
 
-    def test_both_agents_agree(self, tmp_storms):
-        config = self._make_config(tmp_storms)
-        display = Display(console=Console(file=StringIO(), force_terminal=True, no_color=True))
+    def test_both_agents_agree(self, make_config, capture_display):
+        config = make_config(session_id="consensus-test", max_turns=20, current_turn=5, auto_complete=True)
+        display, _buf = capture_display
         # Agent A signals DONE
         dir_a = parse_directives('[DONE reason="All covered"]')
         process_directives(config, "a", dir_a, display)
@@ -466,9 +425,9 @@ class TestConsensus:
         process_directives(config, "b", dir_b, display)
         assert len(config.done_signals) == 2
 
-    def test_disagreement_clears_done(self, tmp_storms):
-        config = self._make_config(tmp_storms)
-        display = Display(console=Console(file=StringIO(), force_terminal=True, no_color=True))
+    def test_disagreement_clears_done(self, make_config, capture_display):
+        config = make_config(session_id="consensus-test", max_turns=20, current_turn=5, auto_complete=True)
+        display, _buf = capture_display
         # Agent A signals DONE
         dir_a = parse_directives('[DONE reason="All covered"]')
         process_directives(config, "a", dir_a, display)
@@ -478,10 +437,9 @@ class TestConsensus:
         process_directives(config, "b", dir_b, display)
         assert config.done_signals == {}
 
-    def test_disagreement_display_message(self, tmp_storms):
-        config = self._make_config(tmp_storms)
-        display, buf = Display(console=Console(file=StringIO(), force_terminal=True, no_color=True)), None
-        buf = display.console.file
+    def test_disagreement_display_message(self, make_config, capture_display):
+        config = make_config(session_id="consensus-test", max_turns=20, current_turn=5, auto_complete=True)
+        display, buf = capture_display
         # Agent A signals DONE
         dir_a = parse_directives('[DONE reason="All covered"]')
         process_directives(config, "a", dir_a, display)
@@ -494,34 +452,21 @@ class TestConsensus:
 
 
 class TestCompileDeliverables:
-    def _make_config(self, tmp_storms, **kwargs):
-        defaults = dict(
-            session_id="compile-test",
-            topic="Test topic",
-            goal="Test goal",
-            role_a="Agent A",
-            role_b="Agent B",
-            max_turns=10,
-            current_turn=10,
-            status="completed",
-            model="sonnet",
-            deliverables=["Chapter Summaries", "Character Profiles"],
-            storms_dir=str(tmp_storms),
+    def test_skips_when_no_deliverables(self, make_config, capture_display):
+        config = make_config(
+            session_id="compile-test", current_turn=10, status="completed",
+            deliverables=[],
         )
-        defaults.update(kwargs)
-        config = SessionConfig(**defaults)
-        config.ensure_dirs()
-        return config
-
-    def test_skips_when_no_deliverables(self, tmp_storms):
-        config = self._make_config(tmp_storms, deliverables=[])
-        display = Display(console=Console(file=StringIO(), force_terminal=True, no_color=True))
+        display, _buf = capture_display
         with patch("claude_storm.compilation.invoke_agent") as mock_invoke:
             compile_deliverables(config, display)
             mock_invoke.assert_not_called()
 
-    def test_writes_artifact_files(self, tmp_storms):
-        config = self._make_config(tmp_storms)
+    def test_writes_artifact_files(self, make_config, capture_display):
+        config = make_config(
+            session_id="compile-test", current_turn=10, status="completed",
+            deliverables=["Chapter Summaries", "Character Profiles"],
+        )
         # Create some memory files
         mem_dir = config.session_dir() / "agent-a" / "memory"
         mem_dir.mkdir(parents=True, exist_ok=True)
@@ -529,7 +474,7 @@ class TestCompileDeliverables:
         # Create conversation log
         (config.session_dir() / "conversation.md").write_text("## Turn 1\nHello")
 
-        display = Display(console=Console(file=StringIO(), force_terminal=True, no_color=True))
+        display, _buf = capture_display
 
         mock_response = AgentResponse(text="# Chapter Summaries\n\nChapter 1...", raw={})
         with patch("claude_storm.compilation.invoke_agent", return_value=mock_response):
@@ -540,11 +485,13 @@ class TestCompileDeliverables:
         files = list(artifacts_dir.glob("*.md"))
         assert len(files) == 2
 
-    def test_shows_error_on_failed_deliverable(self, tmp_storms):
-        config = self._make_config(tmp_storms)
+    def test_shows_error_on_failed_deliverable(self, make_config, capture_display):
+        config = make_config(
+            session_id="compile-test", current_turn=10, status="completed",
+            deliverables=["Chapter Summaries", "Character Profiles"],
+        )
         (config.session_dir() / "conversation.md").write_text("")
-        buf = StringIO()
-        display = Display(console=Console(file=buf, force_terminal=True, no_color=True))
+        display, buf = capture_display
 
         error_response = AgentResponse(
             text="[Agent error: timeout]", raw={"error": "timeout"}, is_error=True
@@ -559,10 +506,13 @@ class TestCompileDeliverables:
         md_files = list(artifacts_dir.glob("*.md")) if artifacts_dir.exists() else []
         assert len(md_files) == 0
 
-    def test_uses_distinct_session_ids(self, tmp_storms):
-        config = self._make_config(tmp_storms)
+    def test_uses_distinct_session_ids(self, make_config, capture_display):
+        config = make_config(
+            session_id="compile-test", current_turn=10, status="completed",
+            deliverables=["Chapter Summaries", "Character Profiles"],
+        )
         (config.session_dir() / "conversation.md").write_text("")
-        display = Display(console=Console(file=StringIO(), force_terminal=True, no_color=True))
+        display, _buf = capture_display
 
         mock_response = AgentResponse(text="content", raw={})
         session_ids = []
@@ -581,13 +531,13 @@ class TestCompileDeliverables:
         # None of them should be the agent's brainstorming session ID
         assert all(sid != config.claude_session_a for sid in session_ids)
 
-    def test_sanitizes_filenames(self, tmp_storms):
-        config = self._make_config(
-            tmp_storms,
+    def test_sanitizes_filenames(self, make_config, capture_display):
+        config = make_config(
+            session_id="compile-test", current_turn=10, status="completed",
             deliverables=["Chapter: Summaries (All)"],
         )
         (config.session_dir() / "conversation.md").write_text("")
-        display = Display(console=Console(file=StringIO(), force_terminal=True, no_color=True))
+        display, _buf = capture_display
 
         mock_response = AgentResponse(text="content", raw={})
         with patch("claude_storm.compilation.invoke_agent", return_value=mock_response):
@@ -602,30 +552,13 @@ class TestCompileDeliverables:
 
 
 class TestCompileDeliverablesDebug:
-    def _make_config(self, tmp_storms, **kwargs):
-        defaults = dict(
-            session_id="debug-test",
-            topic="Test topic",
-            goal="Test goal",
-            role_a="Agent A",
-            role_b="Agent B",
-            max_turns=10,
-            current_turn=10,
-            status="completed",
-            model="sonnet",
-            deliverables=["Summary Doc"],
-            debug=True,
-            storms_dir=str(tmp_storms),
+    def test_debug_logging_called_during_compilation(self, make_config, capture_display):
+        config = make_config(
+            session_id="debug-test", current_turn=10, status="completed",
+            deliverables=["Summary Doc"], debug=True,
         )
-        defaults.update(kwargs)
-        config = SessionConfig(**defaults)
-        config.ensure_dirs()
-        return config
-
-    def test_debug_logging_called_during_compilation(self, tmp_storms):
-        config = self._make_config(tmp_storms)
         (config.session_dir() / "conversation.md").write_text("")
-        display = Display(console=Console(file=StringIO(), force_terminal=True, no_color=True))
+        display, _buf = capture_display
 
         mock_response = AgentResponse(text="content", raw={})
         with patch("claude_storm.compilation.invoke_agent", return_value=mock_response), \
@@ -636,9 +569,12 @@ class TestCompileDeliverablesDebug:
         assert mock_req.call_count == 1
         assert mock_resp.call_count == 1
 
-    def test_debug_logging_called_during_summary(self, tmp_storms):
-        config = self._make_config(tmp_storms)
-        display = Display(console=Console(file=StringIO(), force_terminal=True, no_color=True))
+    def test_debug_logging_called_during_summary(self, make_config, capture_display):
+        config = make_config(
+            session_id="debug-test", current_turn=10, status="completed",
+            deliverables=["Summary Doc"], debug=True,
+        )
+        display, _buf = capture_display
 
         mock_response = AgentResponse(text="summary content", raw={})
         with patch("claude_storm.compilation.invoke_agent", return_value=mock_response), \
@@ -649,10 +585,13 @@ class TestCompileDeliverablesDebug:
         assert mock_req.call_count == 1
         assert mock_resp.call_count == 1
 
-    def test_readonly_passed_during_compilation(self, tmp_storms):
-        config = self._make_config(tmp_storms)
+    def test_readonly_passed_during_compilation(self, make_config, capture_display):
+        config = make_config(
+            session_id="debug-test", current_turn=10, status="completed",
+            deliverables=["Summary Doc"], debug=True,
+        )
         (config.session_dir() / "conversation.md").write_text("")
-        display = Display(console=Console(file=StringIO(), force_terminal=True, no_color=True))
+        display, _buf = capture_display
 
         mock_response = AgentResponse(text="content", raw={})
         with patch("claude_storm.compilation.invoke_agent", return_value=mock_response) as mock_invoke:
@@ -660,9 +599,12 @@ class TestCompileDeliverablesDebug:
 
         assert mock_invoke.call_args.kwargs.get("readonly") is True
 
-    def test_readonly_passed_during_summary(self, tmp_storms):
-        config = self._make_config(tmp_storms)
-        display = Display(console=Console(file=StringIO(), force_terminal=True, no_color=True))
+    def test_readonly_passed_during_summary(self, make_config, capture_display):
+        config = make_config(
+            session_id="debug-test", current_turn=10, status="completed",
+            deliverables=["Summary Doc"], debug=True,
+        )
+        display, _buf = capture_display
 
         mock_response = AgentResponse(text="summary content", raw={})
         with patch("claude_storm.compilation.invoke_agent", return_value=mock_response) as mock_invoke:
@@ -707,18 +649,12 @@ class TestMergeUserInput:
 
 
 class TestProcessDirectivesAskUser:
-    def test_ask_user_includes_question_and_answer(self, tmp_storms):
+    def test_ask_user_includes_question_and_answer(self, make_config, capture_display):
         """process_directives formats user_input with both Q and A."""
-        config = SessionConfig(
-            session_id="ask-test",
-            topic="Test",
-            max_turns=20,
-            current_turn=5,
-            interactive=True,
-            storms_dir=str(tmp_storms),
+        config = make_config(
+            session_id="ask-test", max_turns=20, current_turn=5, interactive=True,
         )
-        config.ensure_dirs()
-        display = Display(console=Console(file=StringIO(), force_terminal=True, no_color=True))
+        display, _buf = capture_display
         directives = parse_directives("[ASK_USER]Should we use JWT or OAuth?[/ASK_USER]")
 
         with patch.object(display, "prompt_user", return_value="Use JWT") as mock_prompt:
@@ -762,28 +698,18 @@ class TestFindMatchingArtifacts:
         assert "act_1_chapters.md" in result
         assert "act_2_chapters.md" in result
 
-    def test_compile_passes_existing_artifacts(self, tmp_storms):
-        config = SessionConfig(
-            session_id="artifact-test",
-            topic="Test topic",
-            goal="Test goal",
-            role_a="Agent A",
-            role_b="Agent B",
-            max_turns=10,
-            current_turn=10,
-            status="completed",
-            model="sonnet",
+    def test_compile_passes_existing_artifacts(self, make_config, capture_display):
+        config = make_config(
+            session_id="artifact-test", current_turn=10, status="completed",
             deliverables=["Chapter Summaries"],
-            storms_dir=str(tmp_storms),
         )
-        config.ensure_dirs()
 
         # Create pre-existing artifact
         artifacts_dir = config.session_dir() / "artifacts"
         (artifacts_dir / "chapter_summaries.md").write_text("# Draft content")
         (config.session_dir() / "conversation.md").write_text("## Turn 1\nHello")
 
-        display = Display(console=Console(file=StringIO(), force_terminal=True, no_color=True))
+        display, _buf = capture_display
         mock_response = AgentResponse(text="# Final Summaries\n\nDone", raw={})
 
         prompts_captured = []

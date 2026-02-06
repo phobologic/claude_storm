@@ -8,21 +8,6 @@ from claude_storm.agreements import (
     reject_proposal,
     write_agreements_file,
 )
-from claude_storm.config import SessionConfig
-
-
-def _make_config(tmp_storms, **kwargs):
-    defaults = dict(
-        session_id="agree-test",
-        topic="Test topic",
-        max_turns=20,
-        current_turn=3,
-        storms_dir=str(tmp_storms),
-    )
-    defaults.update(kwargs)
-    config = SessionConfig(**defaults)
-    config.ensure_dirs()
-    return config
 
 
 class TestGenerateProposalId:
@@ -37,8 +22,8 @@ class TestGenerateProposalId:
 
 
 class TestCreateProposal:
-    def test_creates_pending_proposal(self, tmp_storms):
-        config = _make_config(tmp_storms)
+    def test_creates_pending_proposal(self, make_config):
+        config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
         pid = create_proposal(config, "Use REST", "REST is better", "a", 4)
         assert len(pid) == 4
         assert len(config.pending_proposals) == 1
@@ -49,15 +34,15 @@ class TestCreateProposal:
         assert config.pending_proposals[0]["turn"] == 4
         assert config.pending_proposals[0]["revises"] is None
 
-    def test_creates_revision_proposal(self, tmp_storms):
-        config = _make_config(tmp_storms)
+    def test_creates_revision_proposal(self, make_config):
+        config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
         pid = create_proposal(
             config, "Use REST v2", "REST with pagination", "b", 8, revises="a3f2"
         )
         assert config.pending_proposals[0]["revises"] == "a3f2"
 
-    def test_multiple_proposals(self, tmp_storms):
-        config = _make_config(tmp_storms)
+    def test_multiple_proposals(self, make_config):
+        config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
         id1 = create_proposal(config, "A", "content A", "a", 1)
         id2 = create_proposal(config, "B", "content B", "b", 2)
         assert len(config.pending_proposals) == 2
@@ -65,8 +50,8 @@ class TestCreateProposal:
 
 
 class TestAcceptProposal:
-    def test_moves_to_accepted(self, tmp_storms):
-        config = _make_config(tmp_storms)
+    def test_moves_to_accepted(self, make_config):
+        config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
         pid = create_proposal(config, "Use REST", "REST is good", "a", 4)
         accepted = accept_proposal(config, pid, 5)
         assert accepted is not None
@@ -77,8 +62,8 @@ class TestAcceptProposal:
         assert len(config.pending_proposals) == 0
         assert len(config.accepted_agreements) == 1
 
-    def test_writes_agreements_file(self, tmp_storms):
-        config = _make_config(tmp_storms)
+    def test_writes_agreements_file(self, make_config):
+        config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
         pid = create_proposal(config, "Use REST", "REST is good", "a", 4)
         accept_proposal(config, pid, 5)
         agreements_path = config.session_dir() / "agreements.md"
@@ -87,12 +72,12 @@ class TestAcceptProposal:
         assert pid in content
         assert "Use REST" in content
 
-    def test_returns_none_for_missing_id(self, tmp_storms):
-        config = _make_config(tmp_storms)
+    def test_returns_none_for_missing_id(self, make_config):
+        config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
         assert accept_proposal(config, "xxxx", 5) is None
 
-    def test_accept_revision(self, tmp_storms):
-        config = _make_config(tmp_storms)
+    def test_accept_revision(self, make_config):
+        config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
         orig = create_proposal(config, "Use REST", "REST is good", "a", 4)
         accept_proposal(config, orig, 5)
         rev = create_proposal(
@@ -104,8 +89,8 @@ class TestAcceptProposal:
 
 
 class TestRejectProposal:
-    def test_removes_from_pending(self, tmp_storms):
-        config = _make_config(tmp_storms)
+    def test_removes_from_pending(self, make_config):
+        config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
         pid = create_proposal(config, "Use SOAP", "SOAP is enterprise", "a", 4)
         rejected = reject_proposal(config, pid)
         assert rejected is not None
@@ -113,21 +98,21 @@ class TestRejectProposal:
         assert len(config.pending_proposals) == 0
         assert len(config.accepted_agreements) == 0
 
-    def test_returns_none_for_missing_id(self, tmp_storms):
-        config = _make_config(tmp_storms)
+    def test_returns_none_for_missing_id(self, make_config):
+        config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
         assert reject_proposal(config, "xxxx") is None
 
 
 class TestWriteAgreementsFile:
-    def test_empty_agreements(self, tmp_storms):
-        config = _make_config(tmp_storms)
+    def test_empty_agreements(self, make_config):
+        config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
         write_agreements_file(config)
         path = config.session_dir() / "agreements.md"
         assert path.exists()
         assert path.read_text() == ""
 
-    def test_formats_revision(self, tmp_storms):
-        config = _make_config(tmp_storms)
+    def test_formats_revision(self, make_config):
+        config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
         config.accepted_agreements = [
             {
                 "id": "e9d4",
@@ -147,12 +132,12 @@ class TestWriteAgreementsFile:
 
 
 class TestFormatAgreementsForPrompt:
-    def test_empty_returns_empty_string(self, tmp_storms):
-        config = _make_config(tmp_storms)
+    def test_empty_returns_empty_string(self, make_config):
+        config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
         assert format_agreements_for_prompt(config, "a") == ""
 
-    def test_confirmed_agreements(self, tmp_storms):
-        config = _make_config(tmp_storms)
+    def test_confirmed_agreements(self, make_config):
+        config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
         config.accepted_agreements = [
             {
                 "id": "a3f2",
@@ -170,8 +155,8 @@ class TestFormatAgreementsForPrompt:
         assert "[a3f2]" in text
         assert "Use REST" in text
 
-    def test_pending_proposals_shown_to_other_agent(self, tmp_storms):
-        config = _make_config(tmp_storms)
+    def test_pending_proposals_shown_to_other_agent(self, make_config):
+        config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
         config.pending_proposals = [
             {
                 "id": "c4e8",
@@ -189,8 +174,8 @@ class TestFormatAgreementsForPrompt:
         assert "Add GraphQL" in text
         assert '[ACCEPT id="c4e8"]' in text
 
-    def test_pending_not_shown_to_proposer(self, tmp_storms):
-        config = _make_config(tmp_storms)
+    def test_pending_not_shown_to_proposer(self, make_config):
+        config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
         config.pending_proposals = [
             {
                 "id": "c4e8",
@@ -205,8 +190,8 @@ class TestFormatAgreementsForPrompt:
         text = format_agreements_for_prompt(config, "a")
         assert "Pending Proposals" not in text
 
-    def test_both_confirmed_and_pending(self, tmp_storms):
-        config = _make_config(tmp_storms)
+    def test_both_confirmed_and_pending(self, make_config):
+        config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
         config.accepted_agreements = [
             {
                 "id": "a3f2",
@@ -232,29 +217,29 @@ class TestFormatAgreementsForPrompt:
         assert "## Confirmed" in text
         assert "## Pending Proposals" in text
 
-    def test_nudge_after_warmup(self, tmp_storms):
+    def test_nudge_after_warmup(self, make_config):
         """After turn 3 with no agreements, agents see a nudge."""
-        config = _make_config(tmp_storms)
+        config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
         text = format_agreements_for_prompt(config, "a", current_turn=3)
         assert "No agreements have been formalized" in text
         assert "[PROPOSE" in text
         assert "Verbal agreement alone" in text
 
-    def test_no_nudge_during_warmup(self, tmp_storms):
+    def test_no_nudge_during_warmup(self, make_config):
         """During turns 1-2, no nudge is shown."""
-        config = _make_config(tmp_storms)
+        config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
         text = format_agreements_for_prompt(config, "a", current_turn=2)
         assert text == ""
 
-    def test_no_nudge_without_current_turn(self, tmp_storms):
+    def test_no_nudge_without_current_turn(self, make_config):
         """Backward compat: no current_turn returns empty string."""
-        config = _make_config(tmp_storms)
+        config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
         text = format_agreements_for_prompt(config, "a")
         assert text == ""
 
-    def test_stale_agreement_nudge(self, tmp_storms):
+    def test_stale_agreement_nudge(self, make_config):
         """When last agreement was 4+ turns ago, show a reminder."""
-        config = _make_config(tmp_storms)
+        config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
         config.accepted_agreements = [
             {
                 "id": "a3f2",
@@ -271,9 +256,9 @@ class TestFormatAgreementsForPrompt:
         assert "several turns since the last agreement" in text
         assert "[PROPOSE]" in text
 
-    def test_no_stale_nudge_when_recent(self, tmp_storms):
+    def test_no_stale_nudge_when_recent(self, make_config):
         """No stale nudge when last agreement was recent."""
-        config = _make_config(tmp_storms)
+        config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
         config.accepted_agreements = [
             {
                 "id": "a3f2",

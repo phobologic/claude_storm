@@ -8,9 +8,10 @@ from claude_storm.config import SessionConfig
 class TestSessionConfig:
     def test_create_generates_ids(self):
         config = SessionConfig.create(topic="Test topic")
-        assert config.session_id
-        assert config.claude_session_a
-        assert config.claude_session_b
+        assert len(config.session_id) == 12
+        assert all(c in "0123456789abcdef" for c in config.session_id)
+        assert len(config.claude_session_a) == 36  # UUID format
+        assert len(config.claude_session_b) == 36
         assert config.claude_session_a != config.claude_session_b
         assert config.status == "active"
         assert config.started_at
