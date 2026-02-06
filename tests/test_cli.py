@@ -10,7 +10,7 @@ from claude_storm.agents import AgentResponse
 from claude_storm.cli import app
 from claude_storm.compilation import compile_deliverables, find_matching_artifacts, generate_summary
 from claude_storm.config import SessionConfig
-from claude_storm.directives import parse_directives
+from claude_storm.directives import _parse_attrs, _remove_spans, parse_directives
 from claude_storm.project import STORM_CONFIG_FILENAME
 from claude_storm.session import check_stop, process_directives, merge_user_input
 
@@ -135,6 +135,102 @@ class TestParseDirectives:
         assert result.accepts == []
         assert result.rejects == []
         assert result.revisions == []
+
+    def test_artifact_with_extra_title_attr(self):
+        """The motivating bug: extra title= attribute should not break parsing."""
+        text = '[ARTIFACT title="Act 1" filename="act1.md"]Scene 1 content[/ARTIFACT]'
+        result = parse_directives(text)
+        assert len(result.artifacts) == 1
+        assert result.artifacts[0] == ("act1.md", "Scene 1 content")
+        assert "[ARTIFACT" not in result.clean_text
+
+    def test_artifact_attrs_reversed_order(self):
+        """Attribute order should not matter."""
+        text = '[ARTIFACT filename="ch1.md" title="Chapter 1"]Chapter text[/ARTIFACT]'
+        result = parse_directives(text)
+        assert len(result.artifacts) == 1
+        assert result.artifacts[0][0] == "ch1.md"
+        assert result.artifacts[0][1] == "Chapter text"
+
+    def test_memory_with_extra_attrs(self):
+        """Extra attributes on MEMORY should be silently ignored."""
+        text = '[MEMORY title="Note" tags="a,b" priority="high"]content[/MEMORY]'
+        result = parse_directives(text)
+        assert len(result.memories) == 1
+        assert result.memories[0] == ("Note", ["a", "b"], "content")
+
+    def test_reject_with_extra_attrs(self):
+        """Extra attributes on self-closing directives should be ignored."""
+        text = '[REJECT id="x1" reason="Too slow" priority="high"]'
+        result = parse_directives(text)
+        assert result.rejects == [("x1", "Too slow")]
+        assert "[REJECT" not in result.clean_text
+
+    def test_reject_attrs_reversed_order(self):
+        """Attribute order should not matter for self-closing directives."""
+        text = '[REJECT reason="Overengineered" id="p5"]'
+        result = parse_directives(text)
+        assert result.rejects == [("p5", "Overengineered")]
+
+    def test_mixed_block_and_self_closing(self):
+        """Block and self-closing directives coexist in one response."""
+        text = (
+            'Here is my analysis.\n'
+            '[MEMORY title="Key Point" tags="design"]Important insight[/MEMORY]\n'
+            '[ACCEPT id="prop1"]\n'
+            '[ARTIFACT filename="out.md"]# Output[/ARTIFACT]'
+        )
+        result = parse_directives(text)
+        assert len(result.memories) == 1
+        assert result.accepts == ["prop1"]
+        assert len(result.artifacts) == 1
+        assert "Here is my analysis." in result.clean_text
+        assert "[MEMORY" not in result.clean_text
+        assert "[ACCEPT" not in result.clean_text
+        assert "[ARTIFACT" not in result.clean_text
+
+
+class TestParseAttrs:
+    def test_single_attr(self):
+        assert _parse_attrs(' filename="api.yaml"') == {"filename": "api.yaml"}
+
+    def test_multiple_attrs(self):
+        result = _parse_attrs(' title="Act 1" filename="act1.md"')
+        assert result == {"title": "Act 1", "filename": "act1.md"}
+
+    def test_empty_string(self):
+        assert _parse_attrs("") == {}
+
+    def test_empty_value(self):
+        assert _parse_attrs(' tags=""') == {"tags": ""}
+
+    def test_attr_with_spaces_in_value(self):
+        result = _parse_attrs(' reason="Too complex for MVP"')
+        assert result == {"reason": "Too complex for MVP"}
+
+
+class TestRemoveSpans:
+    def test_no_spans(self):
+        assert _remove_spans("hello world", []) == "hello world"
+
+    def test_single_span(self):
+        assert _remove_spans("hello [TAG] world", [(6, 11)]) == "hello  world"
+
+    def test_multiple_non_overlapping(self):
+        text = "AA[X]BB[Y]CC"
+        result = _remove_spans(text, [(2, 5), (7, 10)])
+        assert result == "AABBCC"
+
+    def test_overlapping_spans_merged(self):
+        text = "0123456789"
+        # Spans (2,5) and (4,7) overlap — should remove indices 2..7
+        result = _remove_spans(text, [(2, 5), (4, 7)])
+        assert result == "01789"
+
+    def test_adjacent_spans(self):
+        text = "AABBCC"
+        result = _remove_spans(text, [(2, 4), (4, 6)])
+        assert result == "AA"
 
 
 class TestCheckStop:

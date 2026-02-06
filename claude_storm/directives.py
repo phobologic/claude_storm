@@ -5,30 +5,122 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-# Module-level compiled regex patterns
-_MEMORY_PATTERN = re.compile(
-    r'\[MEMORY\s+title="([^"]+)"\s+tags="([^"]*)"\](.*?)\[/MEMORY\]',
-    re.DOTALL,
+# ---------------------------------------------------------------------------
+# Known tag names (alternation used by both block and self-closing patterns)
+# ---------------------------------------------------------------------------
+_TAGS = (
+    "MEMORY|MEMORY_SEARCH|ARTIFACT|DONE|ASK_USER|PROPOSE|ACCEPT|REJECT|REVISE"
 )
-_SEARCH_PATTERN = re.compile(r'\[MEMORY_SEARCH\s+query="([^"]+)"\]')
-_ARTIFACT_PATTERN = re.compile(
-    r'\[ARTIFACT\s+filename="([^"]+)"\](.*?)\[/ARTIFACT\]',
-    re.DOTALL,
-)
-_DONE_PATTERN = re.compile(r'^\s*\[DONE(?:\s+reason="([^"]+)")?\]', re.MULTILINE)
-_ASK_PATTERN = re.compile(r"\[ASK_USER\](.*?)\[/ASK_USER\]", re.DOTALL)
-_PROPOSE_PATTERN = re.compile(
-    r'\[PROPOSE\s+title="([^"]+)"\](.*?)\[/PROPOSE\]',
-    re.DOTALL,
-)
-_ACCEPT_PATTERN = re.compile(r'\[ACCEPT\s+id="([^"]+)"\]')
-_REJECT_PATTERN = re.compile(r'\[REJECT\s+id="([^"]+)"\s+reason="([^"]+)"\]')
-_REVISE_PATTERN = re.compile(
-    r'\[REVISE\s+id="([^"]+)"\](.*?)\[/REVISE\]',
+
+# ---------------------------------------------------------------------------
+# Generic compiled regex patterns
+# ---------------------------------------------------------------------------
+
+# Matches block directives: [TAG attrs...]body[/TAG]
+# The backreference \1 ensures the closing tag matches the opening tag.
+# Example: [ARTIFACT filename="x" title="y"]content[/ARTIFACT]
+_BLOCK_PATTERN = re.compile(
+    rf"\[({_TAGS})((?:\s+[a-zA-Z_]+=(?:\"[^\"]*\"))*)\s*\]"  # open tag + attrs
+    r"(.*?)"                                                    # body (lazy)
+    r"\[/\1\]",                                                 # matching close tag
     re.DOTALL,
 )
 
+# Matches self-closing directives: [TAG attrs...]  (no close tag)
+# Example: [ACCEPT id="a3f2"]  or  [DONE reason="complete"]
+_SELF_CLOSING_PATTERN = re.compile(
+    rf"\[({_TAGS})((?:\s+[a-zA-Z_]+=(?:\"[^\"]*\"))*)\s*\]",
+    re.DOTALL,
+)
 
+# Extracts key="value" pairs from an attribute string.
+# Example: ' filename="api.yaml" title="API Spec"' -> {filename: api.yaml, title: API Spec}
+_ATTR_PATTERN = re.compile(r'([a-zA-Z_]+)="([^"]*)"')
+
+
+# ---------------------------------------------------------------------------
+# Intermediate representation
+# ---------------------------------------------------------------------------
+@dataclass
+class _RawDirective:
+    """A single matched directive before dispatch."""
+
+    tag: str
+    attrs: dict[str, str]
+    body: str  # empty string for self-closing tags
+    span: tuple[int, int]
+
+
+# ---------------------------------------------------------------------------
+# Helper functions
+# ---------------------------------------------------------------------------
+def _parse_attrs(attr_string: str) -> dict[str, str]:
+    """Extract key="value" pairs from a raw attribute string.
+
+    Args:
+        attr_string: The raw attribute portion of a directive tag,
+            e.g. ' filename="api.yaml" title="API Spec"'.
+
+    Returns:
+        Dict mapping attribute names to their values.
+    """
+    return dict(_ATTR_PATTERN.findall(attr_string))
+
+
+def _is_line_start(text: str, pos: int) -> bool:
+    """Check whether *pos* is at the start of a line (optionally preceded by whitespace).
+
+    Used to enforce the DONE directive's line-start requirement so that
+    mid-sentence occurrences like ``aim for [DONE] sooner`` are ignored.
+
+    Args:
+        text: The full text being parsed.
+        pos: The character index of the opening bracket.
+
+    Returns:
+        True if every character between the preceding newline (or start of
+        string) and *pos* is whitespace.
+    """
+    line_start = text.rfind("\n", 0, pos) + 1  # 0 when no newline found
+    return text[line_start:pos].strip() == ""
+
+
+def _remove_spans(text: str, spans: list[tuple[int, int]]) -> str:
+    """Remove character spans from *text* in a single pass.
+
+    Spans may overlap; they are merged first so no region is double-removed.
+
+    Args:
+        text: The original text.
+        spans: List of (start, end) index pairs to remove.
+
+    Returns:
+        Text with all span regions excised.
+    """
+    if not spans:
+        return text
+    # Sort and merge overlapping spans
+    sorted_spans = sorted(spans)
+    merged: list[tuple[int, int]] = [sorted_spans[0]]
+    for start, end in sorted_spans[1:]:
+        prev_start, prev_end = merged[-1]
+        if start <= prev_end:
+            merged[-1] = (prev_start, max(prev_end, end))
+        else:
+            merged.append((start, end))
+    # Build result by keeping text between merged spans
+    parts: list[str] = []
+    cursor = 0
+    for start, end in merged:
+        parts.append(text[cursor:start])
+        cursor = end
+    parts.append(text[cursor:])
+    return "".join(parts)
+
+
+# ---------------------------------------------------------------------------
+# ParsedDirectives dataclass — public interface (unchanged)
+# ---------------------------------------------------------------------------
 @dataclass
 class ParsedDirectives:
     """Typed container for parsed agent directives."""
@@ -45,8 +137,85 @@ class ParsedDirectives:
     clean_text: str = ""
 
 
+# ---------------------------------------------------------------------------
+# Handler functions — one per directive tag
+# ---------------------------------------------------------------------------
+def _handle_memory(directive: _RawDirective, result: ParsedDirectives) -> None:
+    title = directive.attrs.get("title", "")
+    raw_tags = directive.attrs.get("tags", "")
+    tags = [t.strip() for t in raw_tags.split(",") if t.strip()]
+    result.memories.append((title, tags, directive.body.strip()))
+
+
+def _handle_memory_search(directive: _RawDirective, result: ParsedDirectives) -> None:
+    query = directive.attrs.get("query", "")
+    if query:
+        result.memory_searches.append(query)
+
+
+def _handle_artifact(directive: _RawDirective, result: ParsedDirectives) -> None:
+    filename = directive.attrs.get("filename", "")
+    if filename:
+        result.artifacts.append((filename, directive.body.strip()))
+
+
+def _handle_done(directive: _RawDirective, result: ParsedDirectives) -> None:
+    result.done = directive.attrs.get("reason", "complete")
+
+
+def _handle_ask_user(directive: _RawDirective, result: ParsedDirectives) -> None:
+    result.ask_user = directive.body.strip()
+
+
+def _handle_propose(directive: _RawDirective, result: ParsedDirectives) -> None:
+    title = directive.attrs.get("title", "")
+    result.proposals.append((title, directive.body.strip()))
+
+
+def _handle_accept(directive: _RawDirective, result: ParsedDirectives) -> None:
+    id_ = directive.attrs.get("id", "")
+    if id_:
+        result.accepts.append(id_)
+
+
+def _handle_reject(directive: _RawDirective, result: ParsedDirectives) -> None:
+    id_ = directive.attrs.get("id", "")
+    reason = directive.attrs.get("reason", "")
+    if id_:
+        result.rejects.append((id_, reason))
+
+
+def _handle_revise(directive: _RawDirective, result: ParsedDirectives) -> None:
+    id_ = directive.attrs.get("id", "")
+    if id_:
+        result.revisions.append((id_, directive.body.strip()))
+
+
+# Tag name -> handler mapping
+_HANDLERS: dict[str, object] = {
+    "MEMORY": _handle_memory,
+    "MEMORY_SEARCH": _handle_memory_search,
+    "ARTIFACT": _handle_artifact,
+    "DONE": _handle_done,
+    "ASK_USER": _handle_ask_user,
+    "PROPOSE": _handle_propose,
+    "ACCEPT": _handle_accept,
+    "REJECT": _handle_reject,
+    "REVISE": _handle_revise,
+}
+
+
+# ---------------------------------------------------------------------------
+# Main entry point
+# ---------------------------------------------------------------------------
 def parse_directives(text: str) -> ParsedDirectives:
     """Parse structured directives from agent response text.
+
+    Uses a two-pass approach:
+      1. Find all block directives ([TAG ...]...[/TAG]) and record their spans.
+      2. Find all self-closing directives ([TAG ...]), discarding any whose
+         span overlaps a block match (since block opening tags also match the
+         self-closing pattern).
 
     Args:
         text: Raw agent response text.
@@ -55,59 +224,49 @@ def parse_directives(text: str) -> ParsedDirectives:
         ParsedDirectives with typed fields for each directive type.
     """
     result = ParsedDirectives(clean_text=text)
+    directives: list[_RawDirective] = []
+    block_spans: list[tuple[int, int]] = []
 
-    # Parse [MEMORY title="..." tags="..."]content[/MEMORY]
-    for match in _MEMORY_PATTERN.finditer(text):
-        title = match.group(1)
-        tags = [t.strip() for t in match.group(2).split(",") if t.strip()]
-        content = match.group(3).strip()
-        result.memories.append((title, tags, content))
+    # Pass 1: block directives
+    for match in _BLOCK_PATTERN.finditer(text):
+        tag = match.group(1)
+        attrs = _parse_attrs(match.group(2))
+        body = match.group(3)
+        span = (match.start(), match.end())
 
-    # Parse [MEMORY_SEARCH query="..."]
-    for match in _SEARCH_PATTERN.finditer(text):
-        result.memory_searches.append(match.group(1))
+        # DONE must be at line-start to avoid mid-sentence false positives
+        if tag == "DONE" and not _is_line_start(text, match.start()):
+            continue
 
-    # Parse [ARTIFACT filename="..."]content[/ARTIFACT]
-    for match in _ARTIFACT_PATTERN.finditer(text):
-        result.artifacts.append((match.group(1), match.group(2).strip()))
+        directives.append(_RawDirective(tag=tag, attrs=attrs, body=body, span=span))
+        block_spans.append(span)
 
-    # Parse [DONE] or [DONE reason="..."]
-    done_match = _DONE_PATTERN.search(text)
-    if done_match:
-        result.done = done_match.group(1) or "complete"
+    # Pass 2: self-closing directives (discard overlaps with block spans)
+    for match in _SELF_CLOSING_PATTERN.finditer(text):
+        span = (match.start(), match.end())
 
-    # Parse [ASK_USER]question[/ASK_USER]
-    ask_match = _ASK_PATTERN.search(text)
-    if ask_match:
-        result.ask_user = ask_match.group(1).strip()
+        # Skip if this match overlaps any block directive span
+        if any(bs <= span[0] < be for bs, be in block_spans):
+            continue
 
-    # Parse [PROPOSE title="..."]content[/PROPOSE]
-    for match in _PROPOSE_PATTERN.finditer(text):
-        result.proposals.append((match.group(1), match.group(2).strip()))
+        tag = match.group(1)
+        attrs = _parse_attrs(match.group(2))
 
-    # Parse [ACCEPT id="..."]
-    for match in _ACCEPT_PATTERN.finditer(text):
-        result.accepts.append(match.group(1))
+        # DONE must be at line-start
+        if tag == "DONE" and not _is_line_start(text, match.start()):
+            continue
 
-    # Parse [REJECT id="..." reason="..."]
-    for match in _REJECT_PATTERN.finditer(text):
-        result.rejects.append((match.group(1), match.group(2)))
+        directives.append(_RawDirective(tag=tag, attrs=attrs, body="", span=span))
 
-    # Parse [REVISE id="..."]content[/REVISE]
-    for match in _REVISE_PATTERN.finditer(text):
-        result.revisions.append((match.group(1), match.group(2).strip()))
+    # Dispatch to handlers and collect spans for cleaning
+    all_spans: list[tuple[int, int]] = []
+    for directive in directives:
+        handler = _HANDLERS.get(directive.tag)
+        if handler:
+            handler(directive, result)
+        all_spans.append(directive.span)
 
-    # Clean text: remove all directives
-    clean = text
-    clean = _MEMORY_PATTERN.sub("", clean)
-    clean = _SEARCH_PATTERN.sub("", clean)
-    clean = _ARTIFACT_PATTERN.sub("", clean)
-    clean = _DONE_PATTERN.sub("", clean)
-    clean = _ASK_PATTERN.sub("", clean)
-    clean = _PROPOSE_PATTERN.sub("", clean)
-    clean = _ACCEPT_PATTERN.sub("", clean)
-    clean = _REJECT_PATTERN.sub("", clean)
-    clean = _REVISE_PATTERN.sub("", clean)
-    result.clean_text = clean.strip()
+    # Clean text: remove all matched directive spans in one pass
+    result.clean_text = _remove_spans(text, all_spans).strip()
 
     return result
