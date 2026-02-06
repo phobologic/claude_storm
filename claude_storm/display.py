@@ -248,11 +248,7 @@ class PlainDisplay:
         )
 
     def show_agent_stream_start(self, config: SessionConfig, agent: str) -> None:
-        """Display the agent response header before streaming begins."""
-        label = _truncate_label(config.agent_label(agent))
-        style = AGENT_STYLES.get(agent, AGENT_STYLES["a"])
-        color = style["border"]
-        self.console.print(Rule(label, style=color, align="left"))
+        """Reset stream state before streaming begins."""
         self._stream_has_content = False
 
     def show_agent_stream_delta(self, text: str) -> None:

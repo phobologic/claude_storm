@@ -122,11 +122,8 @@ class StormApp(App):
         bar.stop()
 
     def on_stream_start(self, message: StreamStart) -> None:
-        from rich.rule import Rule
-
         self._stream_parts.clear()
         self._stream_log = self.query_one("#output-log", SelectableRichLog)
-        self._stream_log.write(Rule(message.label, style=message.color, align="left"))
 
     def on_stream_delta(self, message: StreamDelta) -> None:
         self._stream_parts.append(message.text)
