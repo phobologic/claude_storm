@@ -40,6 +40,7 @@ class DisplayProtocol(Protocol):
     ) -> None: ...
     def show_status(self, message: str) -> None: ...
     def show_error(self, message: str) -> None: ...
+    def show_warning(self, message: str) -> None: ...
     def show_memory_save(self, agent: str, title: str) -> None: ...
     def show_artifact_save(self, filename: str) -> None: ...
     def show_done_signal(self, agent: str, reason: str) -> None: ...
@@ -117,6 +118,10 @@ class PlainDisplay:
     def show_error(self, message: str) -> None:
         """Display an error message."""
         self.console.print(f"[bold red]Error: {message}[/bold red]")
+
+    def show_warning(self, message: str) -> None:
+        """Display a warning message."""
+        self.console.print(f"[bold yellow]Warning: {message}[/bold yellow]")
 
     def show_memory_save(self, agent: str, title: str) -> None:
         """Display a memory save notification."""
@@ -303,6 +308,11 @@ class TextualDisplay:
         from claude_storm.messages import ShowRenderable
 
         self._post(ShowRenderable(Text(f"Error: {message}", style="bold red")))
+
+    def show_warning(self, message: str) -> None:
+        from claude_storm.messages import ShowRenderable
+
+        self._post(ShowRenderable(Text(f"Warning: {message}", style="bold yellow")))
 
     def show_memory_save(self, agent: str, title: str) -> None:
         from claude_storm.messages import ShowRenderable

@@ -204,8 +204,12 @@ def process_directives(
         search_query = directives.memory_searches[0]
 
     # Save artifacts
+    artifacts_dir = config.session_dir() / "artifacts"
     for filename, content in directives.artifacts:
-        artifact_path = config.session_dir() / "artifacts" / filename
+        artifact_path = (artifacts_dir / filename).resolve()
+        if not artifact_path.is_relative_to(artifacts_dir.resolve()):
+            display.show_warning(f"Blocked artifact with unsafe filename: {filename!r}")
+            continue
         artifact_path.parent.mkdir(parents=True, exist_ok=True)
         artifact_path.write_text(content + "\n")
         display.show_artifact_save(filename)
