@@ -60,7 +60,12 @@ def _build_directives_section(config: SessionConfig) -> str:
         "('I agree', 'good point', 'I'm sold') does NOT "
         "create a shared record. Only [PROPOSE] + [ACCEPT] "
         "does. Confirmed agreements become part of the "
-        "session's formal output. Propose early and "
+        "session's formal output and are saved as "
+        "individual files in the `agreements/` directory "
+        "(e.g. `agreements/a3f2_use-rest.md`) — use "
+        "your Read tool on the specific file to review "
+        "the full text when you need it for reference or "
+        "revision. Propose early and "
         "forcefully — if the other agent disagrees, that "
         "sharpens the debate.\n"
         '- `[ACCEPT id="..."]` — Accept a pending agreement '

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from uuid import uuid4
 
 from claude_storm.config import SessionConfig
@@ -10,6 +11,49 @@ from claude_storm.config import SessionConfig
 def generate_proposal_id() -> str:
     """Generate a 4-character hex ID for a proposal."""
     return uuid4().hex[:4]
+
+
+def _extract_summary(content: str) -> str:
+    """Extract a compact summary from agreement/proposal content.
+
+    Takes the first line, strips markdown heading prefixes, and truncates
+    to 120 characters.
+
+    Args:
+        content: The full agreement or proposal content.
+
+    Returns:
+        A one-line summary string.
+    """
+    first_line = content.strip().split("\n")[0][:120]
+    return re.sub(r"^#+\s*", "", first_line)
+
+
+def _slugify(title: str) -> str:
+    """Convert a title to a filename-safe slug.
+
+    Args:
+        title: The title to slugify.
+
+    Returns:
+        A lowercase, hyphenated slug truncated to 60 characters.
+    """
+    slug = re.sub(r"[^\w\s-]", "", title.lower())
+    slug = re.sub(r"[\s_]+", "-", slug).strip("-")
+    return slug[:60]
+
+
+def _agreement_filename(agreement: dict) -> str:
+    """Build a per-agreement filename from its ID and title.
+
+    Args:
+        agreement: An agreement dict with 'id' and 'title' keys.
+
+    Returns:
+        Filename like ``a3f2_use-rest.md``.
+    """
+    slug = _slugify(agreement["title"])
+    return f"{agreement['id']}_{slug}.md"
 
 
 def create_proposal(
@@ -42,6 +86,7 @@ def create_proposal(
             "proposed_by": agent,
             "turn": turn,
             "revises": revises,
+            "summary": _extract_summary(content),
         }
     )
     return proposal_id
@@ -79,9 +124,10 @@ def accept_proposal(
         "proposed_turn": proposal["turn"],
         "accepted_turn": turn,
         "revises": proposal.get("revises"),
+        "summary": proposal.get("summary", _extract_summary(proposal["content"])),
     }
     config.accepted_agreements.append(agreement)
-    write_agreements_file(config)
+    write_agreement_files(config)
     return agreement
 
 
@@ -104,30 +150,117 @@ def reject_proposal(
     return None
 
 
-def write_agreements_file(config: SessionConfig) -> None:
-    """Rewrite agreements.md from accepted_agreements."""
-    path = config.session_dir() / "agreements.md"
-    path.parent.mkdir(parents=True, exist_ok=True)
+def _format_agreement_block(a: dict) -> str:
+    """Format a single agreement as a markdown block.
 
+    Args:
+        a: An accepted agreement dict.
+
+    Returns:
+        Markdown string with header, metadata, and content.
+    """
+    label = "Agent A" if a["proposed_by"] == "a" else "Agent B"
+    if a.get("revises"):
+        header = f"## [{a['revises']} \u2192 {a['id']}] {a['title']} (revised)"
+        meta = (
+            f"**Original:** Turn {a.get('revises', '?')} | "
+            f"**Revised:** Turn {a['proposed_turn']} by {label} | "
+            f"**Accepted:** Turn {a['accepted_turn']}"
+        )
+    else:
+        header = f"## [{a['id']}] {a['title']}"
+        meta = (
+            f"**Proposed:** Turn {a['proposed_turn']} by {label} | "
+            f"**Accepted:** Turn {a['accepted_turn']}"
+        )
+    return f"{header}\n{meta}\n\n{a['content']}"
+
+
+def write_agreement_files(config: SessionConfig) -> None:
+    """Write per-agreement files and a combined agreements.md.
+
+    Each accepted agreement is written to its own file in the
+    ``agreements/`` subdirectory with a human-readable filename
+    (e.g. ``a3f2_use-rest.md``).  A concatenated ``agreements.md``
+    is also written for backwards compatibility and human reading.
+
+    Stale files (from revoked/revised agreements) are removed.
+
+    Args:
+        config: The session configuration.
+    """
+    session_dir = config.session_dir()
+    agreements_dir = session_dir / "agreements"
+    agreements_dir.mkdir(parents=True, exist_ok=True)
+
+    # Track current agreement IDs for stale-file cleanup
+    current_ids = {a["id"] for a in config.accepted_agreements}
+
+    # Write individual per-agreement files
     parts: list[str] = []
     for a in config.accepted_agreements:
-        label = "Agent A" if a["proposed_by"] == "a" else "Agent B"
-        if a.get("revises"):
-            header = f"## [{a['revises']} \u2192 {a['id']}] {a['title']} (revised)"
-            meta = (
-                f"**Original:** Turn {a.get('revises', '?')} | "
-                f"**Revised:** Turn {a['proposed_turn']} by {label} | "
-                f"**Accepted:** Turn {a['accepted_turn']}"
-            )
-        else:
-            header = f"## [{a['id']}] {a['title']}"
-            meta = (
-                f"**Proposed:** Turn {a['proposed_turn']} by {label} | "
-                f"**Accepted:** Turn {a['accepted_turn']}"
-            )
-        parts.append(f"{header}\n{meta}\n\n{a['content']}")
+        block = _format_agreement_block(a)
+        parts.append(block)
+        filename = _agreement_filename(a)
+        (agreements_dir / filename).write_text(block + "\n")
 
-    path.write_text("\n\n---\n\n".join(parts) + "\n" if parts else "")
+    # Remove stale files whose ID prefix no longer matches any agreement
+    for existing in agreements_dir.glob("*.md"):
+        file_id = existing.stem.split("_", 1)[0]
+        if file_id not in current_ids:
+            existing.unlink()
+
+    # Write combined agreements.md for backwards compat
+    combined_path = session_dir / "agreements.md"
+    combined_path.write_text("\n\n---\n\n".join(parts) + "\n" if parts else "")
+
+
+def format_agreement_index(config: SessionConfig) -> str:
+    """Format a compact index of confirmed agreements.
+
+    Each entry shows the ID, title, turn range, summary, and the
+    per-agreement file path so agents can read individual files.
+
+    Args:
+        config: The session configuration.
+
+    Returns:
+        Formatted index string, or empty string if no agreements.
+    """
+    if not config.accepted_agreements:
+        return ""
+
+    count = len(config.accepted_agreements)
+    lines = [f"You have {count} confirmed agreement(s):"]
+    for a in config.accepted_agreements:
+        summary = a.get("summary", _extract_summary(a["content"]))
+        filename = _agreement_filename(a)
+        lines.append(
+            f"- [{a['id']}] **{a['title']}** "
+            f"(Turn {a['proposed_turn']}\u2192{a['accepted_turn']}): "
+            f"{summary}"
+        )
+        lines.append(f"  File: agreements/{filename}")
+    return "\n".join(lines)
+
+
+def format_agreements_for_compilation(config: SessionConfig) -> str:
+    """Format the full content of all confirmed agreements for compilation.
+
+    Used by the deliverable compiler which needs complete agreement text
+    in a single prompt. Not for per-turn agent prompts.
+
+    Args:
+        config: The session configuration.
+
+    Returns:
+        Full-content agreements text, or empty string if none.
+    """
+    if not config.accepted_agreements:
+        return ""
+
+    parts = [_format_agreement_block(a) for a in config.accepted_agreements]
+    return "\n\n---\n\n".join(parts)
 
 
 def format_agreements_for_prompt(
@@ -135,7 +268,11 @@ def format_agreements_for_prompt(
     current_agent: str,
     current_turn: int | None = None,
 ) -> str:
-    """Format confirmed and pending agreements for inclusion in a turn prompt.
+    """Format agreements for inclusion in a per-turn agent prompt.
+
+    Returns a compact index of confirmed agreements (not full content),
+    full text of pending proposals awaiting response, and a file reference
+    so agents can read ``agreements.md`` on demand.
 
     Args:
         config: The session configuration.
@@ -148,18 +285,12 @@ def format_agreements_for_prompt(
     """
     sections: list[str] = []
 
-    # Confirmed agreements
-    if config.accepted_agreements:
-        lines = ["## Confirmed"]
-        for a in config.accepted_agreements:
-            lines.append(
-                f"- [{a['id']}] **{a['title']}** "
-                f"(Turn {a['proposed_turn']}\u2192{a['accepted_turn']})"
-            )
-            lines.append(f"  {a['content']}")
-        sections.append("\n".join(lines))
+    # Compact index of confirmed agreements (no full content)
+    index = format_agreement_index(config)
+    if index:
+        sections.append(f"## Confirmed\n{index}")
 
-    # Pending proposals awaiting the current agent's response
+    # Pending proposals awaiting the current agent's response (full content)
     other_agent = "b" if current_agent == "a" else "a"
     pending_for_me = [
         p for p in config.pending_proposals if p["proposed_by"] == other_agent
@@ -195,6 +326,17 @@ def format_agreements_for_prompt(
         return ""
 
     result = "# Shared Agreements\n\n" + "\n\n".join(sections)
+
+    # File reference so agents can read full agreement text on demand
+    if config.accepted_agreements:
+        session_dir = config.session_dir()
+        result += (
+            f"\n\nEach agreement is saved to its own file in "
+            f"`{session_dir}/agreements/` (see the File path "
+            f"listed next to each agreement above). Use your "
+            f"Read tool on the specific file when you need to "
+            f"review or revise an agreement."
+        )
 
     # Stale agreement nudge: if agreements exist but the last one was accepted
     # 4+ turns ago, remind the agent to formalize new consensus points

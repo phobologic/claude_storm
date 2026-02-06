@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -120,6 +121,15 @@ class SessionConfig:
         data.setdefault("accepted_agreements", [])
         data.setdefault("stop_reason", None)
         data.setdefault("stop_error", None)
+        # Backfill summary on legacy agreement/proposal dicts
+        for a in data["accepted_agreements"]:
+            if "summary" not in a:
+                first_line = a.get("content", "").strip().split("\n")[0][:120]
+                a["summary"] = re.sub(r"^#+\s*", "", first_line)
+        for p in data["pending_proposals"]:
+            if "summary" not in p:
+                first_line = p.get("content", "").strip().split("\n")[0][:120]
+                p["summary"] = re.sub(r"^#+\s*", "", first_line)
         return cls(**data)
 
     def ensure_dirs(self) -> None:
@@ -128,6 +138,7 @@ class SessionConfig:
         (d / "agent-a" / "memory").mkdir(parents=True, exist_ok=True)
         (d / "agent-b" / "memory").mkdir(parents=True, exist_ok=True)
         (d / "artifacts").mkdir(parents=True, exist_ok=True)
+        (d / "agreements").mkdir(parents=True, exist_ok=True)
 
     def agent_label(self, agent: str) -> str:
         """Return a display label for an agent ('a' or 'b')."""
