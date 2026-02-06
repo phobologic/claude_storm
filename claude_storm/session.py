@@ -146,19 +146,16 @@ def _run_turn(
             turn_prompt=turn_prompt,
         )
 
-    with display.thinking_status(
-        config.agent_label(agent), timeout=config.agent_timeout
-    ):
-        response = invoke_agent(
-            config=config,
-            agent=agent,
-            prompt=turn_prompt,
-            system_prompt=system_prompt,
-            timeout=config.agent_timeout,
-        )
-
-    # Display response
-    display.show_agent_response(config, agent, response.text)
+    display.show_agent_stream_start(config, agent)
+    response = invoke_agent(
+        config=config,
+        agent=agent,
+        prompt=turn_prompt,
+        system_prompt=system_prompt,
+        timeout=config.agent_timeout,
+        on_delta=display.show_agent_stream_delta,
+    )
+    display.show_agent_stream_end()
 
     # Parse directives
     directives = parse_directives(response.text)

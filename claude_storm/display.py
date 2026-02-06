@@ -57,6 +57,9 @@ class DisplayProtocol(Protocol):
     def show_summary(self, summary: str) -> None: ...
     def show_user_nudge(self, text: str) -> None: ...
     def show_input_hint(self) -> None: ...
+    def show_agent_stream_start(self, config: SessionConfig, agent: str) -> None: ...
+    def show_agent_stream_delta(self, text: str) -> None: ...
+    def show_agent_stream_end(self) -> None: ...
     def thinking_status(
         self, label: str, timeout: int = 600, **kwargs: object
     ) -> object: ...
@@ -227,6 +230,21 @@ class PlainDisplay:
             "[bold yellow]\u25b6 Type at any time to"
             " nudge the conversation.[/bold yellow]"
         )
+
+    def show_agent_stream_start(self, config: SessionConfig, agent: str) -> None:
+        """Display the agent response header before streaming begins."""
+        label = _truncate_label(config.agent_label(agent))
+        style = AGENT_STYLES.get(agent, AGENT_STYLES["a"])
+        color = style["border"]
+        self.console.print(Rule(label, style=color, align="left"))
+
+    def show_agent_stream_delta(self, text: str) -> None:
+        """Print an incremental text chunk (no trailing newline)."""
+        self.console.print(text, end="")
+
+    def show_agent_stream_end(self) -> None:
+        """Finalize the streamed response with a trailing newline."""
+        self.console.print()
 
     @contextmanager
     def thinking_status(
@@ -408,6 +426,27 @@ class TextualDisplay:
     def show_input_hint(self) -> None:
         # No-op: the InputBar placeholder already displays this hint.
         pass
+
+    def show_agent_stream_start(self, config: SessionConfig, agent: str) -> None:
+        """Post a StreamStart message to the TUI."""
+        from claude_storm.messages import StreamStart
+
+        label = _truncate_label(config.agent_label(agent))
+        style = AGENT_STYLES.get(agent, AGENT_STYLES["a"])
+        color = style["border"]
+        self._post(StreamStart(label, color))
+
+    def show_agent_stream_delta(self, text: str) -> None:
+        """Post a StreamDelta message to the TUI."""
+        from claude_storm.messages import StreamDelta
+
+        self._post(StreamDelta(text))
+
+    def show_agent_stream_end(self) -> None:
+        """Post a StreamEnd message to the TUI."""
+        from claude_storm.messages import StreamEnd
+
+        self._post(StreamEnd())
 
     @contextmanager
     def thinking_status(

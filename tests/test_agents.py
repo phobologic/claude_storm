@@ -1,13 +1,15 @@
 """Tests for agent CLI invocation."""
 
+import io
 import json
-import subprocess as _subprocess
 from unittest.mock import MagicMock, patch
 
 from claude_storm.agents import (
     _MAX_RESPONSE_BYTES,
     _build_allowed_tools,
     _extract_text,
+    _parse_stream_event,
+    _read_stream,
     _validate_model,
     _validate_reference_dir,
     invoke_agent,
@@ -68,15 +70,233 @@ class TestSensitiveRefDirFiltered:
         assert not any("Read(//etc/**)" in t for t in tools)
 
 
+_SEL_PATCH = "claude_storm.agents.selectors.DefaultSelector"
+_POPEN_PATCH = "claude_storm.agents.subprocess.Popen"
+
+# ---------- Stream event parsing ----------
+
+
+class TestParseStreamEvent:
+    """Test _parse_stream_event NDJSON line parser."""
+
+    def test_text_delta_extracted(self):
+        line = json.dumps(
+            {
+                "type": "stream_event",
+                "event": {
+                    "type": "content_block_delta",
+                    "index": 0,
+                    "delta": {"type": "text_delta", "text": "hello"},
+                },
+            }
+        )
+        delta, event = _parse_stream_event(line)
+        assert delta == "hello"
+        assert event is not None
+
+    def test_result_event(self):
+        line = json.dumps(
+            {"type": "result", "subtype": "success", "result": "full text"}
+        )
+        delta, event = _parse_stream_event(line)
+        assert delta is None
+        assert event["type"] == "result"
+        assert event["result"] == "full text"
+
+    def test_system_init_ignored(self):
+        line = json.dumps({"type": "system", "subtype": "init"})
+        delta, event = _parse_stream_event(line)
+        assert delta is None
+        assert event["type"] == "system"
+
+    def test_message_start_ignored(self):
+        line = json.dumps({"type": "stream_event", "event": {"type": "message_start"}})
+        delta, event = _parse_stream_event(line)
+        assert delta is None
+        assert event is not None
+
+    def test_invalid_json(self):
+        delta, event = _parse_stream_event("not json")
+        assert delta is None
+        assert event is None
+
+    def test_empty_line(self):
+        delta, event = _parse_stream_event("")
+        assert delta is None
+        assert event is None
+
+
+# ---------- Stream reader ----------
+
+
+def _make_stream_lines(events):
+    """Build NDJSON text from a list of event dicts."""
+    return "\n".join(json.dumps(e) for e in events) + "\n"
+
+
+def _mock_stream_popen(events, returncode=0, stderr=""):
+    """Create a mock Popen yielding NDJSON events on stdout.
+
+    Uses io.StringIO for stdout/stderr. Also mocks stdin.
+    """
+    stdout_text = _make_stream_lines(events)
+    mock_proc = MagicMock()
+    mock_proc.stdout = io.StringIO(stdout_text)
+    mock_proc.stderr = io.StringIO(stderr)
+    mock_proc.stdin = MagicMock()
+    mock_proc.returncode = returncode
+    mock_proc.wait.return_value = returncode
+    mock_proc.kill = MagicMock()
+    return mock_proc
+
+
+class TestStreamReader:
+    """Test _read_stream with mocked selector and StringIO."""
+
+    def _run_read_stream(self, events, timeout=600, on_delta=None):
+        """Helper to run _read_stream with mocked selectors."""
+        proc = _mock_stream_popen(events)
+
+        # Mock the selector since StringIO doesn't have a real fd
+        mock_sel = MagicMock()
+
+        # sel.select() should return a truthy list for each line,
+        # then eventually readline() returns "" (EOF)
+        mock_sel.select.return_value = [(None, None)]
+
+        with patch(_SEL_PATCH, return_value=mock_sel):
+            text, result_event, timed_out, oversized = _read_stream(
+                proc, timeout, on_delta
+            )
+
+        return text, result_event, timed_out, oversized, proc
+
+    def test_normal_streaming(self):
+        """Multiple deltas followed by a result event."""
+        events = [
+            {"type": "system", "subtype": "init"},
+            {
+                "type": "stream_event",
+                "event": {
+                    "type": "content_block_delta",
+                    "index": 0,
+                    "delta": {"type": "text_delta", "text": "hello"},
+                },
+            },
+            {
+                "type": "stream_event",
+                "event": {
+                    "type": "content_block_delta",
+                    "index": 0,
+                    "delta": {"type": "text_delta", "text": " world"},
+                },
+            },
+            {"type": "result", "subtype": "success", "result": "hello world"},
+        ]
+        text, result_event, timed_out, oversized, _ = self._run_read_stream(events)
+        assert text == "hello world"
+        assert result_event is not None
+        assert result_event["type"] == "result"
+        assert not timed_out
+        assert not oversized
+
+    def test_on_delta_callback(self):
+        """on_delta is called for each text delta."""
+        events = [
+            {
+                "type": "stream_event",
+                "event": {
+                    "type": "content_block_delta",
+                    "index": 0,
+                    "delta": {"type": "text_delta", "text": "chunk1"},
+                },
+            },
+            {
+                "type": "stream_event",
+                "event": {
+                    "type": "content_block_delta",
+                    "index": 0,
+                    "delta": {"type": "text_delta", "text": "chunk2"},
+                },
+            },
+            {"type": "result", "subtype": "success", "result": "chunk1chunk2"},
+        ]
+        deltas = []
+        self._run_read_stream(events, on_delta=deltas.append)
+        assert deltas == ["chunk1", "chunk2"]
+
+    def test_canonical_result_preferred(self):
+        """Result event text is preferred over accumulated deltas."""
+        events = [
+            {
+                "type": "stream_event",
+                "event": {
+                    "type": "content_block_delta",
+                    "index": 0,
+                    "delta": {"type": "text_delta", "text": "partial"},
+                },
+            },
+            {"type": "result", "subtype": "success", "result": "canonical text"},
+        ]
+        text, _, _, _, _ = self._run_read_stream(events)
+        assert text == "canonical text"
+
+    def test_idle_timeout(self):
+        """Selector returning empty triggers idle timeout."""
+        proc = _mock_stream_popen([])
+
+        mock_sel = MagicMock()
+        # Empty list = timeout
+        mock_sel.select.return_value = []
+
+        with patch(_SEL_PATCH, return_value=mock_sel):
+            _, _, timed_out, _oversized = _read_stream(proc, 10, None)
+
+        assert timed_out
+        assert not _oversized
+        proc.kill.assert_called_once()
+
+    def test_eof_mid_stream(self):
+        """EOF without a result event uses accumulated text."""
+        events = [
+            {
+                "type": "stream_event",
+                "event": {
+                    "type": "content_block_delta",
+                    "index": 0,
+                    "delta": {"type": "text_delta", "text": "partial"},
+                },
+            },
+            # No result event — EOF after this
+        ]
+        text, result_event, timed_out, _oversized, _ = self._run_read_stream(events)
+        assert text == "partial"
+        assert result_event is None
+        assert not timed_out
+
+
+# ---------- Response size limit ----------
+
+
 class TestResponseSizeLimit:
     """Issue .8: Large responses are rejected."""
 
     def test_oversized_response_returns_error(self, make_config):
         config = make_config()
-        huge_output = "x" * (_MAX_RESPONSE_BYTES + 1)
-        mock_proc = _mock_popen(stdout=huge_output)
+        # Create events that exceed the byte limit
+        big_text = "x" * (_MAX_RESPONSE_BYTES + 1)
+        events = [
+            {"type": "result", "subtype": "success", "result": big_text},
+        ]
+        mock_proc = _mock_stream_popen(events)
 
-        with patch("claude_storm.agents.subprocess.Popen", return_value=mock_proc):
+        with (
+            patch(_POPEN_PATCH, return_value=mock_proc),
+            patch(_SEL_PATCH) as mock_sel_cls,
+        ):
+            mock_sel = MagicMock()
+            mock_sel.select.return_value = [(None, None)]
+            mock_sel_cls.return_value = mock_sel
             response = invoke_agent(config, "a", "prompt")
 
         assert response.is_error
@@ -84,40 +304,62 @@ class TestResponseSizeLimit:
 
     def test_normal_response_passes(self, make_config):
         config = make_config()
-        mock_proc = _mock_popen(
-            stdout=json.dumps({"result": "normal response"}),
-        )
+        events = [
+            {
+                "type": "stream_event",
+                "event": {
+                    "type": "content_block_delta",
+                    "index": 0,
+                    "delta": {"type": "text_delta", "text": "normal"},
+                },
+            },
+            {"type": "result", "subtype": "success", "result": "normal response"},
+        ]
+        mock_proc = _mock_stream_popen(events)
 
-        with patch("claude_storm.agents.subprocess.Popen", return_value=mock_proc):
+        with (
+            patch(_POPEN_PATCH, return_value=mock_proc),
+            patch(_SEL_PATCH) as mock_sel_cls,
+        ):
+            mock_sel = MagicMock()
+            mock_sel.select.return_value = [(None, None)]
+            mock_sel_cls.return_value = mock_sel
             response = invoke_agent(config, "a", "prompt")
 
         assert not response.is_error
+        assert response.text == "normal response"
 
 
-def _mock_popen(stdout="", stderr="", returncode=0):
-    """Create a mock Popen that returns given stdout/stderr."""
-    mock_proc = MagicMock()
-    mock_proc.communicate.return_value = (stdout, stderr)
-    mock_proc.returncode = returncode
-    return mock_proc
+# ---------- invoke_agent ----------
 
 
 class TestInvokeAgent:
+    def _invoke_with_events(self, config, events, agent="a", **kwargs):
+        """Helper to invoke_agent with mocked streaming subprocess."""
+        mock_proc = _mock_stream_popen(events)
+
+        with (
+            patch(_POPEN_PATCH, return_value=mock_proc) as mock_popen_cls,
+            patch(_SEL_PATCH) as mock_sel_cls,
+        ):
+            mock_sel = MagicMock()
+            mock_sel.select.return_value = [(None, None)]
+            mock_sel_cls.return_value = mock_sel
+            response = invoke_agent(config, agent, **kwargs)
+
+        return response, mock_popen_cls
+
     def test_first_turn_uses_session_id(self, make_config):
         config = make_config()
-        mock_proc = _mock_popen(
-            stdout=json.dumps({"result": "Hello from agent A"}),
+        events = [
+            {"type": "result", "subtype": "success", "result": "Hello from agent A"},
+        ]
+        response, mock_popen_cls = self._invoke_with_events(
+            config,
+            events,
+            prompt="Start the brainstorm",
+            system_prompt="You are an architect",
         )
-
-        with patch(
-            "claude_storm.agents.subprocess.Popen", return_value=mock_proc
-        ) as mock_popen_cls:
-            response = invoke_agent(
-                config,
-                "a",
-                "Start the brainstorm",
-                system_prompt="You are an architect",
-            )
 
         cmd = mock_popen_cls.call_args[0][0]
         assert "--session-id" in cmd
@@ -125,20 +367,20 @@ class TestInvokeAgent:
         assert "--system-prompt" in cmd
         assert "--model" in cmd
         assert "--allowedTools" in cmd
+        assert "--output-format" in cmd
+        idx = cmd.index("--output-format")
+        assert cmd[idx + 1] == "stream-json"
+        assert "--verbose" in cmd
         assert response.text == "Hello from agent A"
         assert response.cmd is not None
         assert "claude" in response.cmd
 
     def test_first_turn_has_path_scoped_tools(self, make_config):
         config = make_config()
-        mock_proc = _mock_popen(
-            stdout=json.dumps({"result": "ok"}),
+        events = [{"type": "result", "subtype": "success", "result": "ok"}]
+        _, mock_popen_cls = self._invoke_with_events(
+            config, events, prompt="prompt", system_prompt="sys"
         )
-
-        with patch(
-            "claude_storm.agents.subprocess.Popen", return_value=mock_proc
-        ) as mock_popen_cls:
-            invoke_agent(config, "a", "prompt", system_prompt="sys")
 
         cmd = mock_popen_cls.call_args[0][0]
         session_path = str(config.session_dir().resolve()).lstrip("/")
@@ -156,14 +398,10 @@ class TestInvokeAgent:
 
     def test_subsequent_turn_uses_resume(self, make_config):
         config = make_config()
-        mock_proc = _mock_popen(
-            stdout=json.dumps({"result": "Continuing..."}),
+        events = [{"type": "result", "subtype": "success", "result": "Continuing..."}]
+        response, mock_popen_cls = self._invoke_with_events(
+            config, events, agent="b", prompt="Your turn"
         )
-
-        with patch(
-            "claude_storm.agents.subprocess.Popen", return_value=mock_proc
-        ) as mock_popen_cls:
-            response = invoke_agent(config, "b", "Your turn")
 
         cmd = mock_popen_cls.call_args[0][0]
         assert "--resume" in cmd
@@ -175,14 +413,8 @@ class TestInvokeAgent:
     def test_resume_includes_reference_dir_tools(self, make_config):
         config = make_config()
         config.reference_dirs = ["/some/ref/dir"]
-        mock_proc = _mock_popen(
-            stdout=json.dumps({"result": "ok"}),
-        )
-
-        with patch(
-            "claude_storm.agents.subprocess.Popen", return_value=mock_proc
-        ) as mock_popen_cls:
-            invoke_agent(config, "a", "Continue")
+        events = [{"type": "result", "subtype": "success", "result": "ok"}]
+        _, mock_popen_cls = self._invoke_with_events(config, events, prompt="Continue")
 
         cmd = mock_popen_cls.call_args[0][0]
         assert "--resume" in cmd
@@ -192,23 +424,39 @@ class TestInvokeAgent:
 
     def test_timeout_returns_error(self, make_config):
         config = make_config()
-        mock_proc = MagicMock()
-        mock_proc.communicate.side_effect = _subprocess.TimeoutExpired(
-            cmd="claude",
-            timeout=300,
-        )
 
-        with patch("claude_storm.agents.subprocess.Popen", return_value=mock_proc):
+        # Create a proc that triggers idle timeout
+        mock_proc = MagicMock()
+        mock_proc.stdin = MagicMock()
+        mock_proc.stdout = io.StringIO("")
+        mock_proc.stderr = io.StringIO("")
+        mock_proc.returncode = -9
+        mock_proc.wait.return_value = -9
+
+        mock_sel = MagicMock()
+        mock_sel.select.return_value = []  # Idle timeout
+
+        with (
+            patch(_POPEN_PATCH, return_value=mock_proc),
+            patch(_SEL_PATCH, return_value=mock_sel),
+        ):
             response = invoke_agent(config, "a", "prompt", timeout=300)
 
         assert response.is_error
+        assert response.timed_out
         assert "timed out" in response.text
 
     def test_nonzero_exit_returns_error(self, make_config):
         config = make_config()
-        mock_proc = _mock_popen(stderr="Some error", returncode=1)
+        mock_proc = _mock_stream_popen([], returncode=1, stderr="Some error")
 
-        with patch("claude_storm.agents.subprocess.Popen", return_value=mock_proc):
+        mock_sel = MagicMock()
+        mock_sel.select.return_value = [(None, None)]
+
+        with (
+            patch(_POPEN_PATCH, return_value=mock_proc),
+            patch(_SEL_PATCH, return_value=mock_sel),
+        ):
             response = invoke_agent(config, "a", "prompt")
 
         assert response.is_error
@@ -216,23 +464,48 @@ class TestInvokeAgent:
 
     def test_cmd_populated_on_error(self, make_config):
         config = make_config()
-        mock_proc = _mock_popen(stderr="fail", returncode=1)
+        mock_proc = _mock_stream_popen([], returncode=1, stderr="fail")
 
-        with patch("claude_storm.agents.subprocess.Popen", return_value=mock_proc):
+        mock_sel = MagicMock()
+        mock_sel.select.return_value = [(None, None)]
+
+        with (
+            patch(_POPEN_PATCH, return_value=mock_proc),
+            patch(_SEL_PATCH, return_value=mock_sel),
+        ):
             response = invoke_agent(config, "a", "prompt")
 
         assert response.cmd is not None
         assert "claude" in response.cmd
 
-    def test_invalid_json_falls_back(self, make_config):
+    def test_on_delta_callback_wired(self, make_config):
+        """on_delta callback is invoked during invoke_agent."""
         config = make_config()
-        mock_proc = _mock_popen(stdout="Plain text response")
+        events = [
+            {
+                "type": "stream_event",
+                "event": {
+                    "type": "content_block_delta",
+                    "index": 0,
+                    "delta": {"type": "text_delta", "text": "streamed"},
+                },
+            },
+            {"type": "result", "subtype": "success", "result": "streamed"},
+        ]
+        deltas = []
+        mock_proc = _mock_stream_popen(events)
 
-        with patch("claude_storm.agents.subprocess.Popen", return_value=mock_proc):
-            response = invoke_agent(config, "a", "prompt")
+        mock_sel = MagicMock()
+        mock_sel.select.return_value = [(None, None)]
 
-        assert response.text == "Plain text response"
-        assert not response.is_error
+        with (
+            patch(_POPEN_PATCH, return_value=mock_proc),
+            patch(_SEL_PATCH, return_value=mock_sel),
+        ):
+            response = invoke_agent(config, "a", "prompt", on_delta=deltas.append)
+
+        assert deltas == ["streamed"]
+        assert response.text == "streamed"
 
 
 class TestBuildAllowedTools:

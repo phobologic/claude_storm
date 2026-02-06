@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import json
 import re
+import selectors
 import subprocess
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from claude_storm.config import SessionConfig
@@ -140,6 +142,128 @@ def _build_allowed_tools(config: SessionConfig, readonly: bool = False) -> list[
     return tools
 
 
+def _parse_stream_event(line: str) -> tuple[str | None, dict | None]:
+    """Parse one NDJSON line from stream-json output.
+
+    Args:
+        line: A single JSON line from the stream.
+
+    Returns:
+        Tuple of (text_delta or None, parsed_event or None).
+        text_delta is set only for content_block_delta events with text_delta type.
+    """
+    try:
+        event = json.loads(line)
+    except json.JSONDecodeError:
+        return None, None
+
+    if not isinstance(event, dict):
+        return None, event
+
+    if event.get("type") == "stream_event":
+        inner = event.get("event", {})
+        if (
+            inner.get("type") == "content_block_delta"
+            and isinstance(inner.get("delta"), dict)
+            and inner["delta"].get("type") == "text_delta"
+        ):
+            return inner["delta"].get("text"), event
+        return None, event
+
+    # result and other top-level event types
+    return None, event
+
+
+def _read_stream(
+    proc: subprocess.Popen,
+    timeout: int,
+    on_delta: Callable[[str], None] | None,
+) -> tuple[str, dict | None, bool, bool]:
+    """Read NDJSON lines from a subprocess stdout with idle timeout.
+
+    Uses selectors to detect idle periods. Each line of output resets the
+    idle timer. If no output is received for ``timeout`` seconds, the
+    process is killed.
+
+    Args:
+        proc: The subprocess to read from.
+        timeout: Idle timeout in seconds.
+        on_delta: Optional callback invoked with each text delta chunk.
+
+    Returns:
+        Tuple of (accumulated_text, last_result_event, timed_out, oversized).
+    """
+    sel = selectors.DefaultSelector()
+    sel.register(proc.stdout, selectors.EVENT_READ)
+
+    text_parts: list[str] = []
+    total_bytes = 0
+    result_event: dict | None = None
+    timed_out = False
+    oversized = False
+
+    try:
+        while True:
+            ready = sel.select(timeout=timeout)
+            if not ready:
+                # Idle timeout — no data for `timeout` seconds
+                proc.kill()
+                timed_out = True
+                break
+
+            line = proc.stdout.readline()
+            if not line:
+                # EOF — process closed stdout
+                break
+
+            line = line.strip()
+            if not line:
+                continue
+
+            total_bytes += len(line)
+            if total_bytes > _MAX_RESPONSE_BYTES:
+                proc.kill()
+                oversized = True
+                break
+
+            delta, event = _parse_stream_event(line)
+
+            if delta is not None:
+                text_parts.append(delta)
+                if on_delta is not None:
+                    on_delta(delta)
+
+            # Track the final result event
+            if event is not None and event.get("type") == "result":
+                result_event = event
+    finally:
+        sel.unregister(proc.stdout)
+        sel.close()
+
+    # Prefer canonical result text over accumulated deltas
+    if result_event is not None and "result" in result_event:
+        final_text = result_event["result"]
+    else:
+        final_text = "".join(text_parts)
+
+    return final_text, result_event, timed_out, oversized
+
+
+def _drain_stderr(proc: subprocess.Popen) -> list[str]:
+    """Read all stderr lines from a process in the current thread.
+
+    Args:
+        proc: The subprocess whose stderr to drain.
+
+    Returns:
+        List of stderr lines.
+    """
+    lines: list[str] = []
+    for line in proc.stderr:
+        lines.append(line)
+    return lines
+
+
 def invoke_agent(
     config: SessionConfig,
     agent: str,
@@ -148,6 +272,7 @@ def invoke_agent(
     timeout: int = 600,
     session_id: str | None = None,
     readonly: bool = False,
+    on_delta: Callable[[str], None] | None = None,
 ) -> AgentResponse:
     """Invoke a Claude CLI session for an agent.
 
@@ -163,6 +288,9 @@ def invoke_agent(
         timeout: Per-turn timeout in seconds.
         session_id: Override session ID. When provided, creates a fresh
             session instead of resuming the agent's brainstorming session.
+        readonly: When True, omit Write and Edit tools.
+        on_delta: Optional callback invoked with each text delta chunk
+            during streaming.
 
     Returns:
         AgentResponse with the agent's text response.
@@ -170,7 +298,13 @@ def invoke_agent(
     resolved_session_id = session_id or _get_session_id(config, agent)
     cwd = config.session_dir()
 
-    cmd = ["claude", "-p", "--output-format", "json"]
+    cmd = [
+        "claude",
+        "-p",
+        "--output-format",
+        "stream-json",
+        "--verbose",
+    ]
     validated_model = _validate_model(config.model)
 
     if system_prompt is not None:
@@ -190,27 +324,42 @@ def invoke_agent(
         cmd.extend(["--allowedTools", *_build_allowed_tools(config, readonly=readonly)])
 
     global _active_process
+    with _process_lock:
+        _active_process = subprocess.Popen(
+            cmd,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            cwd=cwd,
+        )
+    proc = _active_process
+
     try:
+        # Write prompt to stdin and close to signal EOF
+        proc.stdin.write(prompt)
+        proc.stdin.close()
+
+        # Drain stderr in a daemon thread to prevent deadlock
+        stderr_lines: list[str] = []
+        stderr_thread = threading.Thread(
+            target=lambda: stderr_lines.extend(_drain_stderr(proc)),
+            daemon=True,
+        )
+        stderr_thread.start()
+
+        # Stream stdout with idle timeout
+        text, result_event, timed_out, oversized = _read_stream(proc, timeout, on_delta)
+
+        # Wait for process to finish
+        proc.wait()
+        stderr_thread.join(timeout=5)
+        stderr_text = "".join(stderr_lines).strip()
+    finally:
         with _process_lock:
-            _active_process = subprocess.Popen(
-                cmd,
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                cwd=cwd,
-            )
-        try:
-            stdout, stderr = _active_process.communicate(input=prompt, timeout=timeout)
-            returncode = _active_process.returncode
-        finally:
-            with _process_lock:
-                _active_process = None
-    except subprocess.TimeoutExpired:
-        with _process_lock:
-            if _active_process is not None:
-                _active_process.kill()
-                _active_process = None
+            _active_process = None
+
+    if timed_out:
         return AgentResponse(
             text="[Agent timed out]",
             raw={"error": "timeout"},
@@ -219,36 +368,24 @@ def invoke_agent(
             timed_out=True,
         )
 
-    if returncode != 0:
-        return AgentResponse(
-            text=f"[Agent error: {stderr.strip()}]",
-            raw={"error": stderr.strip(), "returncode": returncode},
-            cmd=cmd,
-            is_error=True,
-        )
-
-    # Guard against excessively large responses
-    if len(stdout) > _MAX_RESPONSE_BYTES:
+    if oversized:
         return AgentResponse(
             text="[Agent response exceeded size limit]",
-            raw={"error": "response_too_large", "size": len(stdout)},
+            raw={"error": "response_too_large"},
             cmd=cmd,
             is_error=True,
         )
 
-    try:
-        data = json.loads(stdout)
-    except json.JSONDecodeError:
-        # Fall back to raw text if JSON parsing fails
+    if proc.returncode != 0:
         return AgentResponse(
-            text=stdout.strip(),
-            raw={"raw_output": stdout.strip()},
+            text=f"[Agent error: {stderr_text}]",
+            raw={"error": stderr_text, "returncode": proc.returncode},
             cmd=cmd,
+            is_error=True,
         )
 
-    # Extract text from JSON response
-    text = _extract_text(data)
-    return AgentResponse(text=text, raw=data, cmd=cmd)
+    raw = result_event if result_event is not None else {"result": text}
+    return AgentResponse(text=text, raw=raw, cmd=cmd)
 
 
 def _extract_text(data: dict) -> str:

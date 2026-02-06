@@ -111,17 +111,17 @@ def compile_deliverables(config: SessionConfig, display: DisplayProtocol) -> Non
                 turn_prompt=prompt,
             )
 
-        with display.thinking_status(
-            f"Compiling: {deliverable}", timeout=config.agent_timeout
-        ):
-            response = invoke_agent(
-                config=config,
-                agent="a",
-                prompt=prompt,
-                session_id=str(uuid4()),
-                readonly=True,
-                timeout=config.agent_timeout,
-            )
+        display.show_agent_stream_start(config, "a")
+        response = invoke_agent(
+            config=config,
+            agent="a",
+            prompt=prompt,
+            session_id=str(uuid4()),
+            readonly=True,
+            timeout=config.agent_timeout,
+            on_delta=display.show_agent_stream_delta,
+        )
+        display.show_agent_stream_end()
 
         if config.debug:
             debug_log = config.session_dir() / "debug.log"
@@ -163,15 +163,17 @@ def generate_summary(config: SessionConfig, display: DisplayProtocol) -> None:
             turn_prompt=summary_prompt,
         )
 
-    with display.thinking_status("Generating summary", timeout=config.agent_timeout):
-        response = invoke_agent(
-            config=config,
-            agent="a",
-            prompt=summary_prompt,
-            session_id=str(uuid4()),
-            readonly=True,
-            timeout=config.agent_timeout,
-        )
+    display.show_agent_stream_start(config, "a")
+    response = invoke_agent(
+        config=config,
+        agent="a",
+        prompt=summary_prompt,
+        session_id=str(uuid4()),
+        readonly=True,
+        timeout=config.agent_timeout,
+        on_delta=display.show_agent_stream_delta,
+    )
+    display.show_agent_stream_end()
 
     if config.debug:
         debug_log = config.session_dir() / "debug.log"

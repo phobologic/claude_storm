@@ -113,6 +113,22 @@ class StormApp(App):
         bar = self.query_one(ThinkingBar)
         bar.stop()
 
+    def on_stream_start(self, message: object) -> None:
+        from rich.rule import Rule
+
+        log = self.query_one("#output-log", SelectableRichLog)
+        log.write(Rule(message.label, style=message.color, align="left"))  # type: ignore[union-attr]
+
+    def on_stream_delta(self, message: object) -> None:
+        log = self.query_one("#output-log", SelectableRichLog)
+        log.write(message.text, shrink=False, scroll_end=True)  # type: ignore[union-attr]
+
+    def on_stream_end(self, message: object) -> None:
+        from rich.text import Text
+
+        log = self.query_one("#output-log", SelectableRichLog)
+        log.write(Text(""))
+
     def on_request_user_input(self, message: RequestUserInput) -> None:
         # If the user is mid-typing, defer the ask until they submit.
         try:
