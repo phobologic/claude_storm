@@ -129,6 +129,7 @@ def invoke_agent(
     else:
         # Subsequent turns: resume existing session
         cmd.extend(["--resume", resolved_session_id])
+        cmd.extend(["--allowedTools", *_build_allowed_tools(config, readonly=readonly)])
 
     global _active_process
     try:

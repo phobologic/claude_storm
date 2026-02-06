@@ -82,7 +82,26 @@ class TestInvokeAgent:
         assert "--resume" in cmd
         assert "sess-b-uuid" in cmd
         assert "--session-id" not in cmd
+        assert "--allowedTools" in cmd
         assert response.text == "Continuing..."
+
+    def test_resume_includes_reference_dir_tools(self, make_config):
+        config = make_config()
+        config.reference_dirs = ["/some/ref/dir"]
+        mock_proc = _mock_popen(
+            stdout=json.dumps({"result": "ok"}),
+        )
+
+        with patch(
+            "claude_storm.agents.subprocess.Popen", return_value=mock_proc
+        ) as mock_popen_cls:
+            invoke_agent(config, "a", "Continue")
+
+        cmd = mock_popen_cls.call_args[0][0]
+        assert "--resume" in cmd
+        assert "Read(//some/ref/dir/**)" in cmd
+        assert "Glob(//some/ref/dir/**)" in cmd
+        assert "Grep(//some/ref/dir/**)" in cmd
 
     def test_timeout_returns_error(self, make_config):
         config = make_config()
