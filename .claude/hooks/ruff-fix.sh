@@ -9,6 +9,9 @@ if [[ -z "$FILE_PATH" || ! "$FILE_PATH" =~ \.py$ ]]; then
   exit 0
 fi
 
-# Fix lint issues, then format
-uv run ruff check --fix "$FILE_PATH" 2>&1
+# Fix lint issues, then format.
+# --unfixable F401: don't auto-remove unused imports (they may be added
+# before the code that uses them). A standalone `ruff check .` will
+# still report them so they can be addressed intentionally.
+uv run ruff check --fix --unfixable F401 "$FILE_PATH" 2>&1
 uv run ruff format "$FILE_PATH" 2>&1
