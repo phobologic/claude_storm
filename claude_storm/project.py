@@ -214,6 +214,7 @@ def format_pacing_block(
     session_id: str | None = None,
     interactive: bool = False,
     goal: str | None = None,
+    is_first_turn: bool = True,
 ) -> str:
     """Compute percentage-based pacing nudge for a turn prompt.
 
@@ -224,6 +225,8 @@ def format_pacing_block(
         session_id: Optional session identifier to display.
         interactive: Whether the session is in interactive mode.
         goal: Optional session goal to reinforce in pacing nudges.
+        is_first_turn: Whether this is the agent's first turn. When False,
+            the deliverables/goal footer is omitted (already in system prompt).
 
     Returns:
         Formatted pacing block string.
@@ -247,10 +250,11 @@ def format_pacing_block(
     else:
         parts.append(_default_message())
 
-    if deliverables:
-        parts.append("\n**Expected deliverables:** " + ", ".join(deliverables))
-    elif goal:
-        parts.append(f"\n**Session goal:** {goal}")
+    if is_first_turn:
+        if deliverables:
+            parts.append("\n**Expected deliverables:** " + ", ".join(deliverables))
+        elif goal:
+            parts.append(f"\n**Session goal:** {goal}")
 
     return "\n".join(parts)
 

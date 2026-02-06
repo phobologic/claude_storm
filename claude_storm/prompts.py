@@ -216,6 +216,7 @@ def build_turn_prompt(
     search_results: str | None = None,
     user_input: str | None = None,
     agreements_text: str = "",
+    is_agent_first_turn: bool = True,
 ) -> str:
     """Build the per-turn prompt for an agent.
 
@@ -228,6 +229,9 @@ def build_turn_prompt(
         search_results: Formatted search results, if any.
         user_input: User input in response to ASK_USER, if any.
         agreements_text: Formatted shared agreements text.
+        is_agent_first_turn: Whether this is the agent's first turn.
+            When False, DONE and interactive mode reminders are omitted
+            (already in the system prompt).
 
     Returns:
         The per-turn prompt string.
@@ -271,6 +275,7 @@ def build_turn_prompt(
         session_id=config.session_id,
         interactive=config.interactive,
         goal=config.goal or None,
+        is_first_turn=is_agent_first_turn,
     )
     sections.append(f"\n# Turn Progress\n{pacing}")
 
@@ -286,11 +291,11 @@ def build_turn_prompt(
             f"If you agree, signal [DONE]. If not, continue normally and explain "
             f"what still needs attention."
         )
-    elif config.auto_complete:
+    elif config.auto_complete and is_agent_first_turn:
         sections.append("Signal [DONE] when you believe the topic is well-explored.")
 
-    # Interactive mode reminder
-    if config.interactive:
+    # Interactive mode reminder (only on first turn; already in system prompt)
+    if config.interactive and is_agent_first_turn:
         sections.append(
             "\nYou are in **interactive mode** — a human is monitoring. "
             "Use [ASK_USER] if you need their input."

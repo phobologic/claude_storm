@@ -267,6 +267,7 @@ def format_agreements_for_prompt(
     config: SessionConfig,
     current_agent: str,
     current_turn: int | None = None,
+    watermark: dict | None = None,
 ) -> str:
     """Format agreements for inclusion in a per-turn agent prompt.
 
@@ -274,11 +275,16 @@ def format_agreements_for_prompt(
     full text of pending proposals awaiting response, and a file reference
     so agents can read ``agreements.md`` on demand.
 
+    When a watermark is provided, only new/changed content is included to
+    reduce redundancy on resumed turns.
+
     Args:
         config: The session configuration.
         current_agent: The agent whose turn it is ('a' or 'b').
         current_turn: The current turn number (1-indexed). When provided and
             >= 3 with no agreements, a nudge is returned instead of empty string.
+        watermark: Agent's watermark dict with agreement_count and
+            seen_proposal_ids. When None, full content is shown (first turn).
 
     Returns:
         Formatted agreements text, or empty string if none (unless nudge applies).
@@ -286,28 +292,63 @@ def format_agreements_for_prompt(
     sections: list[str] = []
 
     # Compact index of confirmed agreements (no full content)
-    index = format_agreement_index(config)
-    if index:
-        sections.append(f"## Confirmed\n{index}")
+    confirmed = config.accepted_agreements
+    wm_agreement_count = watermark["agreement_count"] if watermark else 0
+    if confirmed:
+        new_agreement_count = len(confirmed) - wm_agreement_count
+        if watermark and new_agreement_count <= 0:
+            # Agent already knows all confirmed agreements
+            sections.append(
+                f"## Confirmed\n"
+                f"You have {len(confirmed)} confirmed agreement(s) (no changes)."
+            )
+        elif watermark and wm_agreement_count > 0:
+            # Show count + only new entries
+            new_agreements = confirmed[wm_agreement_count:]
+            lines = [
+                f"You have {len(confirmed)} confirmed agreement(s) "
+                f"({new_agreement_count} new):"
+            ]
+            for a in new_agreements:
+                summary = a.get("summary", _extract_summary(a["content"]))
+                filename = _agreement_filename(a)
+                lines.append(
+                    f"- [{a['id']}] **{a['title']}** "
+                    f"(Turn {a['proposed_turn']}\u2192{a['accepted_turn']}): "
+                    f"{summary}"
+                )
+                lines.append(f"  File: agreements/{filename}")
+            sections.append("## Confirmed\n" + "\n".join(lines))
+        else:
+            # First turn or no watermark: full index
+            index = format_agreement_index(config)
+            if index:
+                sections.append(f"## Confirmed\n{index}")
 
-    # Pending proposals awaiting the current agent's response (full content)
+    # Pending proposals awaiting the current agent's response
     other_agent = "b" if current_agent == "a" else "a"
     pending_for_me = [
         p for p in config.pending_proposals if p["proposed_by"] == other_agent
     ]
     if pending_for_me:
+        seen_ids = set(watermark["seen_proposal_ids"]) if watermark else set()
         lines = ["## Pending Proposals (awaiting your response)"]
         for p in pending_for_me:
-            proposer = "Agent A" if p["proposed_by"] == "a" else "Agent B"
-            lines.append(
-                f"- [{p['id']}] **{p['title']}** "
-                f"(proposed by {proposer}, Turn {p['turn']})"
-            )
-            lines.append(f"  {p['content']}")
-            lines.append(
-                f'  \u2192 Use [ACCEPT id="{p["id"]}"] or '
-                f'[REJECT id="{p["id"]}" reason="..."]'
-            )
+            if p["id"] in seen_ids:
+                # Already-seen proposal: compact one-liner
+                lines.append(f"- [{p['id']}] **{p['title']}** (still pending)")
+            else:
+                # New proposal: full content with instructions
+                proposer = "Agent A" if p["proposed_by"] == "a" else "Agent B"
+                lines.append(
+                    f"- [{p['id']}] **{p['title']}** "
+                    f"(proposed by {proposer}, Turn {p['turn']})"
+                )
+                lines.append(f"  {p['content']}")
+                lines.append(
+                    f'  \u2192 Use [ACCEPT id="{p["id"]}"] or '
+                    f'[REJECT id="{p["id"]}" reason="..."]'
+                )
         sections.append("\n".join(lines))
 
     if not sections:
@@ -315,20 +356,15 @@ def format_agreements_for_prompt(
         if current_turn is not None and current_turn >= 3:
             return (
                 "# Shared Agreements\n\n"
-                "No agreements have been formalized yet. "
-                "When you reach consensus on a decision, "
-                'use [PROPOSE title="..."]content[/PROPOSE] '
-                "to create a shared agreement. "
-                "Verbal agreement alone does not create "
-                "a shared record \u2014 only "
-                "[PROPOSE] + [ACCEPT] does."
+                "No agreements yet. Use [PROPOSE] when you reach consensus "
+                "\u2014 verbal agreement alone does not create a shared record."
             )
         return ""
 
     result = "# Shared Agreements\n\n" + "\n\n".join(sections)
 
     # File reference so agents can read full agreement text on demand
-    if config.accepted_agreements:
+    if confirmed:
         session_dir = config.session_dir()
         result += (
             f"\n\nEach agreement is saved to its own file in "
@@ -340,8 +376,8 @@ def format_agreements_for_prompt(
 
     # Stale agreement nudge: if agreements exist but the last one was accepted
     # 4+ turns ago, remind the agent to formalize new consensus points
-    if current_turn is not None and config.accepted_agreements and not pending_for_me:
-        last_accepted_turn = max(a["accepted_turn"] for a in config.accepted_agreements)
+    if current_turn is not None and confirmed and not pending_for_me:
+        last_accepted_turn = max(a["accepted_turn"] for a in confirmed)
         if current_turn - last_accepted_turn >= 4:
             result += (
                 "\n\n*Reminder: It has been several turns "

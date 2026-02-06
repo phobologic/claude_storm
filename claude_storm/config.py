@@ -39,6 +39,7 @@ class SessionConfig:
     storms_dir: str = ""
     stop_reason: str | None = None
     stop_error: str | None = None
+    agent_watermarks: dict[str, dict] = field(default_factory=dict)
 
     @classmethod
     def create(
@@ -121,6 +122,7 @@ class SessionConfig:
         data.setdefault("accepted_agreements", [])
         data.setdefault("stop_reason", None)
         data.setdefault("stop_error", None)
+        data.setdefault("agent_watermarks", {})
         # Backfill summary on legacy agreement/proposal dicts
         for a in data["accepted_agreements"]:
             if "summary" not in a:
@@ -139,6 +141,39 @@ class SessionConfig:
         (d / "agent-b" / "memory").mkdir(parents=True, exist_ok=True)
         (d / "artifacts").mkdir(parents=True, exist_ok=True)
         (d / "agreements").mkdir(parents=True, exist_ok=True)
+
+    def get_watermark(self, agent: str) -> dict:
+        """Return the watermark for an agent, with defaults for missing keys.
+
+        Args:
+            agent: Which agent ('a' or 'b').
+
+        Returns:
+            Dict with memory_count, agreement_count, seen_proposal_ids,
+            and last_turn.
+        """
+        defaults = {
+            "memory_count": 0,
+            "agreement_count": 0,
+            "seen_proposal_ids": [],
+            "last_turn": -1,
+        }
+        wm = self.agent_watermarks.get(agent, {})
+        return {**defaults, **wm}
+
+    def update_watermark(self, agent: str, memory_count: int) -> None:
+        """Snapshot the current state into the agent's watermark.
+
+        Args:
+            agent: Which agent ('a' or 'b').
+            memory_count: Number of memories the agent currently has.
+        """
+        self.agent_watermarks[agent] = {
+            "memory_count": memory_count,
+            "agreement_count": len(self.accepted_agreements),
+            "seen_proposal_ids": [p["id"] for p in self.pending_proposals],
+            "last_turn": self.current_turn,
+        }
 
     def agent_label(self, agent: str) -> str:
         """Return a display label for an agent ('a' or 'b')."""

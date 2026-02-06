@@ -123,41 +123,77 @@ def search_memory(agent_dir: Path, query: str) -> list[tuple[str, str]]:
     return results
 
 
-def format_memory_index(agent_dir: Path) -> str:
+def format_memory_index(agent_dir: Path, since_count: int = 0) -> str:
     """Format the memory index for inclusion in a prompt.
 
     Args:
         agent_dir: Path to the agent's directory.
+        since_count: Number of memories the agent has already seen.
+            0 means first turn (full index). When positive, only new
+            entries are listed.
 
     Returns:
-        A formatted string listing all memories.
+        A formatted string listing memories.
     """
     index = _load_index(agent_dir)
     if not index:
         return "You have no saved notes."
-    lines = [f"You have {len(index)} saved note(s):"]
-    for entry in index:
+
+    total = len(index)
+    new_count = max(0, total - since_count)
+
+    if since_count == 0:
+        # First turn: full index
+        lines = [f"You have {total} saved note(s):"]
+        entries_to_show = index
+    elif new_count > 0:
+        lines = [f"You have {total} saved note(s) ({new_count} new):"]
+        entries_to_show = index[since_count:]
+    else:
+        return f"You have {total} saved note(s) (no new entries)."
+
+    for entry in entries_to_show:
         tags_str = ", ".join(entry["tags"]) if entry["tags"] else "none"
         lines.append(f'- "{entry["title"]}" [{tags_str}]')
     return "\n".join(lines)
 
 
-def format_recent_memories(agent_dir: Path, n: int = 3) -> str:
+def format_recent_memories(agent_dir: Path, n: int = 3, since_count: int = 0) -> str:
     """Format recent memories for inclusion in a prompt.
 
     Args:
         agent_dir: Path to the agent's directory.
         n: Number of recent memories.
+        since_count: Number of memories the agent has already seen.
+            When positive and no new memories exist, returns empty string.
+            When positive with new memories, shows only memories after
+            the watermark position.
 
     Returns:
         Formatted string with recent memory contents.
     """
-    memories = get_recent_memories(agent_dir, n)
-    if not memories:
+    index = _load_index(agent_dir)
+    if not index:
         return ""
+
+    if since_count > 0 and len(index) <= since_count:
+        # No new memories since last watermark
+        return ""
+
+    if since_count > 0:
+        # Only show memories added after the watermark
+        new_entries = index[since_count:]
+        new_entries = list(reversed(new_entries))
+    else:
+        # First turn: show last n
+        new_entries = index[-n:] if index else []
+        new_entries = list(reversed(new_entries))
+
     parts = []
-    for title, content in memories:
-        parts.append(f"## {title}\n{content.strip()}")
+    for entry in new_entries:
+        path = agent_dir / "memory" / entry["filename"]
+        if path.exists():
+            parts.append(f"## {entry['title']}\n{path.read_text().strip()}")
     return "\n\n".join(parts)
 
 

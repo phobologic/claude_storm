@@ -599,9 +599,9 @@ class TestFormatAgreementsForPrompt:
         """After turn 3 with no agreements, agents see a nudge."""
         config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
         text = format_agreements_for_prompt(config, "a", current_turn=3)
-        assert "No agreements have been formalized" in text
-        assert "[PROPOSE" in text
-        assert "Verbal agreement alone" in text
+        assert "No agreements yet" in text
+        assert "[PROPOSE]" in text
+        assert "verbal agreement alone" in text
 
     def test_no_nudge_during_warmup(self, make_config):
         """During turns 1-2, no nudge is shown."""
