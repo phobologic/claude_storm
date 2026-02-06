@@ -13,5 +13,7 @@ fi
 # --unfixable F401: don't auto-remove unused imports (they may be added
 # before the code that uses them). A standalone `ruff check .` will
 # still report them so they can be addressed intentionally.
-uv run ruff check --fix --unfixable F401 "$FILE_PATH" 2>&1
+# Allow ruff check to return non-zero (unfixable violations are expected
+# mid-edit) — the hook should still format and exit successfully.
+uv run ruff check --fix --unfixable F401 "$FILE_PATH" 2>&1 || true
 uv run ruff format "$FILE_PATH" 2>&1
