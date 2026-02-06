@@ -161,27 +161,30 @@ def _build_reference_section(config: SessionConfig) -> str:
 
     Directs agents to use the ``refs/`` symlinks in the session directory
     instead of the raw paths, which may contain characters that LLMs garble
-    when reconstructing tool-call arguments.
+    when reconstructing tool-call arguments.  Falls back to the raw path
+    when a symlink is missing (e.g. creation failed due to permissions).
     """
     if not config.reference_dirs:
         return ""
-    refs_dir = config.session_dir() / "refs"
+    symlink_paths = config.ref_symlink_paths()
     rows: list[str] = []
     for i, raw_path in enumerate(config.reference_dirs, start=1):
-        symlink = refs_dir / f"ref_{i}"
+        symlink = symlink_paths[i]
+        # Fall back to raw path when symlink is missing (e.g. creation failed)
+        use_path = symlink if symlink.is_symlink() else Path(raw_path)
         # Show the last component(s) of the actual path for human context
         short_actual = Path(raw_path).name
-        rows.append(f"| `{symlink}` | `{short_actual}` |")
+        rows.append(f"| `{use_path}` | `{short_actual}` |")
     table = "\n".join(rows)
     return (
         "\n# Reference Materials\n"
-        "The following reference directories are available. Use the **symlink path**\n"
+        "The following reference directories are available. Use the **path**\n"
         "(first column) for all Glob and Read operations — these are short, reliable\n"
         "paths that point to the actual directories:\n\n"
-        "| Symlink Path | Actual Directory |\n"
+        "| Path | Actual Directory |\n"
         "|---|---|\n"
         f"{table}\n\n"
-        "Use `Glob` and `Read` to browse and read files from these symlink paths.\n"
+        "Use `Glob` and `Read` to browse and read files from these paths.\n"
         "This is read-only reference material — do not modify these files."
     )
 

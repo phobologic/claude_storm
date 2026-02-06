@@ -32,7 +32,22 @@ def _truncate_label(label: str, max_len: int = 40) -> str:
 
 @runtime_checkable
 class DisplayProtocol(Protocol):
-    """Protocol defining the display interface for brainstorming sessions."""
+    """Protocol defining the display interface for brainstorming sessions.
+
+    Stream Fallback Strategy
+    ~~~~~~~~~~~~~~~~~~~~~~~~
+    When streaming output arrives via ``show_agent_stream_delta`` callbacks,
+    the final text may also be provided in ``show_agent_stream_end(text=...)``.
+    Implementations use divergent mechanisms to decide whether to render
+    the ``text`` fallback:
+
+    * **PlainDisplay** tracks a ``_stream_has_content`` boolean flag that is
+      set to ``True`` by ``show_agent_stream_delta``.  If no deltas arrived,
+      the ``text`` kwarg is rendered as a Markdown block.
+    * **TextualDisplay** (via ``StormApp``) accumulates delta chunks in a
+      ``_stream_parts`` list.  On ``StreamEnd``, if the joined parts are
+      empty, it falls back to ``message.text``.
+    """
 
     def show_header(self, config: SessionConfig) -> None: ...
     def show_turn_start(self, config: SessionConfig, agent: str) -> None: ...
@@ -57,7 +72,16 @@ class DisplayProtocol(Protocol):
     def show_input_hint(self) -> None: ...
     def show_agent_stream_start(self, config: SessionConfig, agent: str) -> None: ...
     def show_agent_stream_delta(self, text: str) -> None: ...
-    def show_agent_stream_end(self, error: bool = False, text: str = "") -> None: ...
+    def show_agent_stream_end(self, error: bool = False, text: str = "") -> None:
+        """Finalize the streamed response.
+
+        Args:
+            error: Whether the stream ended due to an error.
+            text: Complete response text, used as fallback when no
+                streaming deltas were received.
+        """
+        ...
+
     def thinking_status(
         self, label: str, timeout: int = 600, **kwargs: object
     ) -> object: ...
@@ -68,6 +92,8 @@ class PlainDisplay:
 
     def __init__(self, console: Console | None = None) -> None:
         self.console = console or Console()
+        # Fallback flag: set True by show_agent_stream_delta so
+        # show_agent_stream_end knows whether to render the text kwarg.
         self._stream_has_content = False
 
     def show_header(self, config: SessionConfig) -> None:
@@ -236,7 +262,14 @@ class PlainDisplay:
         sys.stdout.flush()
 
     def show_agent_stream_end(self, error: bool = False, text: str = "") -> None:
-        """Finalize the streamed response with a trailing newline."""
+        """Finalize the streamed response with a trailing newline.
+
+        Args:
+            error: Whether the stream ended due to an error.
+            text: Complete response text, used as fallback when no
+                streaming deltas were received (``_stream_has_content``
+                is False).
+        """
         if error:
             self.console.print("\n[bold red][stream interrupted][/bold red]")
         else:
@@ -430,7 +463,14 @@ class TextualDisplay:
         self._post(StreamDelta(text))
 
     def show_agent_stream_end(self, error: bool = False, text: str = "") -> None:
-        """Post a StreamEnd message to the TUI."""
+        """Post a StreamEnd message to the TUI.
+
+        Args:
+            error: Whether the stream ended due to an error.
+            text: Complete response text, forwarded via ``StreamEnd``
+                so the TUI can fall back to it when ``_stream_parts``
+                is empty.
+        """
         from claude_storm.messages import ClearThinking, StreamEnd
 
         self._post(ClearThinking(0))

@@ -160,7 +160,6 @@ class TestBuildSystemPrompt:
         assert "ref_1" in prompt
         assert "notes" in prompt
         assert "read-only" in prompt
-        assert "symlink" in prompt.lower()
 
     def test_system_prompt_multiple_reference_dirs(self, make_config):
         config = make_config(
@@ -185,9 +184,23 @@ class TestBuildSystemPrompt:
             reference_dirs=["/tmp/iCloud~md~obsidian/vault"],
         )
         prompt = build_system_prompt(config, "a")
-        assert "Symlink Path" in prompt
+        assert "| Path |" in prompt
         assert "ref_1" in prompt
         assert "vault" in prompt
+
+    def test_reference_section_falls_back_to_raw_path(self, make_config):
+        """When symlink is missing, reference section shows the raw path."""
+        config = make_config(
+            ensure_dirs=False,
+            reference_dirs=["/tmp/some/notes"],
+        )
+        # Do NOT call ensure_dirs so no symlinks are created
+        config.session_dir().mkdir(parents=True, exist_ok=True)
+        prompt = build_system_prompt(config, "a")
+        assert "Reference Materials" in prompt
+        # Should contain the raw path since no symlink exists
+        assert "/tmp/some/notes" in prompt
+        assert "notes" in prompt
 
 
 class TestBuildTurnPrompt:

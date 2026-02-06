@@ -15,6 +15,37 @@ logger = logging.getLogger(__name__)
 # Allowed characters in session IDs (hex chars from uuid4().hex[:12])
 _SESSION_ID_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
 
+# Paths that should never be granted as reference directories
+_SENSITIVE_PATHS = frozenset(
+    {
+        "/",
+        "/etc",
+        "/var",
+        "/root",
+        "/private",
+        "/private/etc",
+        "/private/var",
+    }
+)
+
+
+def _validate_reference_dir(path: str) -> bool:
+    """Check whether a reference directory path is safe to use.
+
+    Rejects paths that resolve to sensitive system directories.
+
+    Args:
+        path: The directory path to validate.
+
+    Returns:
+        True if the path is safe, False otherwise.
+    """
+    try:
+        resolved = str(Path(path).resolve())
+    except (OSError, ValueError):
+        return False
+    return resolved not in _SENSITIVE_PATHS
+
 
 @dataclass
 class SessionConfig:
@@ -47,6 +78,32 @@ class SessionConfig:
     stop_reason: str | None = None
     stop_error: str | None = None
     agent_watermarks: dict[str, dict] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        self._failed_ref_indices: set[int] = set()
+
+    def ref_symlink_paths(self) -> dict[int, Path]:
+        """Return a mapping of 1-based index to symlink path for each reference dir.
+
+        Returns:
+            Dict mapping index to ``session_dir/refs/ref_<index>`` for each
+            entry in ``reference_dirs``.
+        """
+        refs_dir = self.session_dir() / "refs"
+        return {
+            i: refs_dir / f"ref_{i}" for i in range(1, len(self.reference_dirs) + 1)
+        }
+
+    def ref_symlink_failed(self, index: int) -> bool:
+        """Return whether symlink creation failed for the given 1-based index.
+
+        Args:
+            index: The 1-based reference directory index.
+
+        Returns:
+            True if the symlink for this index failed to create.
+        """
+        return index in self._failed_ref_indices
 
     @classmethod
     def create(
@@ -182,14 +239,23 @@ class SessionConfig:
         Symlinks are named ``ref_1``, ``ref_2``, etc.  Existing correct
         symlinks are left alone (idempotent on resume).  Broken or
         mis-targeted symlinks are removed and recreated.  Failures are
-        logged as warnings — the session can still fall back to raw paths.
+        logged as warnings and tracked in ``_failed_ref_indices`` so that
+        downstream code can fall back to raw paths.
         """
         if not self.reference_dirs:
             return
+        self._failed_ref_indices.clear()
+        symlink_paths = self.ref_symlink_paths()
         refs_dir = self.session_dir() / "refs"
         refs_dir.mkdir(parents=True, exist_ok=True)
         for i, raw_path in enumerate(self.reference_dirs, start=1):
-            link = refs_dir / f"ref_{i}"
+            if not _validate_reference_dir(raw_path):
+                logger.warning(
+                    "Skipping sensitive reference dir %s (index %d)", raw_path, i
+                )
+                self._failed_ref_indices.add(i)
+                continue
+            link = symlink_paths[i]
             target = Path(raw_path)
             try:
                 if link.is_symlink():
@@ -199,7 +265,13 @@ class SessionConfig:
                     link.unlink()
                 link.symlink_to(target)
             except OSError:
-                logger.warning("Failed to create ref symlink %s -> %s", link, target)
+                logger.warning(
+                    "Failed to create ref symlink %s -> %s",
+                    link,
+                    target,
+                    exc_info=True,
+                )
+                self._failed_ref_indices.add(i)
 
     def get_watermark(self, agent: str) -> dict:
         """Return the watermark for an agent, with defaults for missing keys.

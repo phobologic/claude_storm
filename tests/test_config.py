@@ -1,12 +1,13 @@
 """Tests for session configuration."""
 
 import json
+import logging
 import os
 import stat
 
 import pytest
 
-from claude_storm.config import SessionConfig
+from claude_storm.config import SessionConfig, _validate_reference_dir
 
 # ---------- Security tests ----------
 
@@ -337,3 +338,111 @@ class TestRefSymlinks:
         config.session_dir().mkdir(parents=True, exist_ok=True)
         config.ensure_dirs()
         assert not (config.session_dir() / "refs").exists()
+
+
+class TestRefSymlinkPaths:
+    """ref_symlink_paths() returns correct mapping."""
+
+    def test_returns_mapping(self, tmp_storms, tmp_path):
+        ref_a = tmp_path / "notes"
+        ref_b = tmp_path / "docs"
+        ref_a.mkdir()
+        ref_b.mkdir()
+        config = SessionConfig(
+            session_id="symmap",
+            topic="Test",
+            reference_dirs=[str(ref_a), str(ref_b)],
+            storms_dir=str(tmp_storms),
+        )
+        paths = config.ref_symlink_paths()
+        assert set(paths.keys()) == {1, 2}
+        assert paths[1] == config.session_dir() / "refs" / "ref_1"
+        assert paths[2] == config.session_dir() / "refs" / "ref_2"
+
+    def test_empty_when_no_refs(self, tmp_storms):
+        config = SessionConfig(
+            session_id="nomap",
+            topic="Test",
+            reference_dirs=[],
+            storms_dir=str(tmp_storms),
+        )
+        assert config.ref_symlink_paths() == {}
+
+
+class TestRefSymlinkFailureTracking:
+    """OSError logging and failure tracking in _create_ref_symlinks."""
+
+    def test_oserror_logged_with_exc_info(self, tmp_storms, tmp_path, caplog):
+        """OSError during symlink creation is logged with exc_info."""
+        ref = tmp_path / "data"
+        ref.mkdir()
+        config = SessionConfig(
+            session_id="errlog",
+            topic="Test",
+            reference_dirs=[str(ref)],
+            storms_dir=str(tmp_storms),
+        )
+        config.session_dir().mkdir(parents=True, exist_ok=True)
+        refs_dir = config.session_dir() / "refs"
+        refs_dir.mkdir()
+        # Create a regular file where the symlink would go to force OSError
+        (refs_dir / "ref_1").write_text("blocking file")
+
+        with caplog.at_level(logging.WARNING, logger="claude_storm.config"):
+            config._create_ref_symlinks()
+
+        assert "Failed to create ref symlink" in caplog.text
+        assert config.ref_symlink_failed(1)
+
+    def test_failure_cleared_on_retry(self, tmp_storms, tmp_path):
+        """_failed_ref_indices is cleared on each call (idempotent on resume)."""
+        ref = tmp_path / "data"
+        ref.mkdir()
+        config = SessionConfig(
+            session_id="retry",
+            topic="Test",
+            reference_dirs=[str(ref)],
+            storms_dir=str(tmp_storms),
+        )
+        config.session_dir().mkdir(parents=True, exist_ok=True)
+        refs_dir = config.session_dir() / "refs"
+        refs_dir.mkdir()
+
+        # First call: block the symlink to cause failure
+        (refs_dir / "ref_1").write_text("blocker")
+        config._create_ref_symlinks()
+        assert config.ref_symlink_failed(1)
+
+        # Remove the blocker, retry should succeed and clear failures
+        (refs_dir / "ref_1").unlink()
+        config._create_ref_symlinks()
+        assert not config.ref_symlink_failed(1)
+
+    def test_sensitive_path_skipped(self, tmp_storms, caplog):
+        """Sensitive reference dirs are skipped and tracked as failed."""
+        config = SessionConfig(
+            session_id="sensitive",
+            topic="Test",
+            reference_dirs=["/etc"],
+            storms_dir=str(tmp_storms),
+        )
+        config.session_dir().mkdir(parents=True, exist_ok=True)
+
+        with caplog.at_level(logging.WARNING, logger="claude_storm.config"):
+            config._create_ref_symlinks()
+
+        assert "Skipping sensitive reference dir" in caplog.text
+        assert config.ref_symlink_failed(1)
+        # No symlink should have been created
+        refs_dir = config.session_dir() / "refs"
+        assert not (refs_dir / "ref_1").exists()
+
+
+class TestValidateReferenceDirConfig:
+    """_validate_reference_dir moved to config module."""
+
+    def test_rejects_root(self):
+        assert _validate_reference_dir("/") is False
+
+    def test_accepts_normal_path(self):
+        assert _validate_reference_dir("/some/ref/dir") is True

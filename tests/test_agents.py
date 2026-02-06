@@ -14,9 +14,9 @@ from claude_storm.agents import (
     _read_stream,
     _StreamResult,
     _validate_model,
-    _validate_reference_dir,
     invoke_agent,
 )
+from claude_storm.config import _validate_reference_dir
 
 # ---------- Security tests ----------
 

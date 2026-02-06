@@ -2,6 +2,10 @@
 
 Dual-agent brainstorming system that orchestrates two Claude Code CLI sessions.
 
+## Off-Limits
+
+- **Never run `git push`**. The user will push manually.
+
 ## Commands
 
 ```
@@ -125,6 +129,19 @@ bd sync                                     # Sync with git
 3. Do the work
 4. `bd close <id>` — mark complete
 5. `bd sync` — sync at session end
+
+**Epics and hierarchy:**
+
+- Create epics with `--type=epic` to group related work (e.g., code review
+  findings, multi-part features)
+- Attach children with `--parent=<epic-id>` on `bd create`
+- Children get hierarchical IDs: `epic-id.1`, `epic-id.2`, etc.
+- Types: `bug`, `task`, `feature`, `epic`, `chore`
+
+```
+bd create --title="Improve X" --type=epic -p 1 -d "..."
+bd create --title="Fix Y" --type=bug -p 1 --parent=<epic-id> -d "..."
+```
 
 **Rules:**
 

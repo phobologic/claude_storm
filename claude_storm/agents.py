@@ -13,25 +13,12 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import NamedTuple
 
-from claude_storm.config import SessionConfig
+from claude_storm.config import SessionConfig, _validate_reference_dir
 
 _log = logging.getLogger(__name__)
 
 # Allowed model identifiers (prevents injection via model field)
 _ALLOWED_MODELS = re.compile(r"^[a-zA-Z0-9._-]+$")
-
-# Paths that should never be granted as reference directories
-_SENSITIVE_PATHS = frozenset(
-    {
-        "/",
-        "/etc",
-        "/var",
-        "/root",
-        "/private",
-        "/private/etc",
-        "/private/var",
-    }
-)
 
 # Maximum response size (10 MB) to prevent memory exhaustion
 _MAX_RESPONSE_BYTES = 10 * 1024 * 1024
@@ -86,26 +73,6 @@ def _abs_pattern(path: str) -> str:
     # Strip leading slash since // already implies root
     stripped = path.lstrip("/")
     return f"//{stripped}/**"
-
-
-def _validate_reference_dir(path: str) -> bool:
-    """Check whether a reference directory path is safe to use.
-
-    Rejects paths that resolve to sensitive system directories.
-
-    Args:
-        path: The directory path to validate.
-
-    Returns:
-        True if the path is safe, False otherwise.
-    """
-    from pathlib import Path as _Path
-
-    try:
-        resolved = str(_Path(path).resolve())
-    except (OSError, ValueError):
-        return False
-    return resolved not in _SENSITIVE_PATHS
 
 
 def _validate_model(model: str) -> str:

@@ -173,7 +173,7 @@ def generate_summary(config: SessionConfig, display: DisplayProtocol) -> None:
         timeout=config.agent_timeout,
         on_delta=display.show_agent_stream_delta,
     )
-    display.show_agent_stream_end(error=response.is_error)
+    display.show_agent_stream_end(error=response.is_error, text=response.text)
 
     if config.debug:
         debug_log = config.session_dir() / "debug.log"

@@ -52,6 +52,9 @@ class StormApp(App):
         self._deferred_ask: RequestUserInput | None = None
         self._session_error: str | None = None
         self._session_finished: bool = False
+        # Accumulated delta chunks for the current stream. On StreamEnd,
+        # if this list is empty the fallback text from the message is used
+        # instead (see on_stream_end).
         self._stream_parts: list[str] = []
         self._stream_log: SelectableRichLog | None = None
 
