@@ -262,3 +262,78 @@ class TestSessionConfig:
         (session_dir / "session.json").write_text(json.dumps(data))
         loaded = SessionConfig.load("legacy000", storms_dir=str(tmp_storms))
         assert loaded.done_signals == {}
+
+
+class TestRefSymlinks:
+    """Symlinks in refs/ for LLM-friendly reference directory access."""
+
+    def test_ensure_dirs_creates_ref_symlinks(self, tmp_storms, tmp_path):
+        """ensure_dirs creates refs/ref_N symlinks for each reference dir."""
+        ref_a = tmp_path / "notes"
+        ref_b = tmp_path / "iCloud~md~obsidian" / "docs"
+        ref_a.mkdir()
+        ref_b.mkdir(parents=True)
+        config = SessionConfig(
+            session_id="refsym",
+            topic="Test",
+            reference_dirs=[str(ref_a), str(ref_b)],
+            storms_dir=str(tmp_storms),
+        )
+        config.session_dir().mkdir(parents=True, exist_ok=True)
+        config.ensure_dirs()
+        refs_dir = config.session_dir() / "refs"
+        assert (refs_dir / "ref_1").is_symlink()
+        assert (refs_dir / "ref_2").is_symlink()
+        assert (refs_dir / "ref_1").resolve() == ref_a.resolve()
+        assert (refs_dir / "ref_2").resolve() == ref_b.resolve()
+
+    def test_ensure_dirs_idempotent(self, tmp_storms, tmp_path):
+        """Calling ensure_dirs twice leaves correct symlinks intact."""
+        ref = tmp_path / "data"
+        ref.mkdir()
+        config = SessionConfig(
+            session_id="refidemp",
+            topic="Test",
+            reference_dirs=[str(ref)],
+            storms_dir=str(tmp_storms),
+        )
+        config.session_dir().mkdir(parents=True, exist_ok=True)
+        config.ensure_dirs()
+        config.ensure_dirs()  # second call
+        link = config.session_dir() / "refs" / "ref_1"
+        assert link.is_symlink()
+        assert link.resolve() == ref.resolve()
+
+    def test_ensure_dirs_replaces_broken_symlink(self, tmp_storms, tmp_path):
+        """A broken symlink is replaced with a correct one."""
+        ref = tmp_path / "actual"
+        ref.mkdir()
+        config = SessionConfig(
+            session_id="refbroken",
+            topic="Test",
+            reference_dirs=[str(ref)],
+            storms_dir=str(tmp_storms),
+        )
+        config.session_dir().mkdir(parents=True, exist_ok=True)
+        # Create a broken symlink manually
+        refs_dir = config.session_dir() / "refs"
+        refs_dir.mkdir()
+        broken = refs_dir / "ref_1"
+        broken.symlink_to(tmp_path / "nonexistent")
+        assert broken.is_symlink()
+        assert not broken.exists()  # broken
+        config.ensure_dirs()
+        assert broken.is_symlink()
+        assert broken.resolve() == ref.resolve()
+
+    def test_ensure_dirs_no_refs_without_reference_dirs(self, tmp_storms):
+        """No refs/ directory is created when there are no reference dirs."""
+        config = SessionConfig(
+            session_id="noref",
+            topic="Test",
+            reference_dirs=[],
+            storms_dir=str(tmp_storms),
+        )
+        config.session_dir().mkdir(parents=True, exist_ok=True)
+        config.ensure_dirs()
+        assert not (config.session_dir() / "refs").exists()

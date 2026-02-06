@@ -154,25 +154,40 @@ class TestBuildSystemPrompt:
         assert "[ARTIFACT]" in prompt
 
     def test_system_prompt_includes_reference_dirs(self, make_config):
-        config = make_config(ensure_dirs=False, reference_dirs=["/tmp/notes"])
+        config = make_config(ensure_dirs=True, reference_dirs=["/tmp/notes"])
         prompt = build_system_prompt(config, "a")
         assert "Reference Materials" in prompt
-        assert "/tmp/notes" in prompt
+        assert "ref_1" in prompt
+        assert "notes" in prompt
         assert "read-only" in prompt
+        assert "symlink" in prompt.lower()
 
     def test_system_prompt_multiple_reference_dirs(self, make_config):
         config = make_config(
-            ensure_dirs=False, reference_dirs=["/tmp/notes", "/tmp/docs"]
+            ensure_dirs=True, reference_dirs=["/tmp/notes", "/tmp/docs"]
         )
         prompt = build_system_prompt(config, "a")
         assert "Reference Materials" in prompt
-        assert "/tmp/notes" in prompt
-        assert "/tmp/docs" in prompt
+        assert "ref_1" in prompt
+        assert "ref_2" in prompt
+        assert "notes" in prompt
+        assert "docs" in prompt
 
     def test_system_prompt_no_reference_dirs(self, make_config):
         config = make_config(ensure_dirs=False)
         prompt = build_system_prompt(config, "a")
         assert "Reference Materials" not in prompt
+
+    def test_reference_section_uses_symlink_paths(self, make_config):
+        """Reference section shows symlink paths for agents to use."""
+        config = make_config(
+            ensure_dirs=True,
+            reference_dirs=["/tmp/iCloud~md~obsidian/vault"],
+        )
+        prompt = build_system_prompt(config, "a")
+        assert "Symlink Path" in prompt
+        assert "ref_1" in prompt
+        assert "vault" in prompt
 
 
 class TestBuildTurnPrompt:

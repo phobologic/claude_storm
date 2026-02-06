@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
+
+logger = logging.getLogger(__name__)
 
 # Allowed characters in session IDs (hex chars from uuid4().hex[:12])
 _SESSION_ID_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
@@ -160,12 +163,43 @@ class SessionConfig:
         return cls(**data)
 
     def ensure_dirs(self) -> None:
-        """Create all required subdirectories for the session."""
+        """Create all required subdirectories for the session.
+
+        Also creates symlinks in ``refs/`` for each reference directory,
+        giving agents short, LLM-friendly paths to use instead of the
+        raw (potentially complex) directory paths.
+        """
         d = self.session_dir()
         (d / "agent-a" / "memory").mkdir(parents=True, exist_ok=True)
         (d / "agent-b" / "memory").mkdir(parents=True, exist_ok=True)
         (d / "artifacts").mkdir(parents=True, exist_ok=True)
         (d / "agreements").mkdir(parents=True, exist_ok=True)
+        self._create_ref_symlinks()
+
+    def _create_ref_symlinks(self) -> None:
+        """Create symlinks in ``refs/`` pointing to each reference directory.
+
+        Symlinks are named ``ref_1``, ``ref_2``, etc.  Existing correct
+        symlinks are left alone (idempotent on resume).  Broken or
+        mis-targeted symlinks are removed and recreated.  Failures are
+        logged as warnings — the session can still fall back to raw paths.
+        """
+        if not self.reference_dirs:
+            return
+        refs_dir = self.session_dir() / "refs"
+        refs_dir.mkdir(parents=True, exist_ok=True)
+        for i, raw_path in enumerate(self.reference_dirs, start=1):
+            link = refs_dir / f"ref_{i}"
+            target = Path(raw_path)
+            try:
+                if link.is_symlink():
+                    if link.resolve() == target.resolve():
+                        continue
+                    # Broken or mis-targeted — remove and recreate
+                    link.unlink()
+                link.symlink_to(target)
+            except OSError:
+                logger.warning("Failed to create ref symlink %s -> %s", link, target)
 
     def get_watermark(self, agent: str) -> dict:
         """Return the watermark for an agent, with defaults for missing keys.

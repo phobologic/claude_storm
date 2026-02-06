@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 from claude_storm.config import SessionConfig
 from claude_storm.project import format_pacing_block
@@ -156,15 +157,31 @@ def _build_guidelines_section(config: SessionConfig) -> str:
 
 
 def _build_reference_section(config: SessionConfig) -> str:
-    """Build the reference materials section. Returns empty string if none."""
+    """Build the reference materials section. Returns empty string if none.
+
+    Directs agents to use the ``refs/`` symlinks in the session directory
+    instead of the raw paths, which may contain characters that LLMs garble
+    when reconstructing tool-call arguments.
+    """
     if not config.reference_dirs:
         return ""
-    dir_list = "\n".join(f"- `{d}`" for d in config.reference_dirs)
+    refs_dir = config.session_dir() / "refs"
+    rows: list[str] = []
+    for i, raw_path in enumerate(config.reference_dirs, start=1):
+        symlink = refs_dir / f"ref_{i}"
+        # Show the last component(s) of the actual path for human context
+        short_actual = Path(raw_path).name
+        rows.append(f"| `{symlink}` | `{short_actual}` |")
+    table = "\n".join(rows)
     return (
         "\n# Reference Materials\n"
-        "Directories of background materials relevant to this topic are available at:\n"
-        f"{dir_list}\n\n"
-        "Use `Glob` and `Read` to browse and read files from these directories. "
+        "The following reference directories are available. Use the **symlink path**\n"
+        "(first column) for all Glob and Read operations — these are short, reliable\n"
+        "paths that point to the actual directories:\n\n"
+        "| Symlink Path | Actual Directory |\n"
+        "|---|---|\n"
+        f"{table}\n\n"
+        "Use `Glob` and `Read` to browse and read files from these symlink paths.\n"
         "This is read-only reference material — do not modify these files."
     )
 
