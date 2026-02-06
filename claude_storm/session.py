@@ -155,7 +155,7 @@ def _run_turn(
         timeout=config.agent_timeout,
         on_delta=display.show_agent_stream_delta,
     )
-    display.show_agent_stream_end()
+    display.show_agent_stream_end(error=response.is_error)
 
     # Parse directives
     directives = parse_directives(response.text)

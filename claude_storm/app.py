@@ -15,6 +15,9 @@ from claude_storm.messages import (
     RequestUserInput,
     SessionComplete,
     ShowRenderable,
+    StreamDelta,
+    StreamEnd,
+    StreamStart,
     UpdateThinking,
 )
 from claude_storm.widgets import (
@@ -49,6 +52,8 @@ class StormApp(App):
         self._deferred_ask: RequestUserInput | None = None
         self._session_error: str | None = None
         self._session_finished: bool = False
+        self._stream_parts: list[str] = []
+        self._stream_log: SelectableRichLog | None = None
 
     def compose(self) -> ComposeResult:
         yield Static(id="header-bar")
@@ -113,21 +118,30 @@ class StormApp(App):
         bar = self.query_one(ThinkingBar)
         bar.stop()
 
-    def on_stream_start(self, message: object) -> None:
+    def on_stream_start(self, message: StreamStart) -> None:
         from rich.rule import Rule
 
-        log = self.query_one("#output-log", SelectableRichLog)
-        log.write(Rule(message.label, style=message.color, align="left"))  # type: ignore[union-attr]
+        self._stream_parts.clear()
+        self._stream_log = self.query_one("#output-log", SelectableRichLog)
+        self._stream_log.write(Rule(message.label, style=message.color, align="left"))
 
-    def on_stream_delta(self, message: object) -> None:
-        log = self.query_one("#output-log", SelectableRichLog)
-        log.write(message.text, shrink=False, scroll_end=True)  # type: ignore[union-attr]
+    def on_stream_delta(self, message: StreamDelta) -> None:
+        self._stream_parts.append(message.text)
 
-    def on_stream_end(self, message: object) -> None:
+    def on_stream_end(self, message: StreamEnd) -> None:
+        from rich.markdown import Markdown
         from rich.text import Text
 
-        log = self.query_one("#output-log", SelectableRichLog)
+        log = self._stream_log or self.query_one("#output-log", SelectableRichLog)
+        if message.error:
+            log.write(Text("[stream interrupted]", style="bold red"))
+        else:
+            full_text = "".join(self._stream_parts)
+            if full_text.strip():
+                log.write(Markdown(full_text))
         log.write(Text(""))
+        self._stream_parts.clear()
+        self._stream_log = None
 
     def on_request_user_input(self, message: RequestUserInput) -> None:
         # If the user is mid-typing, defer the ask until they submit.

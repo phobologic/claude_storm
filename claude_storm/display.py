@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 import time
 from contextlib import contextmanager
 from typing import Protocol, runtime_checkable
@@ -35,9 +36,6 @@ class DisplayProtocol(Protocol):
 
     def show_header(self, config: SessionConfig) -> None: ...
     def show_turn_start(self, config: SessionConfig, agent: str) -> None: ...
-    def show_agent_response(
-        self, config: SessionConfig, agent: str, text: str
-    ) -> None: ...
     def show_status(self, message: str) -> None: ...
     def show_error(self, message: str) -> None: ...
     def show_warning(self, message: str) -> None: ...
@@ -59,7 +57,7 @@ class DisplayProtocol(Protocol):
     def show_input_hint(self) -> None: ...
     def show_agent_stream_start(self, config: SessionConfig, agent: str) -> None: ...
     def show_agent_stream_delta(self, text: str) -> None: ...
-    def show_agent_stream_end(self) -> None: ...
+    def show_agent_stream_end(self, error: bool = False) -> None: ...
     def thinking_status(
         self, label: str, timeout: int = 600, **kwargs: object
     ) -> object: ...
@@ -104,15 +102,6 @@ class PlainDisplay:
         self.console.print(
             f"\n[{color}]── Turn {turn}/{config.max_turns} · {label} ──[/{color}]"
         )
-
-    def show_agent_response(self, config: SessionConfig, agent: str, text: str) -> None:
-        """Display an agent's response with a colored header."""
-        label = _truncate_label(config.agent_label(agent))
-        style = AGENT_STYLES.get(agent, AGENT_STYLES["a"])
-        color = style["border"]
-        self.console.print(Rule(label, style=color, align="left"))
-        self.console.print(Markdown(text))
-        self.console.print()
 
     def show_status(self, message: str) -> None:
         """Display a status message."""
@@ -240,11 +229,15 @@ class PlainDisplay:
 
     def show_agent_stream_delta(self, text: str) -> None:
         """Print an incremental text chunk (no trailing newline)."""
-        self.console.print(text, end="")
+        sys.stdout.write(text)
+        sys.stdout.flush()
 
-    def show_agent_stream_end(self) -> None:
+    def show_agent_stream_end(self, error: bool = False) -> None:
         """Finalize the streamed response with a trailing newline."""
-        self.console.print()
+        if error:
+            self.console.print("\n[bold red][stream interrupted][/bold red]")
+        else:
+            self.console.print()
 
     @contextmanager
     def thinking_status(
@@ -301,18 +294,6 @@ class TextualDisplay:
         color = style["border"]
         self._show(
             Text(f"\n── Turn {turn}/{config.max_turns} · {label} ──", style=color)
-        )
-
-    def show_agent_response(self, config: SessionConfig, agent: str, text: str) -> None:
-        label = _truncate_label(config.agent_label(agent))
-        style = AGENT_STYLES.get(agent, AGENT_STYLES["a"])
-        color = style["border"]
-        self._show(
-            Group(
-                Rule(label, style=color, align="left"),
-                Markdown(text),
-                Text(""),
-            )
         )
 
     def show_status(self, message: str) -> None:
@@ -442,11 +423,11 @@ class TextualDisplay:
 
         self._post(StreamDelta(text))
 
-    def show_agent_stream_end(self) -> None:
+    def show_agent_stream_end(self, error: bool = False) -> None:
         """Post a StreamEnd message to the TUI."""
         from claude_storm.messages import StreamEnd
 
-        self._post(StreamEnd())
+        self._post(StreamEnd(error=error))
 
     @contextmanager
     def thinking_status(

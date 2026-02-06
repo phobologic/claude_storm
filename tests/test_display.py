@@ -33,14 +33,6 @@ class TestDisplay:
         assert "Architect" in output
         assert "·" in output
 
-    def test_show_agent_response(self, make_config, capture_display):
-        display, buf = capture_display
-        config = make_config(ensure_dirs=False)
-        display.show_agent_response(config, "a", "Here is my analysis")
-        output = buf.getvalue()
-        assert "Architect" in output
-        assert "Here is my analysis" in output
-
     def test_show_status(self, capture_display):
         display, buf = capture_display
         display.show_status("Processing...")

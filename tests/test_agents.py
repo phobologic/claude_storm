@@ -2,14 +2,17 @@
 
 import io
 import json
+import logging
 from unittest.mock import MagicMock, patch
 
 from claude_storm.agents import (
     _MAX_RESPONSE_BYTES,
+    _MAX_STDERR_BYTES,
     _build_allowed_tools,
-    _extract_text,
+    _drain_stderr,
     _parse_stream_event,
     _read_stream,
+    _StreamResult,
     _validate_model,
     _validate_reference_dir,
     invoke_agent,
@@ -165,11 +168,9 @@ class TestStreamReader:
         mock_sel.select.return_value = [(None, None)]
 
         with patch(_SEL_PATCH, return_value=mock_sel):
-            text, result_event, timed_out, oversized = _read_stream(
-                proc, timeout, on_delta
-            )
+            sr = _read_stream(proc, timeout, on_delta)
 
-        return text, result_event, timed_out, oversized, proc
+        return sr.text, sr.result_event, sr.timed_out, sr.oversized, proc
 
     def test_normal_streaming(self):
         """Multiple deltas followed by a result event."""
@@ -250,11 +251,13 @@ class TestStreamReader:
         mock_sel.select.return_value = []
 
         with patch(_SEL_PATCH, return_value=mock_sel):
-            _, _, timed_out, _oversized = _read_stream(proc, 10, None)
+            sr = _read_stream(proc, 10, None)
 
-        assert timed_out
-        assert not _oversized
+        assert sr.timed_out
+        assert not sr.oversized
         proc.kill.assert_called_once()
+        # proc.wait() must be called after kill to reap the zombie
+        proc.wait.assert_called()
 
     def test_eof_mid_stream(self):
         """EOF without a result event uses accumulated text."""
@@ -572,18 +575,91 @@ class TestBuildAllowedTools:
         assert len(tools) == 6
 
 
-class TestExtractText:
-    def test_result_field(self):
-        assert _extract_text({"result": "hello"}) == "hello"
+class TestStreamResult:
+    """_StreamResult NamedTuple behaves as expected."""
 
-    def test_content_blocks(self):
-        data = {
-            "content": [
-                {"type": "text", "text": "Line 1"},
-                {"type": "text", "text": "Line 2"},
-            ]
-        }
-        assert _extract_text(data) == "Line 1\nLine 2"
+    def test_named_access(self):
+        sr = _StreamResult("hello", None, False, False)
+        assert sr.text == "hello"
+        assert sr.result_event is None
+        assert not sr.timed_out
+        assert not sr.oversized
 
-    def test_fallback_to_str(self):
-        assert _extract_text({"unknown": "data"}) == "{'unknown': 'data'}"
+    def test_tuple_unpacking(self):
+        """NamedTuple is backward-compatible with tuple unpacking."""
+        sr = _StreamResult("hello", {"type": "result"}, True, False)
+        text, result_event, timed_out, oversized = sr
+        assert text == "hello"
+        assert result_event == {"type": "result"}
+        assert timed_out
+        assert not oversized
+
+
+class TestBrokenPipeError:
+    """BrokenPipeError on stdin.write produces an error response."""
+
+    def test_broken_pipe_returns_error(self, make_config):
+        config = make_config()
+        mock_proc = _mock_stream_popen([], returncode=1, stderr="broken pipe")
+        mock_proc.stdin.write.side_effect = BrokenPipeError("pipe broken")
+
+        mock_sel = MagicMock()
+        mock_sel.select.return_value = [(None, None)]
+
+        with (
+            patch(_POPEN_PATCH, return_value=mock_proc),
+            patch(_SEL_PATCH, return_value=mock_sel),
+        ):
+            response = invoke_agent(config, "a", "prompt")
+
+        assert response.is_error
+
+
+class TestUnparseableLine:
+    """Unparseable NDJSON lines are logged at debug level."""
+
+    def test_logged_at_debug(self, caplog):
+        with caplog.at_level(logging.DEBUG, logger="claude_storm.agents"):
+            delta, event = _parse_stream_event("not valid json {{{")
+        assert delta is None
+        assert event is None
+        assert "Unparseable stream line" in caplog.text
+
+    def test_failing_callback_preserves_text(self):
+        """A failing on_delta callback does not lose accumulated text."""
+        events = [
+            {
+                "type": "stream_event",
+                "event": {
+                    "type": "content_block_delta",
+                    "index": 0,
+                    "delta": {"type": "text_delta", "text": "kept"},
+                },
+            },
+            {"type": "result", "subtype": "success", "result": "kept"},
+        ]
+        proc = _mock_stream_popen(events)
+        mock_sel = MagicMock()
+        mock_sel.select.return_value = [(None, None)]
+
+        def bad_callback(text):
+            raise RuntimeError("boom")
+
+        with patch(_SEL_PATCH, return_value=mock_sel):
+            sr = _read_stream(proc, 600, bad_callback)
+
+        # Text should still be accumulated despite callback failure
+        assert sr.text == "kept"
+
+
+class TestStderrCap:
+    """Stderr accumulation is capped at _MAX_STDERR_BYTES."""
+
+    def test_large_stderr_truncated(self):
+        big_line = "x" * (_MAX_STDERR_BYTES + 100) + "\n"
+        mock_proc = MagicMock()
+        mock_proc.stderr = io.StringIO(big_line)
+
+        lines = _drain_stderr(mock_proc)
+        joined = "".join(lines)
+        assert "[stderr truncated]" in joined
