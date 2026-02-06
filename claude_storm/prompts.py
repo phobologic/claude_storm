@@ -33,8 +33,9 @@ def build_system_prompt(config: SessionConfig, agent: str) -> str:
         parts.append(f"**Goal:** {config.goal}")
 
     parts.append(
-        f"\nYou are having a conversation with another agent ({other}). "
-        "You take strict alternating turns. Read their latest message and respond thoughtfully."
+        f"\nYou are having a rigorous debate with another agent ({other}). "
+        "You take strict alternating turns. Read their latest message, identify where you "
+        "agree and where you disagree, and respond with a clear position."
     )
 
     directives = (
@@ -48,11 +49,11 @@ def build_system_prompt(config: SessionConfig, agent: str) -> str:
         "Results will appear in your next turn.\n\n"
         "## Shared Output\n"
         '- `[PROPOSE title="..."]content[/PROPOSE]` — Propose a shared agreement for the '
-        "other agent to confirm. **Whenever you agree with the other agent on a decision, "
-        "immediately formalize it with [PROPOSE].** Verbal agreement ('I agree', 'good point', "
+        "other agent to confirm or reject. **Make bold, specific proposals — take a strong "
+        "position and defend it.** Verbal agreement ('I agree', 'good point', "
         "'I'm sold') does NOT create a shared record. Only [PROPOSE] + [ACCEPT] does. "
         "Confirmed agreements become part of the session's formal output. "
-        "Don't wait for perfect consensus — propose early to test alignment.\n"
+        "Propose early and forcefully — if the other agent disagrees, that sharpens the debate.\n"
         '- `[ACCEPT id="..."]` — Accept a pending agreement proposal by its ID.\n'
         '- `[REJECT id="..." reason="..."]` — Reject a pending proposal with an explanation.\n'
         '- `[REVISE id="..."]new content[/REVISE]` — Propose revising an existing confirmed '
@@ -73,21 +74,25 @@ def build_system_prompt(config: SessionConfig, agent: str) -> str:
 
     guidelines = (
         "\n# Guidelines\n"
-        "- Be substantive and build on previous ideas\n"
-        "- Challenge assumptions constructively\n"
+        "- Take strong, opinionated positions — do not hedge or equivocate\n"
+        "- Challenge assumptions directly; say what is wrong and why\n"
+        "- When you disagree, say so plainly and give concrete reasons\n"
+        "- Do not accept proposals merely to be agreeable — [REJECT] or [REVISE] any "
+        "proposal you have genuine concerns about\n"
         "- Keep responses focused and actionable\n"
         "- Produce concrete artifacts when appropriate\n\n"
-        "## Memory vs Proposals\n"
+        "## Debate and Proposals\n"
         "- Use [MEMORY] for your private working notes — things you want to track "
         "but that don't need the other agent's sign-off.\n"
         "- Prefer [PROPOSE] over [MEMORY] for anything that should be a session "
         "conclusion, recommendation, or decision. Proposals are the **only** way to "
         "create shared, confirmed output that both agents endorse.\n"
-        "- Propose early and often — you don't need certainty. A proposal that gets "
-        "rejected still moves the conversation forward by revealing disagreement.\n"
-        "- Good proposals are specific and actionable: *\"Use PostgreSQL for the data "
+        "- Propose early and with conviction. A proposal that gets "
+        "rejected sharpens the discussion and is more valuable than vague agreement.\n"
+        "- Good proposals are specific and assertive: *\"Use PostgreSQL for the data "
         'layer because X, Y, Z"* rather than *"We discussed database options."*\n'
         "- Always review and respond to pending proposals from the other agent"
+        " — accepting without scrutiny is worse than rejecting with good reasons"
     )
     if config.interactive:
         guidelines += (
