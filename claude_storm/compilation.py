@@ -7,7 +7,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from claude_storm.agents import invoke_agent
-from claude_storm.agreements import format_agreements_for_prompt
+from claude_storm.agreements import format_agreements_for_compilation
 from claude_storm.config import SessionConfig
 from claude_storm.debug import write_debug_request, write_debug_response
 from claude_storm.display import DisplayProtocol
@@ -81,7 +81,7 @@ def compile_deliverables(config: SessionConfig, display: DisplayProtocol) -> Non
     )
 
     # Build agreements text for deliverable compilation
-    agreements_text = format_agreements_for_prompt(config, "a")
+    agreements_text = format_agreements_for_compilation(config)
 
     artifacts_dir = config.session_dir() / "artifacts"
     artifacts_dir.mkdir(parents=True, exist_ok=True)
