@@ -1,20 +1,21 @@
-"""Tests for CLI commands and directive parsing."""
+"""Tests for CLI commands, directive parsing, session logic, and compilation."""
 
 import json
+from collections import deque
 from io import StringIO
 from unittest.mock import patch, MagicMock
 
 from rich.console import Console
-
 from typer.testing import CliRunner
 
-from claude_storm.cli import app, _parse_directives, _check_stop, _compile_deliverables, _process_directives, _merge_user_input, _find_matching_artifacts
 from claude_storm.agents import AgentResponse
+from claude_storm.cli import app
+from claude_storm.compilation import compile_deliverables, find_matching_artifacts, generate_summary
 from claude_storm.config import SessionConfig
-from collections import deque
-
+from claude_storm.directives import parse_directives
 from claude_storm.display import Display
 from claude_storm.project import STORM_CONFIG_FILENAME
+from claude_storm.session import check_stop, process_directives, merge_user_input
 
 runner = CliRunner()
 
@@ -22,121 +23,121 @@ runner = CliRunner()
 class TestParseDirectives:
     def test_parse_memory(self):
         text = 'Some text [MEMORY title="API Design" tags="api,rest"]Use REST[/MEMORY] more text'
-        result = _parse_directives(text)
-        assert len(result["memories"]) == 1
-        assert result["memories"][0] == ("API Design", ["api", "rest"], "Use REST")
-        assert "Some text" in result["clean_text"]
-        assert "more text" in result["clean_text"]
-        assert "[MEMORY" not in result["clean_text"]
+        result = parse_directives(text)
+        assert len(result.memories) == 1
+        assert result.memories[0] == ("API Design", ["api", "rest"], "Use REST")
+        assert "Some text" in result.clean_text
+        assert "more text" in result.clean_text
+        assert "[MEMORY" not in result.clean_text
 
     def test_parse_memory_search(self):
         text = 'Let me check [MEMORY_SEARCH query="auth approaches"]'
-        result = _parse_directives(text)
-        assert result["memory_searches"] == ["auth approaches"]
+        result = parse_directives(text)
+        assert result.memory_searches == ["auth approaches"]
 
     def test_parse_artifact(self):
         text = '[ARTIFACT filename="api.yaml"]openapi: 3.0\npaths: {}[/ARTIFACT]'
-        result = _parse_directives(text)
-        assert len(result["artifacts"]) == 1
-        assert result["artifacts"][0][0] == "api.yaml"
-        assert "openapi: 3.0" in result["artifacts"][0][1]
+        result = parse_directives(text)
+        assert len(result.artifacts) == 1
+        assert result.artifacts[0][0] == "api.yaml"
+        assert "openapi: 3.0" in result.artifacts[0][1]
 
     def test_parse_done_with_reason(self):
         text = 'I think we covered everything\n[DONE reason="Topic well explored"]'
-        result = _parse_directives(text)
-        assert result["done"] == "Topic well explored"
+        result = parse_directives(text)
+        assert result.done == "Topic well explored"
 
     def test_parse_done_without_reason(self):
         text = "I think we're done here\n[DONE]"
-        result = _parse_directives(text)
-        assert result["done"] == "complete"
-        assert "[DONE]" not in result["clean_text"]
+        result = parse_directives(text)
+        assert result.done == "complete"
+        assert "[DONE]" not in result.clean_text
 
     def test_parse_done_bare_cleans_text(self):
         text = "Final thoughts.\n[DONE]\nThat's all."
-        result = _parse_directives(text)
-        assert result["done"] == "complete"
-        assert "Final thoughts." in result["clean_text"]
-        assert "That's all." in result["clean_text"]
-        assert "[DONE]" not in result["clean_text"]
+        result = parse_directives(text)
+        assert result.done == "complete"
+        assert "Final thoughts." in result.clean_text
+        assert "That's all." in result.clean_text
+        assert "[DONE]" not in result.clean_text
 
     def test_parse_done_with_leading_whitespace(self):
         text = "Some preamble\n  [DONE]\nMore text"
-        result = _parse_directives(text)
-        assert result["done"] == "complete"
+        result = parse_directives(text)
+        assert result.done == "complete"
 
     def test_parse_done_mid_sentence_no_trigger(self):
         text = 'Should we follow this plan or aim for [DONE] sooner?'
-        result = _parse_directives(text)
-        assert result["done"] is None
+        result = parse_directives(text)
+        assert result.done is None
 
     def test_parse_done_quoted_context_no_trigger(self):
         text = 'The agent can signal [DONE reason="..."] when finished.'
-        result = _parse_directives(text)
-        assert result["done"] is None
+        result = parse_directives(text)
+        assert result.done is None
 
     def test_parse_ask_user(self):
         text = "What do you think? [ASK_USER]Should we use JWT or OAuth?[/ASK_USER]"
-        result = _parse_directives(text)
-        assert result["ask_user"] == "Should we use JWT or OAuth?"
+        result = parse_directives(text)
+        assert result.ask_user == "Should we use JWT or OAuth?"
 
     def test_no_directives(self):
         text = "Just a regular response with no special directives."
-        result = _parse_directives(text)
-        assert result["memories"] == []
-        assert result["memory_searches"] == []
-        assert result["artifacts"] == []
-        assert result["done"] is None
-        assert result["ask_user"] is None
-        assert result["clean_text"] == text
+        result = parse_directives(text)
+        assert result.memories == []
+        assert result.memory_searches == []
+        assert result.artifacts == []
+        assert result.done is None
+        assert result.ask_user is None
+        assert result.clean_text == text
 
     def test_multiple_memories(self):
         text = (
             '[MEMORY title="A" tags="x"]content A[/MEMORY] '
             '[MEMORY title="B" tags="y"]content B[/MEMORY]'
         )
-        result = _parse_directives(text)
-        assert len(result["memories"]) == 2
+        result = parse_directives(text)
+        assert len(result.memories) == 2
 
     def test_parse_propose(self):
         text = 'Let me propose [PROPOSE title="Use REST"]We should use REST for the API[/PROPOSE] done'
-        result = _parse_directives(text)
-        assert len(result["proposals"]) == 1
-        assert result["proposals"][0] == ("Use REST", "We should use REST for the API")
-        assert "[PROPOSE" not in result["clean_text"]
-        assert "Let me propose" in result["clean_text"]
+        result = parse_directives(text)
+        assert len(result.proposals) == 1
+        assert result.proposals[0] == ("Use REST", "We should use REST for the API")
+        assert "[PROPOSE" not in result.clean_text
+        assert "Let me propose" in result.clean_text
 
     def test_parse_accept(self):
         text = 'I agree with that. [ACCEPT id="a3f2"]'
-        result = _parse_directives(text)
-        assert result["accepts"] == ["a3f2"]
-        assert "[ACCEPT" not in result["clean_text"]
+        result = parse_directives(text)
+        assert result.accepts == ["a3f2"]
+        assert "[ACCEPT" not in result.clean_text
 
     def test_parse_reject(self):
         text = 'I disagree. [REJECT id="a3f2" reason="Too complex"]'
-        result = _parse_directives(text)
-        assert result["rejects"] == [("a3f2", "Too complex")]
-        assert "[REJECT" not in result["clean_text"]
+        result = parse_directives(text)
+        assert result.rejects == [("a3f2", "Too complex")]
+        assert "[REJECT" not in result.clean_text
 
     def test_parse_revise(self):
         text = '[REVISE id="a3f2"]Updated: use REST with caching[/REVISE]'
-        result = _parse_directives(text)
-        assert len(result["revisions"]) == 1
-        assert result["revisions"][0] == ("a3f2", "Updated: use REST with caching")
-        assert "[REVISE" not in result["clean_text"]
+        result = parse_directives(text)
+        assert len(result.revisions) == 1
+        assert result.revisions[0] == ("a3f2", "Updated: use REST with caching")
+        assert "[REVISE" not in result.clean_text
 
     def test_parse_multiple_accepts(self):
         text = '[ACCEPT id="a3f2"] [ACCEPT id="b7c1"]'
-        result = _parse_directives(text)
-        assert result["accepts"] == ["a3f2", "b7c1"]
+        result = parse_directives(text)
+        assert result.accepts == ["a3f2", "b7c1"]
 
     def test_no_agreement_directives(self):
         text = "Just a regular response."
-        result = _parse_directives(text)
-        assert result["proposals"] == []
-        assert result["accepts"] == []
-        assert result["rejects"] == []
-        assert result["revisions"] == []
+        result = parse_directives(text)
+        assert result.proposals == []
+        assert result.accepts == []
+        assert result.rejects == []
+        assert result.revisions == []
 
 
 class TestCheckStop:
@@ -144,13 +145,13 @@ class TestCheckStop:
         config = SessionConfig(
             session_id="t", topic="t", max_turns=5, current_turn=5
         )
-        assert _check_stop(config, 0) == "max_turns"
+        assert check_stop(config, 0) == "max_turns"
 
     def test_below_max_turns(self):
         config = SessionConfig(
             session_id="t", topic="t", max_turns=5, current_turn=3
         )
-        assert _check_stop(config, float("inf")) is None
+        assert check_stop(config, float("inf")) is None
 
     def test_auto_complete(self):
         config = SessionConfig(
@@ -161,7 +162,7 @@ class TestCheckStop:
             auto_complete=True,
             done_signals={"a": "complete", "b": "agreed"},
         )
-        assert _check_stop(config, float("inf")) == "auto_complete"
+        assert check_stop(config, float("inf")) == "auto_complete"
 
     def test_auto_complete_one_signal(self):
         config = SessionConfig(
@@ -172,7 +173,7 @@ class TestCheckStop:
             auto_complete=True,
             done_signals={"a": "complete"},
         )
-        assert _check_stop(config, float("inf")) is None
+        assert check_stop(config, float("inf")) is None
 
 
 class TestStopReason:
@@ -450,31 +451,31 @@ class TestConsensus:
     def test_done_signal_stored_in_dict(self, tmp_storms):
         config = self._make_config(tmp_storms)
         display = Display(console=Console(file=StringIO(), force_terminal=True, no_color=True))
-        directives = _parse_directives('[DONE reason="All covered"]')
-        _process_directives(config, "a", directives, display)
+        directives = parse_directives('[DONE reason="All covered"]')
+        process_directives(config, "a", directives, display)
         assert config.done_signals == {"a": "All covered"}
 
     def test_both_agents_agree(self, tmp_storms):
         config = self._make_config(tmp_storms)
         display = Display(console=Console(file=StringIO(), force_terminal=True, no_color=True))
         # Agent A signals DONE
-        dir_a = _parse_directives('[DONE reason="All covered"]')
-        _process_directives(config, "a", dir_a, display)
+        dir_a = parse_directives('[DONE reason="All covered"]')
+        process_directives(config, "a", dir_a, display)
         # Agent B also signals DONE (agreement)
-        dir_b = _parse_directives('[DONE reason="Agreed"]')
-        _process_directives(config, "b", dir_b, display)
+        dir_b = parse_directives('[DONE reason="Agreed"]')
+        process_directives(config, "b", dir_b, display)
         assert len(config.done_signals) == 2
 
     def test_disagreement_clears_done(self, tmp_storms):
         config = self._make_config(tmp_storms)
         display = Display(console=Console(file=StringIO(), force_terminal=True, no_color=True))
         # Agent A signals DONE
-        dir_a = _parse_directives('[DONE reason="All covered"]')
-        _process_directives(config, "a", dir_a, display)
+        dir_a = parse_directives('[DONE reason="All covered"]')
+        process_directives(config, "a", dir_a, display)
         assert "a" in config.done_signals
         # Agent B responds without DONE (disagreement)
-        dir_b = _parse_directives("I think we still need to discuss error handling.")
-        _process_directives(config, "b", dir_b, display)
+        dir_b = parse_directives("I think we still need to discuss error handling.")
+        process_directives(config, "b", dir_b, display)
         assert config.done_signals == {}
 
     def test_disagreement_display_message(self, tmp_storms):
@@ -482,11 +483,11 @@ class TestConsensus:
         display, buf = Display(console=Console(file=StringIO(), force_terminal=True, no_color=True)), None
         buf = display.console.file
         # Agent A signals DONE
-        dir_a = _parse_directives('[DONE reason="All covered"]')
-        _process_directives(config, "a", dir_a, display)
+        dir_a = parse_directives('[DONE reason="All covered"]')
+        process_directives(config, "a", dir_a, display)
         # Agent B disagrees
-        dir_b = _parse_directives("More to discuss.")
-        _process_directives(config, "b", dir_b, display)
+        dir_b = parse_directives("More to discuss.")
+        process_directives(config, "b", dir_b, display)
         output = buf.getvalue()
         assert "disagrees" in output
         assert "DONE" in output
@@ -515,8 +516,8 @@ class TestCompileDeliverables:
     def test_skips_when_no_deliverables(self, tmp_storms):
         config = self._make_config(tmp_storms, deliverables=[])
         display = Display(console=Console(file=StringIO(), force_terminal=True, no_color=True))
-        with patch("claude_storm.cli.invoke_agent") as mock_invoke:
-            _compile_deliverables(config, display)
+        with patch("claude_storm.compilation.invoke_agent") as mock_invoke:
+            compile_deliverables(config, display)
             mock_invoke.assert_not_called()
 
     def test_writes_artifact_files(self, tmp_storms):
@@ -531,8 +532,8 @@ class TestCompileDeliverables:
         display = Display(console=Console(file=StringIO(), force_terminal=True, no_color=True))
 
         mock_response = AgentResponse(text="# Chapter Summaries\n\nChapter 1...", raw={})
-        with patch("claude_storm.cli.invoke_agent", return_value=mock_response):
-            _compile_deliverables(config, display)
+        with patch("claude_storm.compilation.invoke_agent", return_value=mock_response):
+            compile_deliverables(config, display)
 
         artifacts_dir = config.session_dir() / "artifacts"
         assert artifacts_dir.exists()
@@ -548,8 +549,8 @@ class TestCompileDeliverables:
         error_response = AgentResponse(
             text="[Agent error: timeout]", raw={"error": "timeout"}, is_error=True
         )
-        with patch("claude_storm.cli.invoke_agent", return_value=error_response):
-            _compile_deliverables(config, display)
+        with patch("claude_storm.compilation.invoke_agent", return_value=error_response):
+            compile_deliverables(config, display)
 
         output = buf.getvalue()
         assert "Failed to compile deliverable" in output
@@ -570,8 +571,8 @@ class TestCompileDeliverables:
             session_ids.append(kwargs.get("session_id"))
             return mock_response
 
-        with patch("claude_storm.cli.invoke_agent", side_effect=capture_invoke):
-            _compile_deliverables(config, display)
+        with patch("claude_storm.compilation.invoke_agent", side_effect=capture_invoke):
+            compile_deliverables(config, display)
 
         # Should have one session_id per deliverable, all unique and non-None
         assert len(session_ids) == 2
@@ -589,8 +590,8 @@ class TestCompileDeliverables:
         display = Display(console=Console(file=StringIO(), force_terminal=True, no_color=True))
 
         mock_response = AgentResponse(text="content", raw={})
-        with patch("claude_storm.cli.invoke_agent", return_value=mock_response):
-            _compile_deliverables(config, display)
+        with patch("claude_storm.compilation.invoke_agent", return_value=mock_response):
+            compile_deliverables(config, display)
 
         artifacts_dir = config.session_dir() / "artifacts"
         files = list(artifacts_dir.glob("*.md"))
@@ -627,24 +628,23 @@ class TestCompileDeliverablesDebug:
         display = Display(console=Console(file=StringIO(), force_terminal=True, no_color=True))
 
         mock_response = AgentResponse(text="content", raw={})
-        with patch("claude_storm.cli.invoke_agent", return_value=mock_response), \
-             patch("claude_storm.cli.write_debug_request") as mock_req, \
-             patch("claude_storm.cli.write_debug_response") as mock_resp:
-            _compile_deliverables(config, display)
+        with patch("claude_storm.compilation.invoke_agent", return_value=mock_response), \
+             patch("claude_storm.compilation.write_debug_request") as mock_req, \
+             patch("claude_storm.compilation.write_debug_response") as mock_resp:
+            compile_deliverables(config, display)
 
         assert mock_req.call_count == 1
         assert mock_resp.call_count == 1
 
     def test_debug_logging_called_during_summary(self, tmp_storms):
-        from claude_storm.cli import _generate_summary
         config = self._make_config(tmp_storms)
         display = Display(console=Console(file=StringIO(), force_terminal=True, no_color=True))
 
         mock_response = AgentResponse(text="summary content", raw={})
-        with patch("claude_storm.cli.invoke_agent", return_value=mock_response), \
-             patch("claude_storm.cli.write_debug_request") as mock_req, \
-             patch("claude_storm.cli.write_debug_response") as mock_resp:
-            _generate_summary(config, display)
+        with patch("claude_storm.compilation.invoke_agent", return_value=mock_response), \
+             patch("claude_storm.compilation.write_debug_request") as mock_req, \
+             patch("claude_storm.compilation.write_debug_response") as mock_resp:
+            generate_summary(config, display)
 
         assert mock_req.call_count == 1
         assert mock_resp.call_count == 1
@@ -655,61 +655,60 @@ class TestCompileDeliverablesDebug:
         display = Display(console=Console(file=StringIO(), force_terminal=True, no_color=True))
 
         mock_response = AgentResponse(text="content", raw={})
-        with patch("claude_storm.cli.invoke_agent", return_value=mock_response) as mock_invoke:
-            _compile_deliverables(config, display)
+        with patch("claude_storm.compilation.invoke_agent", return_value=mock_response) as mock_invoke:
+            compile_deliverables(config, display)
 
         assert mock_invoke.call_args.kwargs.get("readonly") is True
 
     def test_readonly_passed_during_summary(self, tmp_storms):
-        from claude_storm.cli import _generate_summary
         config = self._make_config(tmp_storms)
         display = Display(console=Console(file=StringIO(), force_terminal=True, no_color=True))
 
         mock_response = AgentResponse(text="summary content", raw={})
-        with patch("claude_storm.cli.invoke_agent", return_value=mock_response) as mock_invoke:
-            _generate_summary(config, display)
+        with patch("claude_storm.compilation.invoke_agent", return_value=mock_response) as mock_invoke:
+            generate_summary(config, display)
 
         assert mock_invoke.call_args.kwargs.get("readonly") is True
 
 
 class TestMergeUserInput:
     def test_both_none(self):
-        assert _merge_user_input(None, None) is None
+        assert merge_user_input(None, None) is None
 
     def test_ask_user_only(self):
-        result = _merge_user_input("Q: Should we use JWT?\nA: Yes", None)
+        result = merge_user_input("Q: Should we use JWT?\nA: Yes", None)
         assert "[Agent asked the user a question]:" in result
         assert "Q: Should we use JWT?" in result
         assert "A: Yes" in result
 
     def test_buffer_only(self):
         q = deque(["focus on security"])
-        result = _merge_user_input(None, q)
+        result = merge_user_input(None, q)
         assert result == "[User nudge]: focus on security"
         # Queue should be drained
         assert len(q) == 0
 
     def test_both_present(self):
         q = deque(["also consider caching"])
-        result = _merge_user_input("Q: JWT?\nA: Yes", q)
+        result = merge_user_input("Q: JWT?\nA: Yes", q)
         assert "[Agent asked the user a question]:" in result
         assert "Q: JWT?" in result
         assert "[User nudge]: also consider caching" in result
 
     def test_empty_buffer_returns_ask_only(self):
         q: deque[str] = deque()
-        result = _merge_user_input("Q: JWT?\nA: Yes", q)
+        result = merge_user_input("Q: JWT?\nA: Yes", q)
         assert "[Agent asked the user a question]:" in result
         assert "Q: JWT?" in result
 
     def test_empty_buffer_and_no_ask(self):
         q: deque[str] = deque()
-        assert _merge_user_input(None, q) is None
+        assert merge_user_input(None, q) is None
 
 
 class TestProcessDirectivesAskUser:
     def test_ask_user_includes_question_and_answer(self, tmp_storms):
-        """_process_directives formats user_input with both Q and A."""
+        """process_directives formats user_input with both Q and A."""
         config = SessionConfig(
             session_id="ask-test",
             topic="Test",
@@ -720,10 +719,10 @@ class TestProcessDirectivesAskUser:
         )
         config.ensure_dirs()
         display = Display(console=Console(file=StringIO(), force_terminal=True, no_color=True))
-        directives = _parse_directives("[ASK_USER]Should we use JWT or OAuth?[/ASK_USER]")
+        directives = parse_directives("[ASK_USER]Should we use JWT or OAuth?[/ASK_USER]")
 
         with patch.object(display, "prompt_user", return_value="Use JWT") as mock_prompt:
-            _, user_input = _process_directives(config, "a", directives, display)
+            _, user_input = process_directives(config, "a", directives, display)
 
         mock_prompt.assert_called_once_with("Should we use JWT or OAuth?")
         assert user_input == "Q: Should we use JWT or OAuth?\nA: Use JWT"
@@ -736,7 +735,7 @@ class TestFindMatchingArtifacts:
         (artifacts_dir / "chapter_summaries.md").write_text("# Summaries")
         (artifacts_dir / "unrelated.md").write_text("# Other")
 
-        result = _find_matching_artifacts(artifacts_dir, "Chapter Summaries")
+        result = find_matching_artifacts(artifacts_dir, "Chapter Summaries")
         assert "chapter_summaries.md" in result
         assert result["chapter_summaries.md"] == "# Summaries"
         assert "unrelated.md" not in result
@@ -746,11 +745,11 @@ class TestFindMatchingArtifacts:
         artifacts_dir.mkdir()
         (artifacts_dir / "something_else.md").write_text("content")
 
-        result = _find_matching_artifacts(artifacts_dir, "Chapter Summaries")
+        result = find_matching_artifacts(artifacts_dir, "Chapter Summaries")
         assert result == {}
 
     def test_returns_empty_for_missing_dir(self, tmp_path):
-        result = _find_matching_artifacts(tmp_path / "nonexistent", "Doc")
+        result = find_matching_artifacts(tmp_path / "nonexistent", "Doc")
         assert result == {}
 
     def test_matches_partial_overlap(self, tmp_path):
@@ -759,7 +758,7 @@ class TestFindMatchingArtifacts:
         (artifacts_dir / "act_1_chapters.md").write_text("# Act 1")
         (artifacts_dir / "act_2_chapters.md").write_text("# Act 2")
 
-        result = _find_matching_artifacts(artifacts_dir, "chapters")
+        result = find_matching_artifacts(artifacts_dir, "chapters")
         assert "act_1_chapters.md" in result
         assert "act_2_chapters.md" in result
 
@@ -793,8 +792,8 @@ class TestFindMatchingArtifacts:
             prompts_captured.append(kwargs.get("prompt", ""))
             return mock_response
 
-        with patch("claude_storm.cli.invoke_agent", side_effect=capture_invoke):
-            _compile_deliverables(config, display)
+        with patch("claude_storm.compilation.invoke_agent", side_effect=capture_invoke):
+            compile_deliverables(config, display)
 
         # The prompt should contain the draft content
         assert len(prompts_captured) == 1

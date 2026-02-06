@@ -9,6 +9,12 @@ from pathlib import Path
 STORM_CONFIG_FILENAME = "storm.toml"
 STORMS_DIR_NAME = ".storms"
 
+# Pacing thresholds (percentage-based)
+FINAL_TURN_THRESHOLD = 2
+HIGH_PROGRESS_PCT = 75
+MID_PROGRESS_PCT = 50
+EARLY_PHASE_PCT = 20
+
 _TEMPLATE = '''\
 [session]
 topic = """
@@ -137,6 +143,67 @@ def get_storms_dir(config_path: Path | None) -> Path:
     return base / STORMS_DIR_NAME
 
 
+def _final_turn_message(goal: str | None, deliverables: list[str] | None) -> str:
+    """Build pacing message for the final turns."""
+    msg = (
+        "This is one of the final turns. Prioritize completing artifacts "
+        "and capturing remaining decisions. "
+        "Your deliverable artifacts should already exist from earlier turns — "
+        "finalize and update them now."
+    )
+    if goal:
+        msg += f' Session goal: "{goal}" — ensure final output addresses this.'
+    if deliverables:
+        deliv_list = ", ".join(deliverables)
+        msg += (
+            f"\n\nIMPORTANT: Before signaling [DONE], produce an "
+            f'[ARTIFACT filename="..."] for each deliverable not yet produced: {deliv_list}. '
+            f"If you've already produced them, signal [DONE]."
+        )
+    return msg
+
+
+def _high_progress_message(goal: str | None) -> str:
+    """Build pacing message for 75%+ progress."""
+    msg = (
+        "Session is 75% complete. Finalize deliverable artifacts now. "
+        "Update or produce `[ARTIFACT]` files for each expected deliverable. "
+        "Break large deliverables into multiple files (e.g., `part_1.md`, `part_2.md`). "
+        "Focus on resolving open questions."
+    )
+    if goal:
+        msg += f' Ensure output addresses the session goal: "{goal}"'
+    return msg
+
+
+def _mid_progress_message(goal: str | None) -> str:
+    """Build pacing message for 50%+ progress."""
+    msg = (
+        "You're at the halfway point. Start narrowing down "
+        "and committing to approaches. "
+        "Start producing draft `[ARTIFACT]` files for deliverables you have enough "
+        "material for. For large deliverables, break them into parts "
+        "(e.g., `act_1_chapters.md`, `act_2a_chapters.md`). You can revise artifacts later."
+    )
+    if goal:
+        msg += f' Keep the session goal in mind: "{goal}"'
+    return msg
+
+
+def _early_phase_message() -> str:
+    """Build pacing message for early interactive exploration."""
+    return (
+        "Early exploration phase — this is the best time to use [ASK_USER] to "
+        "confirm the user's intent, constraints, and preferences before the "
+        "session narrows. Continue brainstorming and save important ideas with [MEMORY]."
+    )
+
+
+def _default_message() -> str:
+    """Build the default pacing message."""
+    return "Continue the brainstorm. Save important ideas with [MEMORY]."
+
+
 def format_pacing_block(turn: int, max_turns: int, deliverables: list[str] | None = None, session_id: str | None = None, interactive: bool = False, goal: str | None = None) -> str:
     """Compute percentage-based pacing nudge for a turn prompt.
 
@@ -159,52 +226,16 @@ def format_pacing_block(turn: int, max_turns: int, deliverables: list[str] | Non
     else:
         parts = [f"## Turn {turn} of {max_turns} ({pct}%)"]
 
-    if remaining < 2:
-        msg = (
-            "This is one of the final turns. Prioritize completing artifacts "
-            "and capturing remaining decisions. "
-            "Your deliverable artifacts should already exist from earlier turns — "
-            "finalize and update them now."
-        )
-        if goal:
-            msg += f' Session goal: "{goal}" — ensure final output addresses this.'
-        if deliverables:
-            deliv_list = ", ".join(deliverables)
-            msg += (
-                f"\n\nIMPORTANT: Before signaling [DONE], produce an "
-                f'[ARTIFACT filename="..."] for each deliverable not yet produced: {deliv_list}. '
-                f"If you've already produced them, signal [DONE]."
-            )
-        parts.append(msg)
-    elif pct >= 75:
-        msg = (
-            "Session is 75% complete. Finalize deliverable artifacts now. "
-            "Update or produce `[ARTIFACT]` files for each expected deliverable. "
-            "Break large deliverables into multiple files (e.g., `part_1.md`, `part_2.md`). "
-            "Focus on resolving open questions."
-        )
-        if goal:
-            msg += f' Ensure output addresses the session goal: "{goal}"'
-        parts.append(msg)
-    elif pct >= 50:
-        msg = (
-            "You're at the halfway point. Start narrowing down "
-            "and committing to approaches. "
-            "Start producing draft `[ARTIFACT]` files for deliverables you have enough "
-            "material for. For large deliverables, break them into parts "
-            "(e.g., `act_1_chapters.md`, `act_2a_chapters.md`). You can revise artifacts later."
-        )
-        if goal:
-            msg += f' Keep the session goal in mind: "{goal}"'
-        parts.append(msg)
-    elif pct <= 20 and interactive:
-        parts.append(
-            "Early exploration phase — this is the best time to use [ASK_USER] to "
-            "confirm the user's intent, constraints, and preferences before the "
-            "session narrows. Continue brainstorming and save important ideas with [MEMORY]."
-        )
+    if remaining < FINAL_TURN_THRESHOLD:
+        parts.append(_final_turn_message(goal, deliverables))
+    elif pct >= HIGH_PROGRESS_PCT:
+        parts.append(_high_progress_message(goal))
+    elif pct >= MID_PROGRESS_PCT:
+        parts.append(_mid_progress_message(goal))
+    elif pct <= EARLY_PHASE_PCT and interactive:
+        parts.append(_early_phase_message())
     else:
-        parts.append("Continue the brainstorm. Save important ideas with [MEMORY].")
+        parts.append(_default_message())
 
     if deliverables:
         parts.append(

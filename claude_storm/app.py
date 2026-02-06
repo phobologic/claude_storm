@@ -78,7 +78,7 @@ class StormApp(App):
 
     def _session_worker(self) -> None:
         """Run the session loop in a worker thread."""
-        from claude_storm.cli import run_session
+        from claude_storm.session import run_session
         from claude_storm.display import TextualDisplay
 
         display = TextualDisplay(self)
@@ -194,7 +194,7 @@ class StormApp(App):
         if self._session_finished:
             self.exit()
             return
-        from claude_storm.cli import _signal_handler
+        from claude_storm.session import _signal_handler
         from claude_storm.agents import cancel_active
         _signal_handler(0, None)
         # Persist paused status immediately so it survives a hard exit.

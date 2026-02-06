@@ -19,17 +19,19 @@ uv run pytest                         # Run all tests
 Imports flow downward only. Never add an import that creates a cycle.
 
 ```
-cli.py            ← orchestrator, imports everything below
-  app.py          ← imports config, messages, widgets; lazy-imports cli, display, agents
+cli.py            ← Typer commands; imports session, config, project, display
+  session.py      ← imports compilation, config, agents, debug, directives, display, memory, prompts, agreements
+  compilation.py  ← imports config, agents, debug, directives, display, prompts, agreements
+  app.py          ← imports config, messages, widgets; lazy-imports session, display, agents
   prompts.py      ← imports config, project
-  display.py      ← imports config; lazy-imports messages, cli
+  display.py      ← imports config; lazy-imports messages, session
   agreements.py   ← imports config
   agents.py       ← imports config
   ─────────────── leaf modules (no local imports) ───────────────
-  config.py   project.py   memory.py   debug.py   messages.py   widgets.py
+  config.py   project.py   memory.py   debug.py   messages.py   widgets.py   directives.py
 ```
 
-`app.py`, `cli.py`, and `display.py` use lazy imports (inside methods) to avoid
+`app.py` and `display.py` use lazy imports (inside methods) to avoid
 circular dependencies. Preserve this pattern when adding cross-module references.
 
 ## Code Conventions
@@ -72,14 +74,16 @@ First turn: `--session-id` + `--system-prompt`. Subsequent turns: `--resume`.
 Thread-safe via `_process_lock` + `_active_process` in `agents.py`.
 
 **Directive parsing** — Regex extraction of `[MEMORY]`, `[ARTIFACT]`, `[PROPOSE]`,
-etc. in `_parse_directives()`. Returns a dict with typed lists and `clean_text`.
+etc. in `parse_directives()` (in `directives.py`). Returns a `ParsedDirectives`
+dataclass with typed fields (e.g., `memories`, `artifacts`, `clean_text`).
 
 **TUI threading** — `StormApp` runs `run_session` in a worker thread. Worker → TUI
 via `Message` subclasses (`post_message`). TUI → worker via `deque` (nudges) and
 `threading.Event` (ASK_USER responses).
 
-**Signal handling** — `SIGINT` registered on main thread only. TUI mode uses
-Textual's own `ctrl+c` binding. `_shutdown_requested` flag polled in turn loop.
+**Signal handling** — `SIGINT` registered on main thread only (in `session.py`).
+TUI mode uses Textual's own `ctrl+c` binding. `_shutdown_requested` flag polled
+in turn loop.
 
 ## Testing Conventions
 

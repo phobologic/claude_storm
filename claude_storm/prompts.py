@@ -6,16 +6,8 @@ from claude_storm.config import SessionConfig
 from claude_storm.project import format_pacing_block
 
 
-def build_system_prompt(config: SessionConfig, agent: str) -> str:
-    """Build the system prompt for an agent's first turn.
-
-    Args:
-        config: The session configuration.
-        agent: Which agent ('a' or 'b').
-
-    Returns:
-        The system prompt string.
-    """
+def _build_role_section(config: SessionConfig, agent: str) -> str:
+    """Build the role and context section of the system prompt."""
     role = config.role_a if agent == "a" else config.role_b
     other = config.agent_label("b" if agent == "a" else "a")
 
@@ -37,8 +29,12 @@ def build_system_prompt(config: SessionConfig, agent: str) -> str:
         "You take strict alternating turns. Read their latest message, identify where you "
         "agree and where you disagree, and respond with a clear position."
     )
+    return "\n".join(parts)
 
-    directives = (
+
+def _build_directives_section(config: SessionConfig) -> str:
+    """Build the directives section listing available agent commands."""
+    text = (
         "\n# Directives\n"
         "You may use these special directives in your responses:\n\n"
         "## Private Tools\n"
@@ -65,14 +61,17 @@ def build_system_prompt(config: SessionConfig, agent: str) -> str:
         "If they disagree, the conversation continues.\n"
     )
     if config.interactive:
-        directives += (
+        text += (
             "- `[ASK_USER]question[/ASK_USER]` — Pause to ask the human user a question. "
             "A human operator is available and monitoring this session. Use this when you "
             "need clarification, want input on a decision, or are unsure which direction to take.\n"
         )
-    parts.append(directives)
+    return text
 
-    guidelines = (
+
+def _build_guidelines_section(config: SessionConfig) -> str:
+    """Build the behavioral guidelines section."""
+    text = (
         "\n# Guidelines\n"
         "- Take strong, opinionated positions — do not hedge or equivocate\n"
         "- Challenge assumptions directly; say what is wrong and why\n"
@@ -95,56 +94,87 @@ def build_system_prompt(config: SessionConfig, agent: str) -> str:
         " — accepting without scrutiny is worse than rejecting with good reasons"
     )
     if config.interactive:
-        guidelines += (
+        text += (
             "\n- If you're uncertain about a direction or need user preferences, "
             "ask with [ASK_USER]"
             "\n- The user may type nudges at any time during the session. These "
             "appear in the \"User Input\" section of your turn prompt and should be "
             "treated as steering guidance — acknowledge and incorporate them."
         )
-    parts.append(guidelines)
+    return text
 
-    # Reference materials section
-    if config.reference_dirs:
-        dir_list = "\n".join(f"- `{d}`" for d in config.reference_dirs)
-        parts.append(
-            "\n# Reference Materials\n"
-            "Directories of background materials relevant to this topic are available at:\n"
-            f"{dir_list}\n\n"
-            "Use `Glob` and `Read` to browse and read files from these directories. "
-            "This is read-only reference material — do not modify these files."
+
+def _build_reference_section(config: SessionConfig) -> str:
+    """Build the reference materials section. Returns empty string if none."""
+    if not config.reference_dirs:
+        return ""
+    dir_list = "\n".join(f"- `{d}`" for d in config.reference_dirs)
+    return (
+        "\n# Reference Materials\n"
+        "Directories of background materials relevant to this topic are available at:\n"
+        f"{dir_list}\n\n"
+        "Use `Glob` and `Read` to browse and read files from these directories. "
+        "This is read-only reference material — do not modify these files."
+    )
+
+
+def _build_session_structure_section(config: SessionConfig) -> str:
+    """Build the session structure section. Returns empty string if not applicable."""
+    if not config.deliverables and not config.goal:
+        return ""
+    structure_parts = [
+        f"\n# Session Structure\n"
+        f"This session has a budget of {config.max_turns} turns total."
+    ]
+    if config.goal:
+        structure_parts.append(f"\n**Session goal:** {config.goal}")
+    if config.deliverables:
+        structure_parts.append("\n## Expected Deliverables")
+        for d in config.deliverables:
+            structure_parts.append(f"- {d}")
+    if config.interactive:
+        structure_parts.append(
+            "\nPace yourself: use the early turns to clarify goals and constraints "
+            "with the user (via [ASK_USER]), explore broadly through the first half, "
+            "then shift toward concrete decisions and producing deliverables in the "
+            "second half. Start writing `[ARTIFACT]` files incrementally from the "
+            "halfway point — don't wait until the end. For large deliverables, break "
+            "them into multiple artifact files that you can refine over subsequent turns."
         )
+    else:
+        structure_parts.append(
+            "\nPace yourself: explore broadly in the first half, then shift toward "
+            "concrete decisions and producing deliverables in the second half. "
+            "Start writing `[ARTIFACT]` files incrementally from the halfway point — "
+            "don't wait until the end. For large deliverables, break them into "
+            "multiple artifact files that you can refine over subsequent turns."
+        )
+    return "\n".join(structure_parts)
 
-    # Session structure section (pacing overview + deliverables)
-    if config.deliverables or config.goal:
-        structure_parts = [
-            f"\n# Session Structure\n"
-            f"This session has a budget of {config.max_turns} turns total."
-        ]
-        if config.goal:
-            structure_parts.append(f"\n**Session goal:** {config.goal}")
-        if config.deliverables:
-            structure_parts.append("\n## Expected Deliverables")
-            for d in config.deliverables:
-                structure_parts.append(f"- {d}")
-        if config.interactive:
-            structure_parts.append(
-                "\nPace yourself: use the early turns to clarify goals and constraints "
-                "with the user (via [ASK_USER]), explore broadly through the first half, "
-                "then shift toward concrete decisions and producing deliverables in the "
-                "second half. Start writing `[ARTIFACT]` files incrementally from the "
-                "halfway point — don't wait until the end. For large deliverables, break "
-                "them into multiple artifact files that you can refine over subsequent turns."
-            )
-        else:
-            structure_parts.append(
-                "\nPace yourself: explore broadly in the first half, then shift toward "
-                "concrete decisions and producing deliverables in the second half. "
-                "Start writing `[ARTIFACT]` files incrementally from the halfway point — "
-                "don't wait until the end. For large deliverables, break them into "
-                "multiple artifact files that you can refine over subsequent turns."
-            )
-        parts.append("\n".join(structure_parts))
+
+def build_system_prompt(config: SessionConfig, agent: str) -> str:
+    """Build the system prompt for an agent's first turn.
+
+    Args:
+        config: The session configuration.
+        agent: Which agent ('a' or 'b').
+
+    Returns:
+        The system prompt string.
+    """
+    parts = [
+        _build_role_section(config, agent),
+        _build_directives_section(config),
+        _build_guidelines_section(config),
+    ]
+
+    ref_section = _build_reference_section(config)
+    if ref_section:
+        parts.append(ref_section)
+
+    structure_section = _build_session_structure_section(config)
+    if structure_section:
+        parts.append(structure_section)
 
     return "\n".join(parts)
 

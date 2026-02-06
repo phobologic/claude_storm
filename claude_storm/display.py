@@ -334,7 +334,7 @@ class TextualDisplay:
 
     def prompt_user(self, question: str) -> str:
         from claude_storm.messages import RequestUserInput
-        from claude_storm.cli import _shutdown_requested
+        from claude_storm.session import _shutdown_requested
         msg = RequestUserInput(question)
         self._post(msg)
         while not msg.event.wait(timeout=0.5):
