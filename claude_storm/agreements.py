@@ -340,11 +340,13 @@ def format_agreements_for_prompt(
             else:
                 # New proposal: full content with instructions
                 proposer = "Agent A" if p["proposed_by"] == "a" else "Agent B"
+                # Truncate proposal content to prevent excessively long prompts
+                content = p["content"][:2000] if p["content"] else ""
                 lines.append(
                     f"- [{p['id']}] **{p['title']}** "
                     f"(proposed by {proposer}, Turn {p['turn']})"
                 )
-                lines.append(f"  {p['content']}")
+                lines.append(f"  {content}")
                 lines.append(
                     f'  \u2192 Use [ACCEPT id="{p["id"]}"] or '
                     f'[REJECT id="{p["id"]}" reason="..."]'

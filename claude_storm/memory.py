@@ -46,11 +46,17 @@ def save_memory(agent_dir: Path, title: str, tags: list[str], content: str) -> s
 
     Returns:
         The filename of the saved note.
+
+    Raises:
+        ValueError: If the generated filename contains path separators.
     """
     index = _load_index(agent_dir)
     num = len(index) + 1
     slug = _slugify(title)
     filename = f"{num:03d}-{slug}.md"
+    # Explicit safety check: reject filenames with path separators
+    if "/" in filename or "\\" in filename or ".." in filename:
+        raise ValueError(f"Unsafe memory filename: {filename!r}")
     mem_dir = agent_dir / "memory"
     mem_dir.mkdir(parents=True, exist_ok=True)
     (mem_dir / filename).write_text(content.strip() + "\n")
@@ -91,9 +97,13 @@ def get_recent_memories(agent_dir: Path, n: int = 3) -> list[tuple[str, str]]:
     recent = index[-n:] if index else []
     recent.reverse()
     results = []
+    mem_dir = agent_dir / "memory"
     for entry in recent:
-        path = agent_dir / "memory" / entry["filename"]
-        if path.exists():
+        filename = entry["filename"]
+        if "/" in filename or "\\" in filename or ".." in filename:
+            continue
+        path = mem_dir / filename
+        if path.exists() and path.resolve().is_relative_to(mem_dir.resolve()):
             results.append((entry["title"], path.read_text()))
     return results
 
@@ -112,13 +122,17 @@ def search_memory(agent_dir: Path, query: str) -> list[tuple[str, str]]:
     query_lower = query.lower()
     terms = query_lower.split()
     results = []
+    mem_dir = agent_dir / "memory"
     for entry in index:
         searchable = " ".join(
             [entry["title"], " ".join(entry["tags"]), entry.get("summary", "")]
         ).lower()
         if any(term in searchable for term in terms):
-            path = agent_dir / "memory" / entry["filename"]
-            if path.exists():
+            filename = entry["filename"]
+            if "/" in filename or "\\" in filename or ".." in filename:
+                continue
+            path = mem_dir / filename
+            if path.exists() and path.resolve().is_relative_to(mem_dir.resolve()):
                 results.append((entry["title"], path.read_text()))
     return results
 
@@ -190,9 +204,13 @@ def format_recent_memories(agent_dir: Path, n: int = 3, since_count: int = 0) ->
         new_entries = list(reversed(new_entries))
 
     parts = []
+    mem_dir = agent_dir / "memory"
     for entry in new_entries:
-        path = agent_dir / "memory" / entry["filename"]
-        if path.exists():
+        filename = entry["filename"]
+        if "/" in filename or "\\" in filename or ".." in filename:
+            continue
+        path = mem_dir / filename
+        if path.exists() and path.resolve().is_relative_to(mem_dir.resolve()):
             parts.append(f"## {entry['title']}\n{path.read_text().strip()}")
     return "\n\n".join(parts)
 

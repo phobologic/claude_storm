@@ -9,6 +9,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
+# Allowed characters in session IDs (hex chars from uuid4().hex[:12])
+_SESSION_ID_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
+
 
 @dataclass
 class SessionConfig:
@@ -90,9 +93,17 @@ class SessionConfig:
         return Path("sessions") / self.session_id
 
     def save(self) -> None:
-        """Save config to session directory as session.json."""
+        """Save config to session directory as session.json.
+
+        Restricts the storms parent directory and session directory
+        to owner-only access (mode 0o700) to protect sensitive session data.
+        """
         d = self.session_dir()
         d.mkdir(parents=True, exist_ok=True)
+        # Restrict permissions on the storms parent dir and session dir
+        if d.parent.exists():
+            d.parent.chmod(0o700)
+        d.chmod(0o700)
         (d / "session.json").write_text(json.dumps(asdict(self), indent=2) + "\n")
 
     @classmethod
@@ -103,7 +114,15 @@ class SessionConfig:
             session_id: The session ID to load.
             storms_dir: Base directory containing sessions. Falls back to
                         "sessions" for legacy compatibility.
+
+        Raises:
+            ValueError: If session_id contains invalid characters.
         """
+        if not _SESSION_ID_RE.match(session_id):
+            raise ValueError(
+                f"Invalid session ID: {session_id!r} "
+                "(must contain only alphanumeric, hyphens, underscores)"
+            )
         if storms_dir:
             path = Path(storms_dir) / session_id / "session.json"
         else:
@@ -132,6 +151,9 @@ class SessionConfig:
             if "summary" not in p:
                 first_line = p.get("content", "").strip().split("\n")[0][:120]
                 p["summary"] = re.sub(r"^#+\s*", "", first_line)
+        # Strip unknown keys to prevent unexpected fields from tampered JSON
+        known_fields = {f.name for f in cls.__dataclass_fields__.values()}
+        data = {k: v for k, v in data.items() if k in known_fields}
         return cls(**data)
 
     def ensure_dirs(self) -> None:

@@ -1,8 +1,82 @@
 """Tests for session configuration."""
 
 import json
+import os
+import stat
+
+import pytest
 
 from claude_storm.config import SessionConfig
+
+# ---------- Security tests ----------
+
+
+class TestSessionIdValidation:
+    """Issue .4: Session ID path traversal prevention."""
+
+    def test_load_rejects_path_traversal(self, tmp_storms):
+        with pytest.raises(ValueError, match="Invalid session ID"):
+            SessionConfig.load("../../../etc/passwd", storms_dir=str(tmp_storms))
+
+    def test_load_rejects_slash_in_id(self, tmp_storms):
+        with pytest.raises(ValueError, match="Invalid session ID"):
+            SessionConfig.load("foo/bar", storms_dir=str(tmp_storms))
+
+    def test_load_rejects_empty_id(self, tmp_storms):
+        with pytest.raises(ValueError, match="Invalid session ID"):
+            SessionConfig.load("", storms_dir=str(tmp_storms))
+
+    def test_load_accepts_valid_hex_id(self, sample_config, tmp_storms):
+        loaded = SessionConfig.load("test123", storms_dir=str(tmp_storms))
+        assert loaded.session_id == "test123"
+
+    def test_load_accepts_hyphens_and_underscores(self, tmp_storms):
+        session_dir = tmp_storms / "my-session_01"
+        session_dir.mkdir()
+        data = {
+            "session_id": "my-session_01",
+            "topic": "Test",
+            "storms_dir": str(tmp_storms),
+        }
+        (session_dir / "session.json").write_text(json.dumps(data))
+        loaded = SessionConfig.load("my-session_01", storms_dir=str(tmp_storms))
+        assert loaded.session_id == "my-session_01"
+
+
+class TestLoadStripsUnknownFields:
+    """Issue .6: Unknown fields from tampered JSON are stripped."""
+
+    def test_unknown_keys_ignored(self, tmp_storms):
+        session_dir = tmp_storms / "tampered01"
+        session_dir.mkdir()
+        data = {
+            "session_id": "tampered01",
+            "topic": "Test",
+            "storms_dir": str(tmp_storms),
+            "evil_field": "injected",
+            "another_unknown": 42,
+        }
+        (session_dir / "session.json").write_text(json.dumps(data))
+        loaded = SessionConfig.load("tampered01", storms_dir=str(tmp_storms))
+        assert loaded.session_id == "tampered01"
+        assert not hasattr(loaded, "evil_field")
+
+
+class TestDirectoryPermissions:
+    """Issue .9: Session directories restricted to owner-only."""
+
+    def test_save_restricts_session_dir(self, tmp_storms):
+        config = SessionConfig.create(topic="Perm test", storms_dir=str(tmp_storms))
+        config.save()
+        session_dir = config.session_dir()
+        mode = stat.S_IMODE(os.stat(session_dir).st_mode)
+        assert mode == 0o700
+
+    def test_save_restricts_storms_dir(self, tmp_storms):
+        config = SessionConfig.create(topic="Perm test", storms_dir=str(tmp_storms))
+        config.save()
+        mode = stat.S_IMODE(os.stat(tmp_storms).st_mode)
+        assert mode == 0o700
 
 
 class TestSessionConfig:

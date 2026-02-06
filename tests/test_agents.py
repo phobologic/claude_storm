@@ -4,7 +4,94 @@ import json
 import subprocess as _subprocess
 from unittest.mock import MagicMock, patch
 
-from claude_storm.agents import _build_allowed_tools, _extract_text, invoke_agent
+from claude_storm.agents import (
+    _MAX_RESPONSE_BYTES,
+    _build_allowed_tools,
+    _extract_text,
+    _validate_model,
+    _validate_reference_dir,
+    invoke_agent,
+)
+
+# ---------- Security tests ----------
+
+
+class TestValidateReferenceDir:
+    """Issue .3: Reference directory validation."""
+
+    def test_rejects_root(self):
+        assert _validate_reference_dir("/") is False
+
+    def test_rejects_etc(self):
+        assert _validate_reference_dir("/etc") is False
+
+    def test_rejects_var(self):
+        assert _validate_reference_dir("/var") is False
+
+    def test_accepts_normal_path(self):
+        assert _validate_reference_dir("/some/ref/dir") is True
+
+    def test_accepts_home_subdir(self):
+        assert _validate_reference_dir("/Users/mike/projects") is True
+
+
+class TestValidateModel:
+    """Issue .3: Model identifier validation."""
+
+    def test_valid_model(self):
+        assert _validate_model("sonnet") == "sonnet"
+        assert _validate_model("opus") == "opus"
+        assert _validate_model("claude-3.5-sonnet") == "claude-3.5-sonnet"
+
+    def test_invalid_model_falls_back(self):
+        assert _validate_model("'; rm -rf /") == "sonnet"
+        assert _validate_model("model --flag") == "sonnet"
+        assert _validate_model("") == "sonnet"
+
+
+class TestSensitiveRefDirFiltered:
+    """Issue .3: Sensitive reference dirs excluded from allowed tools."""
+
+    def test_root_dir_filtered(self, make_config):
+        config = make_config()
+        config.reference_dirs = ["/"]
+        tools = _build_allowed_tools(config)
+        # Only session dir tools, root should be filtered out
+        assert len(tools) == 5
+        assert not any("Read(///**)" in t for t in tools)
+
+    def test_etc_dir_filtered(self, make_config):
+        config = make_config()
+        config.reference_dirs = ["/etc"]
+        tools = _build_allowed_tools(config)
+        assert len(tools) == 5
+        assert not any("Read(//etc/**)" in t for t in tools)
+
+
+class TestResponseSizeLimit:
+    """Issue .8: Large responses are rejected."""
+
+    def test_oversized_response_returns_error(self, make_config):
+        config = make_config()
+        huge_output = "x" * (_MAX_RESPONSE_BYTES + 1)
+        mock_proc = _mock_popen(stdout=huge_output)
+
+        with patch("claude_storm.agents.subprocess.Popen", return_value=mock_proc):
+            response = invoke_agent(config, "a", "prompt")
+
+        assert response.is_error
+        assert "size limit" in response.text
+
+    def test_normal_response_passes(self, make_config):
+        config = make_config()
+        mock_proc = _mock_popen(
+            stdout=json.dumps({"result": "normal response"}),
+        )
+
+        with patch("claude_storm.agents.subprocess.Popen", return_value=mock_proc):
+            response = invoke_agent(config, "a", "prompt")
+
+        assert not response.is_error
 
 
 def _mock_popen(stdout="", stderr="", returncode=0):

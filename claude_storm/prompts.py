@@ -2,8 +2,32 @@
 
 from __future__ import annotations
 
+import re
+
 from claude_storm.config import SessionConfig
 from claude_storm.project import format_pacing_block
+
+# Maximum length for agent-supplied reason strings embedded in prompts
+_MAX_REASON_LENGTH = 200
+
+
+def _sanitize_agent_text(text: str, max_length: int = _MAX_REASON_LENGTH) -> str:
+    """Sanitize agent-supplied text before embedding in prompts.
+
+    Truncates to max_length and strips directive-like patterns to
+    prevent prompt injection via agent responses.
+
+    Args:
+        text: The raw agent-supplied string.
+        max_length: Maximum allowed length.
+
+    Returns:
+        Sanitized text string.
+    """
+    text = text[:max_length]
+    # Strip anything that looks like a directive tag
+    text = re.sub(r"\[/?[A-Z_]+[^\]]*\]", "", text)
+    return text.strip()
 
 
 def _build_role_section(config: SessionConfig, agent: str) -> str:
@@ -283,11 +307,12 @@ def build_turn_prompt(
     other_agent = "b" if agent == "a" else "a"
     other_done_reason = config.done_signals.get(other_agent)
     if other_done_reason and config.auto_complete:
+        sanitized_reason = _sanitize_agent_text(other_done_reason)
         sections.append(
             f"\n# Completion Check\n"
             f"{other_label} has signaled that they believe "
             "the brainstorming is complete.\n"
-            f'Their reason: "{other_done_reason}"\n\n'
+            f'Their reason: "{sanitized_reason}"\n\n'
             f"If you agree, signal [DONE]. If not, continue normally and explain "
             f"what still needs attention."
         )

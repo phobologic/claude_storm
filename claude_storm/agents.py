@@ -3,11 +3,31 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import threading
 from dataclasses import dataclass
 
 from claude_storm.config import SessionConfig
+
+# Allowed model identifiers (prevents injection via model field)
+_ALLOWED_MODELS = re.compile(r"^[a-zA-Z0-9._-]+$")
+
+# Paths that should never be granted as reference directories
+_SENSITIVE_PATHS = frozenset(
+    {
+        "/",
+        "/etc",
+        "/var",
+        "/root",
+        "/private",
+        "/private/etc",
+        "/private/var",
+    }
+)
+
+# Maximum response size (10 MB) to prevent memory exhaustion
+_MAX_RESPONSE_BYTES = 10 * 1024 * 1024
 
 _active_process: subprocess.Popen | None = None
 _process_lock = threading.Lock()
@@ -48,12 +68,47 @@ def _abs_pattern(path: str) -> str:
     return f"//{stripped}/**"
 
 
+def _validate_reference_dir(path: str) -> bool:
+    """Check whether a reference directory path is safe to use.
+
+    Rejects paths that resolve to sensitive system directories.
+
+    Args:
+        path: The directory path to validate.
+
+    Returns:
+        True if the path is safe, False otherwise.
+    """
+    from pathlib import Path as _Path
+
+    try:
+        resolved = str(_Path(path).resolve())
+    except (OSError, ValueError):
+        return False
+    return resolved not in _SENSITIVE_PATHS
+
+
+def _validate_model(model: str) -> str:
+    """Validate a model identifier and return it, or fall back to 'sonnet'.
+
+    Args:
+        model: The model identifier to validate.
+
+    Returns:
+        The model string if valid, otherwise 'sonnet'.
+    """
+    if _ALLOWED_MODELS.match(model):
+        return model
+    return "sonnet"
+
+
 def _build_allowed_tools(config: SessionConfig, readonly: bool = False) -> list[str]:
     """Build path-scoped --allowedTools list.
 
     Write/Edit are restricted to the session directory.
     Read/Glob/Grep are restricted to the session directory plus any
-    configured reference directory.
+    configured reference directory. Reference directories are
+    re-validated at build time to guard against tampered session data.
 
     Args:
         config: The session configuration.
@@ -61,9 +116,11 @@ def _build_allowed_tools(config: SessionConfig, readonly: bool = False) -> list[
     """
     session_path = str(config.session_dir().resolve())
 
-    # Readable directories: session dir + any reference dirs
+    # Readable directories: session dir + validated reference dirs
     readable_dirs = [session_path]
-    readable_dirs.extend(config.reference_dirs)
+    for ref in config.reference_dirs:
+        if _validate_reference_dir(ref):
+            readable_dirs.append(ref)
 
     tools: list[str] = []
 
@@ -114,17 +171,18 @@ def invoke_agent(
     cwd = config.session_dir()
 
     cmd = ["claude", "-p", "--output-format", "json"]
+    validated_model = _validate_model(config.model)
 
     if system_prompt is not None:
         # First turn: create session with system prompt
         cmd.extend(["--session-id", resolved_session_id])
         cmd.extend(["--system-prompt", system_prompt])
-        cmd.extend(["--model", config.model])
+        cmd.extend(["--model", validated_model])
         cmd.extend(["--allowedTools", *_build_allowed_tools(config, readonly=readonly)])
     elif session_id is not None:
         # Fresh one-shot session (no system prompt, no resume)
         cmd.extend(["--session-id", resolved_session_id])
-        cmd.extend(["--model", config.model])
+        cmd.extend(["--model", validated_model])
         cmd.extend(["--allowedTools", *_build_allowed_tools(config, readonly=readonly)])
     else:
         # Subsequent turns: resume existing session
@@ -165,6 +223,15 @@ def invoke_agent(
         return AgentResponse(
             text=f"[Agent error: {stderr.strip()}]",
             raw={"error": stderr.strip(), "returncode": returncode},
+            cmd=cmd,
+            is_error=True,
+        )
+
+    # Guard against excessively large responses
+    if len(stdout) > _MAX_RESPONSE_BYTES:
+        return AgentResponse(
+            text="[Agent response exceeded size limit]",
+            raw={"error": "response_too_large", "size": len(stdout)},
             cmd=cmd,
             is_error=True,
         )

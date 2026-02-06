@@ -3,7 +3,24 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
+
+
+def _append_restricted(log_path: Path, content: str) -> None:
+    """Append content to a log file with owner-only permissions (0o600).
+
+    Creates the file with restricted permissions if it doesn't exist.
+
+    Args:
+        log_path: Path to the log file.
+        content: Text content to append.
+    """
+    fd = os.open(str(log_path), os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+    try:
+        os.write(fd, content.encode())
+    finally:
+        os.close(fd)
 
 
 def write_debug_request(
@@ -32,8 +49,7 @@ def write_debug_request(
     lines.append(turn_prompt)
     lines.append("")
 
-    with open(log_path, "a") as f:
-        f.write("\n".join(lines))
+    _append_restricted(log_path, "\n".join(lines))
 
 
 def write_debug_response(
@@ -67,8 +83,7 @@ def write_debug_response(
     lines.append("")
     lines.append("")
 
-    with open(log_path, "a") as f:
-        f.write("\n".join(lines))
+    _append_restricted(log_path, "\n".join(lines))
 
 
 def write_debug_entry(

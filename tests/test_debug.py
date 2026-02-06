@@ -1,10 +1,56 @@
 """Tests for debug logging utilities."""
 
+import os
+import stat
+
 from claude_storm.debug import (
     write_debug_entry,
     write_debug_request,
     write_debug_response,
 )
+
+# ---------- Security tests ----------
+
+
+class TestDebugLogPermissions:
+    """Issue .5: Debug logs created with restricted permissions."""
+
+    def test_new_log_has_owner_only_permissions(self, tmp_path):
+        log_path = tmp_path / "secure_debug.log"
+        write_debug_request(
+            log_path=log_path,
+            turn=1,
+            agent_label="Agent A",
+            system_prompt="secret system prompt",
+            turn_prompt="prompt",
+        )
+        mode = stat.S_IMODE(os.stat(log_path).st_mode)
+        assert mode == 0o600
+
+    def test_appended_log_retains_permissions(self, tmp_path):
+        log_path = tmp_path / "append_debug.log"
+        write_debug_request(
+            log_path=log_path,
+            turn=1,
+            agent_label="Agent A",
+            system_prompt=None,
+            turn_prompt="first",
+        )
+        write_debug_response(
+            log_path=log_path,
+            cmd=["claude", "-p"],
+            raw_response={"result": "ok"},
+            directives={
+                "memories": [],
+                "memory_searches": [],
+                "artifacts": [],
+                "done": None,
+                "ask_user": None,
+            },
+        )
+        mode = stat.S_IMODE(os.stat(log_path).st_mode)
+        assert mode == 0o600
+
 
 SAMPLE_DIRECTIVES = {
     "memories": [("Key Idea", ["design"], "Use REST")],

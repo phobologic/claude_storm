@@ -1,5 +1,7 @@
 """Tests for the memory system."""
 
+import json
+
 from claude_storm.memory import (
     format_memory_index,
     format_recent_memories,
@@ -9,6 +11,59 @@ from claude_storm.memory import (
     save_memory,
     search_memory,
 )
+
+# ---------- Security tests ----------
+
+
+class TestMemoryPathTraversal:
+    """Issue .7: Memory filename sanitization."""
+
+    def test_slugify_strips_path_chars(self, agent_a_dir):
+        # _slugify strips non-word chars, but verify end-to-end safety
+        filename = save_memory(agent_a_dir, "../../etc/passwd", [], "content")
+        assert "/" not in filename
+        assert "\\" not in filename
+        assert ".." not in filename
+
+    def test_tampered_index_filename_skipped_in_recent(self, agent_a_dir):
+        """A tampered _index.json with path traversal is safely skipped."""
+        save_memory(agent_a_dir, "Legit note", ["tag"], "Good content")
+        # Tamper the index to include a path-traversal filename
+        index_path = agent_a_dir / "memory" / "_index.json"
+        index = json.loads(index_path.read_text())
+        index.append(
+            {
+                "filename": "../../etc/passwd",
+                "title": "Evil",
+                "tags": [],
+                "summary": "evil",
+                "updated": "2025-01-01",
+            }
+        )
+        index_path.write_text(json.dumps(index))
+        results = get_recent_memories(agent_a_dir, n=10)
+        # Only the legit note should be returned
+        assert len(results) == 1
+        assert results[0][0] == "Legit note"
+
+    def test_tampered_index_filename_skipped_in_search(self, agent_a_dir):
+        """Search skips entries with path-traversal filenames."""
+        save_memory(agent_a_dir, "Safe note", ["security"], "safe content")
+        index_path = agent_a_dir / "memory" / "_index.json"
+        index = json.loads(index_path.read_text())
+        index.append(
+            {
+                "filename": "../../../secret",
+                "title": "Evil security note",
+                "tags": ["security"],
+                "summary": "evil",
+                "updated": "2025-01-01",
+            }
+        )
+        index_path.write_text(json.dumps(index))
+        results = search_memory(agent_a_dir, "security")
+        assert len(results) == 1
+        assert results[0][0] == "Safe note"
 
 
 class TestSaveMemory:
