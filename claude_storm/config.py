@@ -241,37 +241,66 @@ class SessionConfig:
         mis-targeted symlinks are removed and recreated.  Failures are
         logged as warnings and tracked in ``_failed_ref_indices`` so that
         downstream code can fall back to raw paths.
+
+        After creation, stale ``ref_N`` symlinks left from a previous run
+        with more reference dirs are removed.
         """
-        if not self.reference_dirs:
-            return
         self._failed_ref_indices.clear()
-        symlink_paths = self.ref_symlink_paths()
         refs_dir = self.session_dir() / "refs"
-        refs_dir.mkdir(parents=True, exist_ok=True)
-        for i, raw_path in enumerate(self.reference_dirs, start=1):
-            if not _validate_reference_dir(raw_path):
-                logger.warning(
-                    "Skipping sensitive reference dir %s (index %d)", raw_path, i
-                )
-                self._failed_ref_indices.add(i)
-                continue
-            link = symlink_paths[i]
-            target = Path(raw_path)
-            try:
-                if link.is_symlink():
-                    if link.resolve() == target.resolve():
-                        continue
-                    # Broken or mis-targeted — remove and recreate
-                    link.unlink()
-                link.symlink_to(target)
-            except OSError:
-                logger.warning(
-                    "Failed to create ref symlink %s -> %s",
-                    link,
-                    target,
-                    exc_info=True,
-                )
-                self._failed_ref_indices.add(i)
+
+        if self.reference_dirs:
+            symlink_paths = self.ref_symlink_paths()
+            refs_dir.mkdir(parents=True, exist_ok=True)
+            for i, raw_path in enumerate(self.reference_dirs, start=1):
+                if not _validate_reference_dir(raw_path):
+                    logger.warning(
+                        "Skipping sensitive reference dir %s (index %d)", raw_path, i
+                    )
+                    self._failed_ref_indices.add(i)
+                    continue
+                link = symlink_paths[i]
+                target = Path(raw_path)
+                if not target.is_dir():
+                    logger.warning(
+                        "Reference dir does not exist: %s (index %d)", raw_path, i
+                    )
+                    self._failed_ref_indices.add(i)
+                    continue
+                try:
+                    if link.is_symlink():
+                        if link.resolve() == target.resolve():
+                            continue
+                        # Broken or mis-targeted — remove and recreate
+                        link.unlink()
+                    link.symlink_to(target)
+                except OSError:
+                    logger.warning(
+                        "Failed to create ref symlink %s -> %s",
+                        link,
+                        target,
+                        exc_info=True,
+                    )
+                    self._failed_ref_indices.add(i)
+
+        # Remove stale ref_N symlinks from a previous run with more dirs.
+        if refs_dir.is_dir():
+            n = len(self.reference_dirs)
+            for entry in refs_dir.iterdir():
+                if not entry.name.startswith("ref_"):
+                    continue
+                try:
+                    idx = int(entry.name.split("_", 1)[1])
+                except (ValueError, IndexError):
+                    continue
+                if idx > n:
+                    try:
+                        entry.unlink()
+                    except OSError:
+                        logger.warning(
+                            "Failed to remove stale ref symlink %s",
+                            entry,
+                            exc_info=True,
+                        )
 
     def get_watermark(self, agent: str) -> dict:
         """Return the watermark for an agent, with defaults for missing keys.

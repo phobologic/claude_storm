@@ -64,7 +64,14 @@ class StreamDelta(Message):
 
 
 class StreamEnd(Message):
-    """End of a streaming agent response."""
+    """End of a streaming agent response.
+
+    Attributes:
+        error: Whether the stream ended due to an error (e.g. timeout or
+            process kill).
+        text: Complete response text from the parsed result event. Used as
+            fallback content when streaming deltas were not received.
+    """
 
     def __init__(self, error: bool = False, text: str = "") -> None:
         super().__init__()

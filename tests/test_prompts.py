@@ -153,18 +153,22 @@ class TestBuildSystemPrompt:
         assert "incrementally" in prompt
         assert "[ARTIFACT]" in prompt
 
-    def test_system_prompt_includes_reference_dirs(self, make_config):
-        config = make_config(ensure_dirs=True, reference_dirs=["/tmp/notes"])
+    def test_system_prompt_includes_reference_dirs(self, make_config, tmp_path):
+        notes = tmp_path / "notes"
+        notes.mkdir()
+        config = make_config(ensure_dirs=True, reference_dirs=[str(notes)])
         prompt = build_system_prompt(config, "a")
         assert "Reference Materials" in prompt
         assert "ref_1" in prompt
         assert "notes" in prompt
         assert "read-only" in prompt
 
-    def test_system_prompt_multiple_reference_dirs(self, make_config):
-        config = make_config(
-            ensure_dirs=True, reference_dirs=["/tmp/notes", "/tmp/docs"]
-        )
+    def test_system_prompt_multiple_reference_dirs(self, make_config, tmp_path):
+        notes = tmp_path / "notes"
+        docs = tmp_path / "docs"
+        notes.mkdir()
+        docs.mkdir()
+        config = make_config(ensure_dirs=True, reference_dirs=[str(notes), str(docs)])
         prompt = build_system_prompt(config, "a")
         assert "Reference Materials" in prompt
         assert "ref_1" in prompt
@@ -177,11 +181,13 @@ class TestBuildSystemPrompt:
         prompt = build_system_prompt(config, "a")
         assert "Reference Materials" not in prompt
 
-    def test_reference_section_uses_symlink_paths(self, make_config):
+    def test_reference_section_uses_symlink_paths(self, make_config, tmp_path):
         """Reference section shows symlink paths for agents to use."""
+        vault = tmp_path / "iCloud~md~obsidian" / "vault"
+        vault.mkdir(parents=True)
         config = make_config(
             ensure_dirs=True,
-            reference_dirs=["/tmp/iCloud~md~obsidian/vault"],
+            reference_dirs=[str(vault)],
         )
         prompt = build_system_prompt(config, "a")
         assert "| Path |" in prompt

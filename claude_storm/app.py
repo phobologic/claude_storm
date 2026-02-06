@@ -140,6 +140,10 @@ class StormApp(App):
             log.write(Text("[stream interrupted]", style="bold red"))
         else:
             full_text = "".join(self._stream_parts)
+            # Fallback: when --output-format stream-json yields only a final
+            # result object without intermediate content_block_delta events,
+            # _stream_parts will be empty but the complete text is available
+            # from the parsed result via message.text.
             if not full_text.strip() and message.text:
                 full_text = message.text
             if full_text.strip():

@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import stat
+from pathlib import Path
 
 import pytest
 
@@ -436,6 +437,94 @@ class TestRefSymlinkFailureTracking:
         # No symlink should have been created
         refs_dir = config.session_dir() / "refs"
         assert not (refs_dir / "ref_1").exists()
+
+
+class TestRefSymlinkStaleCleanup:
+    """Stale symlink cleanup when reference_dirs shrinks on resume."""
+
+    def test_stale_symlinks_removed_on_resume_with_fewer_refs(
+        self, tmp_storms, tmp_path
+    ):
+        """Resuming with fewer reference dirs removes stale ref_N symlinks."""
+        refs = [tmp_path / f"dir{i}" for i in range(1, 4)]
+        for d in refs:
+            d.mkdir()
+
+        config = SessionConfig(
+            session_id="stale",
+            topic="Test",
+            reference_dirs=[str(d) for d in refs],
+            storms_dir=str(tmp_storms),
+        )
+        config.ensure_dirs()
+        refs_dir = config.session_dir() / "refs"
+        assert (refs_dir / "ref_1").is_symlink()
+        assert (refs_dir / "ref_2").is_symlink()
+        assert (refs_dir / "ref_3").is_symlink()
+
+        # Resume with only 1 reference dir
+        config.reference_dirs = [str(refs[0])]
+        config._create_ref_symlinks()
+
+        assert (refs_dir / "ref_1").is_symlink()
+        assert not (refs_dir / "ref_2").exists()
+        assert not (refs_dir / "ref_3").exists()
+
+    def test_nonexistent_target_skipped_with_warning(
+        self, tmp_storms, tmp_path, caplog
+    ):
+        """A reference dir that doesn't exist on disk is skipped with warning."""
+        missing = tmp_path / "gone"
+        config = SessionConfig(
+            session_id="nodir",
+            topic="Test",
+            reference_dirs=[str(missing)],
+            storms_dir=str(tmp_storms),
+        )
+        config.session_dir().mkdir(parents=True, exist_ok=True)
+
+        with caplog.at_level(logging.WARNING, logger="claude_storm.config"):
+            config._create_ref_symlinks()
+
+        assert "Reference dir does not exist" in caplog.text
+        assert config.ref_symlink_failed(1)
+        link = config.session_dir() / "refs" / "ref_1"
+        assert not link.exists()
+        assert not link.is_symlink()
+
+    def test_oserror_during_stale_removal_logged(
+        self, tmp_storms, tmp_path, caplog, monkeypatch
+    ):
+        """OSError during stale symlink removal is logged, not raised."""
+        ref = tmp_path / "data"
+        ref.mkdir()
+        config = SessionConfig(
+            session_id="stalerr",
+            topic="Test",
+            reference_dirs=[str(ref)],
+            storms_dir=str(tmp_storms),
+        )
+        config.ensure_dirs()
+
+        # Manually create a stale ref_2 symlink
+        refs_dir = config.session_dir() / "refs"
+        stale = refs_dir / "ref_2"
+        stale.symlink_to(ref)
+
+        original_unlink = Path.unlink
+
+        def _failing_unlink(self, *args, **kwargs):
+            if self.name == "ref_2":
+                raise OSError("permission denied")
+            return original_unlink(self, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "unlink", _failing_unlink)
+
+        with caplog.at_level(logging.WARNING, logger="claude_storm.config"):
+            config._create_ref_symlinks()
+
+        assert "Failed to remove stale ref symlink" in caplog.text
+        assert stale.is_symlink()
 
 
 class TestValidateReferenceDirConfig:
