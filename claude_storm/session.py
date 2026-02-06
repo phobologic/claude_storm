@@ -25,6 +25,7 @@ from claude_storm.memory import (
     format_memory_index,
     format_recent_memories,
     format_search_results,
+    get_memory_index,
     save_memory,
 )
 from claude_storm.prompts import build_system_prompt, build_turn_prompt
@@ -88,16 +89,28 @@ def _run_turn(
     """
     agent_dir = config.session_dir() / f"agent-{agent}"
 
+    # Determine if this is the first turn for this agent
+    is_first = (agent == "a" and config.current_turn == 0) or (
+        agent == "b" and config.current_turn == 1
+    )
+
+    # Get watermark for differential prompts
+    watermark = config.get_watermark(agent)
+    since_count = 0 if is_first else watermark["memory_count"]
+
     # Build memory context
-    memory_index = format_memory_index(agent_dir)
-    recent_memories = format_recent_memories(agent_dir)
+    memory_index = format_memory_index(agent_dir, since_count=since_count)
+    recent_memories = format_recent_memories(agent_dir, since_count=since_count)
     search_results = None
     if search_query:
         search_results = format_search_results(agent_dir, search_query)
 
     # Build agreements context
     agreements_text = format_agreements_for_prompt(
-        config, agent, current_turn=config.current_turn + 1
+        config,
+        agent,
+        current_turn=config.current_turn + 1,
+        watermark=None if is_first else watermark,
     )
 
     # Merge buffered nudges with any ASK_USER response
@@ -115,11 +128,7 @@ def _run_turn(
         search_results=search_results,
         user_input=merged_input,
         agreements_text=agreements_text,
-    )
-
-    # Determine if this is the first turn for this agent
-    is_first = (agent == "a" and config.current_turn == 0) or (
-        agent == "b" and config.current_turn == 1
+        is_agent_first_turn=is_first,
     )
     system_prompt = build_system_prompt(config, agent) if is_first else None
 
@@ -354,6 +363,10 @@ def run_session(
                 config.stop_error = response.text
                 break
 
+            # Append to conversation log before processing directives,
+            # which may block on ASK_USER prompts and get interrupted.
+            _append_conversation(config, current_agent, directives.clean_text)
+
             # Process directives
             search_query, user_input = process_directives(
                 config, current_agent, directives, display
@@ -364,8 +377,10 @@ def run_session(
             if user_input and directives.ask_user:
                 pending_answer_for[current_agent] = user_input
 
-            # Append to conversation log
-            _append_conversation(config, current_agent, directives.clean_text)
+            # Update watermark before advancing turn
+            agent_dir = config.session_dir() / f"agent-{current_agent}"
+            memory_count = len(get_memory_index(agent_dir))
+            config.update_watermark(current_agent, memory_count)
 
             # Advance turn
             other_response = response.text
