@@ -56,6 +56,8 @@ topic = """
 # interactive = false
 # Truncate conversation log during deliverable compilation (default: true)
 # truncate_conversation = true
+# Per-turn agent timeout in seconds (default: 600)
+# agent_timeout = 600
 '''
 
 
@@ -268,6 +270,7 @@ _KNOWN_KEYS: list[tuple[str, str, str]] = [
     ("auto_complete", "options", "# auto_complete = true"),
     ("interactive", "options", "# interactive = false"),
     ("truncate_conversation", "options", "# truncate_conversation = true"),
+    ("agent_timeout", "options", "# agent_timeout = 600"),
 ]
 
 

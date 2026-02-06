@@ -58,7 +58,7 @@ class DisplayProtocol(Protocol):
     def show_user_nudge(self, text: str) -> None: ...
     def show_input_hint(self) -> None: ...
     def thinking_status(
-        self, label: str, timeout: int = 300, **kwargs: object
+        self, label: str, timeout: int = 600, **kwargs: object
     ) -> object: ...
 
 
@@ -232,7 +232,7 @@ class PlainDisplay:
     def thinking_status(
         self,
         label: str,
-        timeout: int = 300,
+        timeout: int = 600,
         **kwargs: object,
     ):
         """Show a live elapsed timer while an agent is working."""
@@ -413,7 +413,7 @@ class TextualDisplay:
     def thinking_status(
         self,
         label: str,
-        timeout: int = 300,
+        timeout: int = 600,
         **kwargs: object,
     ):
         """Post UpdateThinking/ClearThinking messages."""

@@ -145,7 +145,7 @@ def invoke_agent(
     agent: str,
     prompt: str,
     system_prompt: str | None = None,
-    timeout: int = 300,
+    timeout: int = 600,
     session_id: str | None = None,
     readonly: bool = False,
 ) -> AgentResponse:

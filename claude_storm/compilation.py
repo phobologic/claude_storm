@@ -111,13 +111,16 @@ def compile_deliverables(config: SessionConfig, display: DisplayProtocol) -> Non
                 turn_prompt=prompt,
             )
 
-        with display.thinking_status(f"Compiling: {deliverable}"):
+        with display.thinking_status(
+            f"Compiling: {deliverable}", timeout=config.agent_timeout
+        ):
             response = invoke_agent(
                 config=config,
                 agent="a",
                 prompt=prompt,
                 session_id=str(uuid4()),
                 readonly=True,
+                timeout=config.agent_timeout,
             )
 
         if config.debug:
@@ -160,13 +163,14 @@ def generate_summary(config: SessionConfig, display: DisplayProtocol) -> None:
             turn_prompt=summary_prompt,
         )
 
-    with display.thinking_status("Generating summary"):
+    with display.thinking_status("Generating summary", timeout=config.agent_timeout):
         response = invoke_agent(
             config=config,
             agent="a",
             prompt=summary_prompt,
             session_id=str(uuid4()),
             readonly=True,
+            timeout=config.agent_timeout,
         )
 
     if config.debug:

@@ -116,6 +116,11 @@ def start(
         "--ref",
         help="Read-only directory of reference materials (repeatable)",
     ),
+    agent_timeout: int | None = typer.Option(
+        None,
+        "--agent-timeout",
+        help="Per-turn agent timeout in seconds (default: 600)",
+    ),
 ) -> None:
     """Start a new brainstorming session."""
     console = Console()
@@ -134,6 +139,7 @@ def start(
         "deliverables": [],
         "reference_dirs": [],
         "truncate_conversation": True,
+        "agent_timeout": 600,
     }
 
     # Layer 2: TOML config (if available)
@@ -194,6 +200,8 @@ def start(
         merged["deliverables"] = list(deliverable)
     if reference_dir:
         merged["reference_dirs"] = [str(p) for p in reference_dir]
+    if agent_timeout is not None:
+        merged["agent_timeout"] = agent_timeout
 
     # Validate: each reference dir must exist
     resolved_refs: list[str] = []
@@ -232,6 +240,7 @@ def start(
         deliverables=merged["deliverables"],
         reference_dirs=merged["reference_dirs"],
         truncate_conversation=merged["truncate_conversation"],
+        agent_timeout=merged["agent_timeout"],
         storms_dir=storms_dir,
     )
 

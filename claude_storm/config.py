@@ -36,6 +36,7 @@ class SessionConfig:
     done_signals: dict[str, str] = field(default_factory=dict)
     deliverables: list[str] = field(default_factory=list)
     reference_dirs: list[str] = field(default_factory=list)
+    agent_timeout: int = 600
     truncate_conversation: bool = True
     pending_proposals: list[dict] = field(default_factory=list)
     accepted_agreements: list[dict] = field(default_factory=list)
@@ -60,6 +61,7 @@ class SessionConfig:
         deliverables: list[str] | None = None,
         reference_dirs: list[str] | None = None,
         truncate_conversation: bool = True,
+        agent_timeout: int = 600,
         storms_dir: str = "",
     ) -> SessionConfig:
         """Create a new session config with generated IDs."""
@@ -81,6 +83,7 @@ class SessionConfig:
             status="active",
             deliverables=deliverables or [],
             reference_dirs=reference_dirs or [],
+            agent_timeout=agent_timeout,
             truncate_conversation=truncate_conversation,
             storms_dir=storms_dir,
         )
