@@ -133,6 +133,10 @@ class TestParseDirectives:
         assert result.revisions[0] == ("a3f2", "Updated: use REST with caching")
         assert "[REVISE" not in result.clean_text
 
+    def test_parse_revise_empty_body_ignored(self):
+        result = parse_directives('[REVISE id="abc"][/REVISE]')
+        assert result.revisions == []
+
     def test_parse_multiple_accepts(self):
         text = '[ACCEPT id="a3f2"] [ACCEPT id="b7c1"]'
         result = parse_directives(text)
@@ -879,6 +883,7 @@ class TestProcessDirectivesRevisions:
         assert proposal["title"] == "Add GraphQL"
         assert proposal["content"] == "GraphQL with subscriptions"
         assert proposal["revises"] == "b7c1"
+        assert proposal["proposed_by"] == "b"
 
     def test_revise_unknown_id_uses_fallback_title(self, make_config, capture_display):
         """REVISE on an unknown ID creates a proposal with fallback title."""
@@ -944,6 +949,51 @@ class TestProcessDirectivesRevisions:
         output = buf.getvalue()
         assert "REVISE target" in output
         assert "not found" in output
+
+    def test_revise_targets_pending_with_accepted_present(
+        self, make_config, capture_display
+    ):
+        """REVISE finds pending target when accepted agreements also exist."""
+        config = make_config(
+            session_id="revise-test",
+            max_turns=20,
+            current_turn=5,
+        )
+        config.accepted_agreements = [
+            {
+                "id": "a3f2",
+                "title": "Use REST",
+                "content": "REST API.",
+                "summary": "REST API.",
+                "proposed_by": "a",
+                "proposed_turn": 2,
+                "accepted_turn": 3,
+                "revises": None,
+            }
+        ]
+        config.pending_proposals = [
+            {
+                "id": "p5k8",
+                "title": "Add caching",
+                "content": "Redis cache.",
+                "summary": "Redis cache.",
+                "proposed_by": "a",
+                "turn": 3,
+                "revises": None,
+            }
+        ]
+        display, _buf = capture_display
+        directives = parse_directives('[REVISE id="p5k8"]Memcached instead[/REVISE]')
+        process_directives(config, "b", directives, display)
+        # Pending removed, revision created with pending's title
+        assert len(config.pending_proposals) == 1
+        proposal = config.pending_proposals[0]
+        assert proposal["title"] == "Add caching"
+        assert proposal["content"] == "Memcached instead"
+        assert proposal["revises"] == "p5k8"
+        assert proposal["proposed_by"] == "b"
+        # Accepted agreement untouched
+        assert len(config.accepted_agreements) == 1
 
 
 class TestProcessDirectivesAskUser:

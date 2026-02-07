@@ -188,8 +188,9 @@ def _handle_reject(directive: _RawDirective, result: ParsedDirectives) -> None:
 
 def _handle_revise(directive: _RawDirective, result: ParsedDirectives) -> None:
     id_ = directive.attrs.get("id", "")
-    if id_:
-        result.revisions.append((id_, directive.body.strip()))
+    body = directive.body.strip()
+    if id_ and body:
+        result.revisions.append((id_, body))
 
 
 # Tag name -> handler mapping

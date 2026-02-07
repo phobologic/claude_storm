@@ -173,6 +173,52 @@ def _run_turn(
     return response, directives, turn_prompt, system_prompt
 
 
+def _resolve_revision_title(
+    config: SessionConfig,
+    target_id: str,
+    agent: str,
+    display: DisplayProtocol,
+) -> str | None:
+    """Resolve title for a REVISE directive target.
+
+    Looks up target_id in accepted agreements first, then pending proposals.
+    Removes the pending proposal if found and not self-revision.
+
+    Args:
+        config: The session configuration.
+        target_id: The agreement or proposal ID being revised.
+        agent: The agent performing the revision.
+        display: Display interface for warnings.
+
+    Returns:
+        Title string for the new proposal, or None to skip (self-revision).
+    """
+    original = next(
+        (a for a in config.accepted_agreements if a["id"] == target_id),
+        None,
+    )
+    if original:
+        return original["title"]
+
+    pending = next(
+        (p for p in config.pending_proposals if p["id"] == target_id),
+        None,
+    )
+    if pending:
+        if pending["proposed_by"] == agent:
+            display.show_warning(
+                f"Agent cannot revise its own pending proposal {target_id}"
+            )
+            return None
+        config.pending_proposals.remove(pending)
+        return pending["title"]
+
+    display.show_warning(
+        f"REVISE target {target_id!r} not found; creating proposal with fallback title"
+    )
+    return "Revised agreement"
+
+
 def process_directives(
     config: SessionConfig,
     agent: str,
@@ -245,43 +291,10 @@ def process_directives(
 
     # Handle revisions (confirmed agreements OR pending proposals)
     for target_id, content in directives.revisions:
-        original = next(
-            (a for a in config.accepted_agreements if a["id"] == target_id),
-            None,
-        )
-        if original:
-            title = original["title"]
-            new_id = create_proposal(
-                config, title, content, agent, turn, revises=target_id
-            )
-            display.show_revision_proposed(agent, target_id, new_id)
+        title = _resolve_revision_title(config, target_id, agent, display)
+        if title is None:
             continue
-
-        pending = next(
-            (p for p in config.pending_proposals if p["id"] == target_id),
-            None,
-        )
-        if pending:
-            if pending["proposed_by"] == agent:
-                display.show_warning(
-                    f"Agent cannot revise its own pending proposal {target_id}"
-                )
-                continue
-            title = pending["title"]
-            config.pending_proposals.remove(pending)
-            new_id = create_proposal(
-                config, title, content, agent, turn, revises=target_id
-            )
-            display.show_revision_proposed(agent, target_id, new_id)
-            continue
-
-        display.show_warning(
-            f"REVISE target {target_id!r} not found;"
-            " creating proposal with fallback title"
-        )
-        new_id = create_proposal(
-            config, "Revised agreement", content, agent, turn, revises=target_id
-        )
+        new_id = create_proposal(config, title, content, agent, turn, revises=target_id)
         display.show_revision_proposed(agent, target_id, new_id)
 
     # Handle ask_user
