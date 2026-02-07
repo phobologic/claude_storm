@@ -8,7 +8,11 @@ from pathlib import Path
 
 import pytest
 
-from claude_storm.config import SessionConfig, _validate_reference_dir
+from claude_storm.config import (
+    SessionConfig,
+    _validate_reference_dir,
+    validate_reference_dirs,
+)
 
 # ---------- Security tests ----------
 
@@ -525,6 +529,33 @@ class TestRefSymlinkStaleCleanup:
 
         assert "Failed to remove stale ref symlink" in caplog.text
         assert stale.is_symlink()
+
+
+class TestValidateReferenceDirs:
+    """validate_reference_dirs resolves paths and checks existence."""
+
+    def test_existing_dirs_resolved(self, tmp_path):
+        d1 = tmp_path / "notes"
+        d2 = tmp_path / "docs"
+        d1.mkdir()
+        d2.mkdir()
+        result = validate_reference_dirs([str(d1), str(d2)])
+        assert result == [str(d1.resolve()), str(d2.resolve())]
+
+    def test_missing_dir_raises_value_error(self, tmp_path):
+        missing = tmp_path / "nonexistent"
+        with pytest.raises(ValueError, match="not found"):
+            validate_reference_dirs([str(missing)])
+
+    def test_empty_list_returns_empty(self):
+        assert validate_reference_dirs([]) == []
+
+    def test_relative_path_resolved(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        rel_dir = tmp_path / "relative_dir"
+        rel_dir.mkdir()
+        result = validate_reference_dirs(["relative_dir"])
+        assert result == [str(rel_dir.resolve())]
 
 
 class TestValidateReferenceDirConfig:

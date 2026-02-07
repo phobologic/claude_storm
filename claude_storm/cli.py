@@ -8,7 +8,7 @@ from pathlib import Path
 import typer
 from rich.console import Console
 
-from claude_storm.config import SessionConfig
+from claude_storm.config import SessionConfig, validate_reference_dirs
 from claude_storm.display import Display
 from claude_storm.project import (
     STORM_CONFIG_FILENAME,
@@ -77,6 +77,185 @@ def init(
         raise typer.Exit(1) from None
 
 
+def _load_and_migrate_toml(
+    config_path: Path | None,
+    console: Console,
+) -> tuple[dict, Path | None]:
+    """Load and migrate a TOML config file.
+
+    Resolves the config path (auto-detecting storm.toml in CWD when no
+    explicit path is given), loads the config, runs migration, and applies
+    the ``reference_dir`` → ``reference_dirs`` compatibility shim.
+
+    Args:
+        config_path: Explicit path to storm.toml, or None to auto-detect.
+        console: Rich console for printing migration messages.
+
+    Returns:
+        Tuple of (config dict, resolved config path). Returns ({}, None)
+        when no config file is found.
+    """
+    resolved_config_path = config_path
+    if resolved_config_path is None:
+        default_toml = Path.cwd() / STORM_CONFIG_FILENAME
+        if default_toml.exists():
+            resolved_config_path = default_toml
+
+    if resolved_config_path is None:
+        return {}, None
+
+    try:
+        toml_config = load_project_config(resolved_config_path)
+    except (FileNotFoundError, ValueError) as e:
+        console.print(f"[bold red]{e}[/bold red]")
+        raise typer.Exit(1) from None
+
+    # Run migration on the config file
+    migration_messages = migrate_config(resolved_config_path)
+    for msg in migration_messages:
+        console.print(f"[yellow]{msg}[/yellow]")
+
+    # Reload if migrated
+    if migration_messages:
+        toml_config = load_project_config(resolved_config_path)
+
+    # Migrate old reference_dir key from TOML to reference_dirs
+    if "reference_dir" in toml_config and "reference_dirs" not in toml_config:
+        old_val = toml_config.pop("reference_dir")
+        if old_val:
+            toml_config["reference_dirs"] = [old_val]
+
+    return toml_config, resolved_config_path
+
+
+def _resolve_start_config(
+    *,
+    topic: str | None,
+    config_path: Path | None,
+    goal: str | None,
+    roles: list[str] | None,
+    max_turns: int | None,
+    max_minutes: int | None,
+    auto_complete: bool | None,
+    interactive: bool | None,
+    model: str | None,
+    deliverable: list[str] | None,
+    reference_dir: list[Path] | None,
+    agent_timeout: int | None,
+    debug: bool,
+    console: Console,
+) -> SessionConfig:
+    """Build a SessionConfig by merging defaults, TOML, and CLI overrides.
+
+    Implements the three-layer config merge: hardcoded defaults → TOML values
+    → CLI flags. Validates reference directories and topic presence.
+
+    Args:
+        topic: Brainstorming topic from CLI argument.
+        config_path: Explicit path to storm.toml, or None.
+        goal: Desired outcome from CLI flag.
+        roles: Agent roles from CLI flag (up to two).
+        max_turns: Maximum turns from CLI flag.
+        max_minutes: Time limit from CLI flag.
+        auto_complete: Auto-complete toggle from CLI flag.
+        interactive: Interactive toggle from CLI flag.
+        model: Claude model from CLI flag.
+        deliverable: Expected output documents from CLI flag.
+        reference_dir: Reference directory paths from CLI flag.
+        agent_timeout: Per-turn timeout from CLI flag.
+        debug: Whether debug mode is enabled.
+        console: Rich console for error messages.
+
+    Returns:
+        A fully configured SessionConfig ready for session launch.
+    """
+    # Layer 1: Defaults
+    merged: dict = {
+        "topic": None,
+        "goal": "",
+        "role_a": None,
+        "role_b": None,
+        "max_turns": 20,
+        "max_minutes": None,
+        "auto_complete": False,
+        "interactive": False,
+        "model": "sonnet",
+        "deliverables": [],
+        "reference_dirs": [],
+        "truncate_conversation": True,
+        "agent_timeout": 600,
+    }
+
+    # Layer 2: TOML config (if available)
+    toml_config, resolved_config_path = _load_and_migrate_toml(config_path, console)
+    for key in merged:
+        if key in toml_config:
+            merged[key] = toml_config[key]
+
+    # Layer 3: CLI overrides (only non-None values)
+    if topic is not None:
+        merged["topic"] = topic
+    if goal is not None:
+        merged["goal"] = goal
+    if roles:
+        if len(roles) >= 1:
+            merged["role_a"] = roles[0]
+        if len(roles) >= 2:
+            merged["role_b"] = roles[1]
+    if max_turns is not None:
+        merged["max_turns"] = max_turns
+    if max_minutes is not None:
+        merged["max_minutes"] = max_minutes
+    if auto_complete is not None:
+        merged["auto_complete"] = auto_complete
+    if interactive is not None:
+        merged["interactive"] = interactive
+    if model is not None:
+        merged["model"] = model
+    if deliverable:
+        merged["deliverables"] = list(deliverable)
+    if reference_dir:
+        merged["reference_dirs"] = [str(p) for p in reference_dir]
+    if agent_timeout is not None:
+        merged["agent_timeout"] = agent_timeout
+
+    # Validate: each reference dir must exist
+    try:
+        merged["reference_dirs"] = validate_reference_dirs(merged["reference_dirs"])
+    except ValueError as e:
+        console.print(f"[bold red]{e}[/bold red]")
+        raise typer.Exit(1) from None
+
+    # Validate: topic is required
+    if not merged["topic"]:
+        console.print(
+            "[bold red]No topic provided. "
+            "Pass a topic argument or create a storm.toml.[/bold red]"
+        )
+        raise typer.Exit(1)
+
+    # Resolve storms dir
+    storms_dir = str(get_storms_dir(resolved_config_path))
+
+    return SessionConfig.create(
+        topic=merged["topic"],
+        goal=merged["goal"],
+        role_a=merged["role_a"],
+        role_b=merged["role_b"],
+        max_turns=merged["max_turns"],
+        max_minutes=merged["max_minutes"],
+        auto_complete=merged["auto_complete"],
+        interactive=merged["interactive"],
+        debug=debug,
+        model=merged["model"],
+        deliverables=merged["deliverables"],
+        reference_dirs=merged["reference_dirs"],
+        truncate_conversation=merged["truncate_conversation"],
+        agent_timeout=merged["agent_timeout"],
+        storms_dir=storms_dir,
+    )
+
+
 @app.command()
 def start(
     topic: str | None = typer.Argument(default=None, help="The brainstorming topic"),
@@ -124,124 +303,21 @@ def start(
 ) -> None:
     """Start a new brainstorming session."""
     console = Console()
-
-    # Layer 1: Defaults
-    merged: dict = {
-        "topic": None,
-        "goal": "",
-        "role_a": None,
-        "role_b": None,
-        "max_turns": 20,
-        "max_minutes": None,
-        "auto_complete": False,
-        "interactive": False,
-        "model": "sonnet",
-        "deliverables": [],
-        "reference_dirs": [],
-        "truncate_conversation": True,
-        "agent_timeout": 600,
-    }
-
-    # Layer 2: TOML config (if available)
-    toml_config: dict = {}
-    resolved_config_path = config_path
-    if resolved_config_path is None:
-        default_toml = Path.cwd() / STORM_CONFIG_FILENAME
-        if default_toml.exists():
-            resolved_config_path = default_toml
-
-    if resolved_config_path is not None:
-        try:
-            toml_config = load_project_config(resolved_config_path)
-        except (FileNotFoundError, ValueError) as e:
-            console.print(f"[bold red]{e}[/bold red]")
-            raise typer.Exit(1) from None
-
-        # Run migration on the config file
-        migration_messages = migrate_config(resolved_config_path)
-        for msg in migration_messages:
-            console.print(f"[yellow]{msg}[/yellow]")
-
-        # Reload if migrated
-        if migration_messages:
-            toml_config = load_project_config(resolved_config_path)
-
-        # Migrate old reference_dir key from TOML to reference_dirs
-        if "reference_dir" in toml_config and "reference_dirs" not in toml_config:
-            old_val = toml_config.pop("reference_dir")
-            if old_val:
-                toml_config["reference_dirs"] = [old_val]
-
-        for key in merged:
-            if key in toml_config:
-                merged[key] = toml_config[key]
-
-    # Layer 3: CLI overrides (only non-None values)
-    if topic is not None:
-        merged["topic"] = topic
-    if goal is not None:
-        merged["goal"] = goal
-    if roles:
-        if len(roles) >= 1:
-            merged["role_a"] = roles[0]
-        if len(roles) >= 2:
-            merged["role_b"] = roles[1]
-    if max_turns is not None:
-        merged["max_turns"] = max_turns
-    if max_minutes is not None:
-        merged["max_minutes"] = max_minutes
-    if auto_complete is not None:
-        merged["auto_complete"] = auto_complete
-    if interactive is not None:
-        merged["interactive"] = interactive
-    if model is not None:
-        merged["model"] = model
-    if deliverable:
-        merged["deliverables"] = list(deliverable)
-    if reference_dir:
-        merged["reference_dirs"] = [str(p) for p in reference_dir]
-    if agent_timeout is not None:
-        merged["agent_timeout"] = agent_timeout
-
-    # Validate: each reference dir must exist
-    resolved_refs: list[str] = []
-    for ref in merged["reference_dirs"]:
-        ref_path = Path(ref).resolve()
-        if not ref_path.is_dir():
-            console.print(
-                f"[bold red]Reference directory not found: {ref_path}[/bold red]"
-            )
-            raise typer.Exit(1)
-        resolved_refs.append(str(ref_path))
-    merged["reference_dirs"] = resolved_refs
-
-    # Validate: topic is required
-    if not merged["topic"]:
-        console.print(
-            "[bold red]No topic provided. "
-            "Pass a topic argument or create a storm.toml.[/bold red]"
-        )
-        raise typer.Exit(1)
-
-    # Resolve storms dir
-    storms_dir = str(get_storms_dir(resolved_config_path))
-
-    config = SessionConfig.create(
-        topic=merged["topic"],
-        goal=merged["goal"],
-        role_a=merged["role_a"],
-        role_b=merged["role_b"],
-        max_turns=merged["max_turns"],
-        max_minutes=merged["max_minutes"],
-        auto_complete=merged["auto_complete"],
-        interactive=merged["interactive"],
+    config = _resolve_start_config(
+        topic=topic,
+        config_path=config_path,
+        goal=goal,
+        roles=roles,
+        max_turns=max_turns,
+        max_minutes=max_minutes,
+        auto_complete=auto_complete,
+        interactive=interactive,
+        model=model,
+        deliverable=deliverable,
+        reference_dir=reference_dir,
+        agent_timeout=agent_timeout,
         debug=_debug_mode,
-        model=merged["model"],
-        deliverables=merged["deliverables"],
-        reference_dirs=merged["reference_dirs"],
-        truncate_conversation=merged["truncate_conversation"],
-        agent_timeout=merged["agent_timeout"],
-        storms_dir=storms_dir,
+        console=console,
     )
 
     if sys.stdout.isatty():

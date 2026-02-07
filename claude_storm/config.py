@@ -47,6 +47,29 @@ def _validate_reference_dir(path: str) -> bool:
     return resolved not in _SENSITIVE_PATHS
 
 
+def validate_reference_dirs(dirs: list[str]) -> list[str]:
+    """Resolve and validate a list of reference directory paths.
+
+    Each path is resolved to an absolute path and checked for existence.
+
+    Args:
+        dirs: List of directory path strings to validate.
+
+    Returns:
+        List of resolved absolute path strings.
+
+    Raises:
+        ValueError: If any directory does not exist.
+    """
+    resolved: list[str] = []
+    for ref in dirs:
+        ref_path = Path(ref).resolve()
+        if not ref_path.is_dir():
+            raise ValueError(f"Reference directory not found: {ref_path}")
+        resolved.append(str(ref_path))
+    return resolved
+
+
 @dataclass
 class SessionConfig:
     """Configuration for a brainstorming session."""

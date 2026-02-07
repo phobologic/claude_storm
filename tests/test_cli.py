@@ -4,10 +4,12 @@ import json
 from collections import deque
 from unittest.mock import patch
 
+import pytest
+from rich.console import Console
 from typer.testing import CliRunner
 
 from claude_storm.agents import AgentResponse
-from claude_storm.cli import app
+from claude_storm.cli import _load_and_migrate_toml, _resolve_start_config, app
 from claude_storm.compilation import (
     compile_deliverables,
     find_matching_artifacts,
@@ -1082,3 +1084,176 @@ class TestFindMatchingArtifacts:
         assert len(prompts_captured) == 1
         assert "Draft Content" in prompts_captured[0]
         assert "# Draft content" in prompts_captured[0]
+
+
+class TestLoadAndMigrateToml:
+    def test_no_config_returns_empty(self, tmp_path, monkeypatch):
+        """No config file in CWD and no explicit path returns ({}, None)."""
+        monkeypatch.chdir(tmp_path)
+        console = Console()
+        result = _load_and_migrate_toml(None, console)
+        assert result == ({}, None)
+
+    def test_auto_detects_storm_toml(self, tmp_path, monkeypatch):
+        """Auto-detects storm.toml in CWD."""
+        monkeypatch.chdir(tmp_path)
+        toml = tmp_path / STORM_CONFIG_FILENAME
+        toml.write_text('[session]\ntopic = "Auto"\n\n[options]\nmax_turns = 7\n')
+        console = Console()
+        config, path = _load_and_migrate_toml(None, console)
+        assert config["topic"] == "Auto"
+        assert config["max_turns"] == 7
+        assert path == toml
+
+    def test_explicit_path(self, tmp_path):
+        """Explicit config path is used directly."""
+        toml = tmp_path / "custom.toml"
+        toml.write_text('[session]\ntopic = "Explicit"\n')
+        console = Console()
+        config, path = _load_and_migrate_toml(toml, console)
+        assert config["topic"] == "Explicit"
+        assert path == toml
+
+    def test_missing_file_exits(self, tmp_path):
+        """Explicit path to missing file raises typer.Exit."""
+        from click.exceptions import Exit
+
+        missing = tmp_path / "nope.toml"
+        console = Console()
+        with pytest.raises(Exit):
+            _load_and_migrate_toml(missing, console)
+
+    def test_reference_dir_compat_shim(self, tmp_path, monkeypatch):
+        """Old reference_dir key is migrated to reference_dirs."""
+        monkeypatch.chdir(tmp_path)
+        toml = tmp_path / STORM_CONFIG_FILENAME
+        toml.write_text('[session]\ntopic = "Compat"\nreference_dir = "/old/path"\n')
+        console = Console()
+        config, _ = _load_and_migrate_toml(None, console)
+        assert "reference_dirs" in config
+        assert config["reference_dirs"] == ["/old/path"]
+        assert "reference_dir" not in config
+
+
+class TestResolveStartConfig:
+    @patch("claude_storm.cli.run_session")
+    def test_basic_topic_returns_config(self, mock_run, tmp_path, monkeypatch):
+        """A simple topic argument produces a valid SessionConfig."""
+        monkeypatch.chdir(tmp_path)
+        console = Console()
+        config = _resolve_start_config(
+            topic="Test topic",
+            config_path=None,
+            goal=None,
+            roles=None,
+            max_turns=None,
+            max_minutes=None,
+            auto_complete=None,
+            interactive=None,
+            model=None,
+            deliverable=None,
+            reference_dir=None,
+            agent_timeout=None,
+            debug=False,
+            console=console,
+        )
+        assert config.topic == "Test topic"
+        assert config.max_turns == 20  # default
+        assert config.model == "sonnet"  # default
+
+    def test_cli_overrides_toml(self, tmp_path, monkeypatch):
+        """CLI flags override TOML values."""
+        monkeypatch.chdir(tmp_path)
+        toml = tmp_path / STORM_CONFIG_FILENAME
+        toml.write_text('[session]\ntopic = "TOML topic"\n\n[options]\nmax_turns = 5\n')
+        console = Console()
+        config = _resolve_start_config(
+            topic="CLI topic",
+            config_path=None,
+            goal=None,
+            roles=None,
+            max_turns=15,
+            max_minutes=None,
+            auto_complete=None,
+            interactive=None,
+            model=None,
+            deliverable=None,
+            reference_dir=None,
+            agent_timeout=None,
+            debug=False,
+            console=console,
+        )
+        assert config.topic == "CLI topic"
+        assert config.max_turns == 15
+
+    def test_no_topic_exits(self, tmp_path, monkeypatch):
+        """Missing topic raises typer.Exit."""
+        from click.exceptions import Exit
+
+        monkeypatch.chdir(tmp_path)
+        console = Console()
+        with pytest.raises(Exit):
+            _resolve_start_config(
+                topic=None,
+                config_path=None,
+                goal=None,
+                roles=None,
+                max_turns=None,
+                max_minutes=None,
+                auto_complete=None,
+                interactive=None,
+                model=None,
+                deliverable=None,
+                reference_dir=None,
+                agent_timeout=None,
+                debug=False,
+                console=console,
+            )
+
+    def test_invalid_reference_dir_exits(self, tmp_path, monkeypatch):
+        """Non-existent reference dir raises typer.Exit."""
+        from pathlib import Path as P
+
+        from click.exceptions import Exit
+
+        monkeypatch.chdir(tmp_path)
+        console = Console()
+        with pytest.raises(Exit):
+            _resolve_start_config(
+                topic="Topic",
+                config_path=None,
+                goal=None,
+                roles=None,
+                max_turns=None,
+                max_minutes=None,
+                auto_complete=None,
+                interactive=None,
+                model=None,
+                deliverable=None,
+                reference_dir=[P("/nonexistent/path")],
+                agent_timeout=None,
+                debug=False,
+                console=console,
+            )
+
+    def test_debug_passed_through(self, tmp_path, monkeypatch):
+        """Debug flag is passed through to SessionConfig."""
+        monkeypatch.chdir(tmp_path)
+        console = Console()
+        config = _resolve_start_config(
+            topic="Debug test",
+            config_path=None,
+            goal=None,
+            roles=None,
+            max_turns=None,
+            max_minutes=None,
+            auto_complete=None,
+            interactive=None,
+            model=None,
+            deliverable=None,
+            reference_dir=None,
+            agent_timeout=None,
+            debug=True,
+            console=console,
+        )
+        assert config.debug is True
