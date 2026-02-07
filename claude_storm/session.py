@@ -262,6 +262,11 @@ def process_directives(
             None,
         )
         if pending:
+            if pending["proposed_by"] == agent:
+                display.show_warning(
+                    f"Agent cannot revise its own pending proposal {target_id}"
+                )
+                continue
             title = pending["title"]
             config.pending_proposals.remove(pending)
             new_id = create_proposal(
@@ -270,6 +275,10 @@ def process_directives(
             display.show_revision_proposed(agent, target_id, new_id)
             continue
 
+        display.show_warning(
+            f"REVISE target {target_id!r} not found;"
+            " creating proposal with fallback title"
+        )
         new_id = create_proposal(
             config, "Revised agreement", content, agent, turn, revises=target_id
         )

@@ -896,6 +896,55 @@ class TestProcessDirectivesRevisions:
         assert proposal["content"] == "Some new content"
         assert proposal["revises"] == "zzzz"
 
+    def test_revise_own_pending_proposal_skipped(self, make_config, capture_display):
+        """REVISE on own pending proposal is rejected with a warning."""
+        config = make_config(
+            session_id="revise-test",
+            max_turns=20,
+            current_turn=5,
+        )
+        config.pending_proposals = [
+            {
+                "id": "b7c1",
+                "title": "Add GraphQL",
+                "content": "Add a GraphQL gateway.",
+                "summary": "Add a GraphQL gateway.",
+                "proposed_by": "a",
+                "turn": 3,
+                "revises": None,
+            }
+        ]
+        display, buf = capture_display
+        directives = parse_directives(
+            '[REVISE id="b7c1"]GraphQL with subscriptions[/REVISE]'
+        )
+        process_directives(config, "a", directives, display)
+        # Original proposal unchanged
+        assert len(config.pending_proposals) == 1
+        assert config.pending_proposals[0]["id"] == "b7c1"
+        assert config.pending_proposals[0]["content"] == "Add a GraphQL gateway."
+        # Warning displayed
+        output = buf.getvalue()
+        assert "cannot revise its own pending proposal" in output
+
+    def test_revise_unknown_id_shows_warning(self, make_config, capture_display):
+        """REVISE on an unknown ID shows a warning before creating fallback."""
+        config = make_config(
+            session_id="revise-test",
+            max_turns=20,
+            current_turn=5,
+        )
+        display, buf = capture_display
+        directives = parse_directives('[REVISE id="zzzz"]Some new content[/REVISE]')
+        process_directives(config, "a", directives, display)
+        # Fallback proposal still created
+        assert len(config.pending_proposals) == 1
+        assert config.pending_proposals[0]["title"] == "Revised agreement"
+        # Warning displayed
+        output = buf.getvalue()
+        assert "REVISE target" in output
+        assert "not found" in output
+
 
 class TestProcessDirectivesAskUser:
     def test_ask_user_includes_question_and_answer(self, make_config, capture_display):
