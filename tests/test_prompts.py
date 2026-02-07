@@ -82,6 +82,20 @@ class TestBuildSystemPrompt:
         assert "[REJECT" in prompt
         assert "[REVISE" in prompt
 
+    def test_revise_mentions_pending_proposals(self, make_config):
+        config = make_config(ensure_dirs=False)
+        prompt = build_system_prompt(config, "a")
+        assert "pending proposal" in prompt
+        assert "confirmed agreement" in prompt
+        # Both REVISE use cases described
+        assert "replaces it with your revised version" in prompt
+
+    def test_revise_anti_amendment_guideline(self, make_config):
+        config = make_config(ensure_dirs=False)
+        prompt = build_system_prompt(config, "a")
+        assert "rather than accepting and then proposing" in prompt
+        assert "separate amendments" in prompt
+
     def test_includes_agreement_guidelines(self, make_config):
         config = make_config(ensure_dirs=False)
         prompt = build_system_prompt(config, "a")

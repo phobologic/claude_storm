@@ -349,7 +349,8 @@ def format_agreements_for_prompt(
                 lines.append(f"  {content}")
                 lines.append(
                     f'  \u2192 Use [ACCEPT id="{p["id"]}"] or '
-                    f'[REJECT id="{p["id"]}" reason="..."]'
+                    f'[REJECT id="{p["id"]}" reason="..."] or '
+                    f'[REVISE id="{p["id"]}"]improved content[/REVISE]'
                 )
         sections.append("\n".join(lines))
 

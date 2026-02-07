@@ -243,18 +243,37 @@ def process_directives(
         if rejected:
             display.show_agreement_rejected(proposal_id, reason)
 
-    # Handle revisions
-    for agreement_id, content in directives.revisions:
-        # Find the original agreement title
+    # Handle revisions (confirmed agreements OR pending proposals)
+    for target_id, content in directives.revisions:
         original = next(
-            (a for a in config.accepted_agreements if a["id"] == agreement_id),
+            (a for a in config.accepted_agreements if a["id"] == target_id),
             None,
         )
-        title = original["title"] if original else "Revised agreement"
-        new_id = create_proposal(
-            config, title, content, agent, turn, revises=agreement_id
+        if original:
+            title = original["title"]
+            new_id = create_proposal(
+                config, title, content, agent, turn, revises=target_id
+            )
+            display.show_revision_proposed(agent, target_id, new_id)
+            continue
+
+        pending = next(
+            (p for p in config.pending_proposals if p["id"] == target_id),
+            None,
         )
-        display.show_revision_proposed(agent, agreement_id, new_id)
+        if pending:
+            title = pending["title"]
+            config.pending_proposals.remove(pending)
+            new_id = create_proposal(
+                config, title, content, agent, turn, revises=target_id
+            )
+            display.show_revision_proposed(agent, target_id, new_id)
+            continue
+
+        new_id = create_proposal(
+            config, "Revised agreement", content, agent, turn, revises=target_id
+        )
+        display.show_revision_proposed(agent, target_id, new_id)
 
     # Handle ask_user
     if directives.ask_user and config.interactive:

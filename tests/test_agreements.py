@@ -549,6 +549,23 @@ class TestFormatAgreementsForPrompt:
         # Full content of pending proposals IS included
         assert "Add a GraphQL gateway." in text
 
+    def test_pending_proposals_show_revise_option(self, make_config):
+        config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
+        config.pending_proposals = [
+            {
+                "id": "c4e8",
+                "title": "Add GraphQL",
+                "content": "Add a GraphQL gateway.",
+                "summary": "Add a GraphQL gateway.",
+                "proposed_by": "a",
+                "turn": 9,
+                "revises": None,
+            }
+        ]
+        text = format_agreements_for_prompt(config, "b")
+        assert '[REVISE id="c4e8"]' in text
+        assert "[/REVISE]" in text
+
     def test_pending_not_shown_to_proposer(self, make_config):
         config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
         config.pending_proposals = [

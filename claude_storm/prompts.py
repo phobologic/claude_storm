@@ -97,9 +97,12 @@ def _build_directives_section(config: SessionConfig) -> str:
         "proposal by its ID.\n"
         '- `[REJECT id="..." reason="..."]` — Reject a '
         "pending proposal with an explanation.\n"
-        '- `[REVISE id="..."]new content[/REVISE]` — Propose '
-        "revising an existing confirmed agreement. Creates a "
-        "new pending proposal the other agent must accept.\n"
+        '- `[REVISE id="..."]new content[/REVISE]` — Propose a '
+        "revised version of a confirmed agreement or a pending "
+        "proposal. When used on a confirmed agreement, creates a "
+        "new pending proposal. When used on a pending proposal, "
+        "replaces it with your revised version for the other "
+        "agent to review.\n"
         '- `[ARTIFACT filename="..."]content[/ARTIFACT]`'
         " — Produce a shared output file "
         "(code, document, etc.).\n"
@@ -143,7 +146,10 @@ def _build_guidelines_section(config: SessionConfig) -> str:
         '- Good proposals are specific and assertive: *"Use PostgreSQL for the data '
         'layer because X, Y, Z"* rather than *"We discussed database options."*\n'
         "- Always review and respond to pending proposals from the other agent"
-        " — accepting without scrutiny is worse than rejecting with good reasons"
+        " — accepting without scrutiny is worse than rejecting with good reasons\n"
+        "- When you mostly agree with a proposal but want changes, use [REVISE] to "
+        "submit your improved version rather than accepting and then proposing "
+        "separate amendments"
     )
     if config.interactive:
         text += (

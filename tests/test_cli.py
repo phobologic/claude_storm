@@ -817,6 +817,86 @@ class TestMergeUserInput:
         assert merge_user_input(None, q) is None
 
 
+class TestProcessDirectivesRevisions:
+    def test_revise_confirmed_agreement(self, make_config, capture_display):
+        """REVISE on a confirmed agreement creates a new proposal."""
+        config = make_config(
+            session_id="revise-test",
+            max_turns=20,
+            current_turn=5,
+        )
+        config.accepted_agreements = [
+            {
+                "id": "a3f2",
+                "title": "Use REST",
+                "content": "REST API.",
+                "summary": "REST API.",
+                "proposed_by": "a",
+                "proposed_turn": 2,
+                "accepted_turn": 3,
+                "revises": None,
+            }
+        ]
+        display, _buf = capture_display
+        directives = parse_directives('[REVISE id="a3f2"]REST with caching[/REVISE]')
+        process_directives(config, "b", directives, display)
+        # Original agreement untouched
+        assert len(config.accepted_agreements) == 1
+        # New pending proposal created
+        assert len(config.pending_proposals) == 1
+        proposal = config.pending_proposals[0]
+        assert proposal["title"] == "Use REST"
+        assert proposal["content"] == "REST with caching"
+        assert proposal["revises"] == "a3f2"
+
+    def test_revise_pending_proposal(self, make_config, capture_display):
+        """REVISE on a pending proposal removes it and creates a replacement."""
+        config = make_config(
+            session_id="revise-test",
+            max_turns=20,
+            current_turn=5,
+        )
+        config.pending_proposals = [
+            {
+                "id": "b7c1",
+                "title": "Add GraphQL",
+                "content": "Add a GraphQL gateway.",
+                "summary": "Add a GraphQL gateway.",
+                "proposed_by": "a",
+                "turn": 3,
+                "revises": None,
+            }
+        ]
+        display, _buf = capture_display
+        directives = parse_directives(
+            '[REVISE id="b7c1"]GraphQL with subscriptions[/REVISE]'
+        )
+        process_directives(config, "b", directives, display)
+        # Original pending proposal removed, replaced with revision
+        assert len(config.pending_proposals) == 1
+        proposal = config.pending_proposals[0]
+        assert proposal["id"] != "b7c1"
+        assert proposal["title"] == "Add GraphQL"
+        assert proposal["content"] == "GraphQL with subscriptions"
+        assert proposal["revises"] == "b7c1"
+
+    def test_revise_unknown_id_uses_fallback_title(self, make_config, capture_display):
+        """REVISE on an unknown ID creates a proposal with fallback title."""
+        config = make_config(
+            session_id="revise-test",
+            max_turns=20,
+            current_turn=5,
+        )
+        display, _buf = capture_display
+        directives = parse_directives('[REVISE id="zzzz"]Some new content[/REVISE]')
+        process_directives(config, "a", directives, display)
+        assert len(config.pending_proposals) == 1
+        proposal = config.pending_proposals[0]
+        assert proposal["title"] == "Revised agreement"
+        assert proposal["content"] == "Some new content"
+        assert proposal["revises"] == "zzzz"
+
+
 class TestProcessDirectivesAskUser:
     def test_ask_user_includes_question_and_answer(self, make_config, capture_display):
         """process_directives formats user_input with both Q and A."""
