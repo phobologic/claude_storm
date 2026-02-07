@@ -75,16 +75,16 @@ class StormApp(App):
             mode_parts.append("auto-complete")
         if self.config.interactive:
             mode_parts.append("interactive")
-        # Show only the first line of the topic, truncated, to keep the
-        # header bar compact (full topic is visible in the session output).
+        # Two-row header: row 1 = app name + session ID + mode info,
+        # row 2 = topic (truncated to 88 chars).
         topic_summary = self.config.topic.split("\n")[0].strip()
-        if len(topic_summary) > 80:
-            topic_summary = topic_summary[:79] + "…"
+        if len(topic_summary) > 88:
+            topic_summary = topic_summary[:87] + "…"
         header.update(
             f"[bold magenta]Claude Storm[/bold magenta]  "
-            f"[bold]{topic_summary}[/bold]  "
-            f"[dim]{', '.join(mode_parts)}[/dim]  "
-            f"[dim italic]session: {self.config.session_id}[/dim italic]"
+            f"[dim italic]{self.config.session_id}[/dim italic]  "
+            f"[dim]{', '.join(mode_parts)}[/dim]\n"
+            f"[dim]Topic:[/dim] {topic_summary}"
         )
         self.run_worker(self._session_worker, thread=True)
 

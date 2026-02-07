@@ -1,6 +1,6 @@
 #header-bar {
     dock: top;
-    height: 1;
+    height: 2;
     padding: 0 1;
     background: $surface;
     color: $text;
