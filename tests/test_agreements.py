@@ -670,6 +670,45 @@ class TestFormatAgreementsForPrompt:
         text = format_agreements_for_prompt(config, "b", current_turn=7)
         assert "several turns since the last agreement" not in text
 
+    def test_seen_pending_proposal_shows_revise_hint(self, make_config):
+        """Already-seen pending proposals include REVISE reminder."""
+        config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
+        config.pending_proposals = [
+            {
+                "id": "c4e8",
+                "title": "Add GraphQL",
+                "content": "Add a GraphQL gateway.",
+                "summary": "Add a GraphQL gateway.",
+                "proposed_by": "a",
+                "turn": 9,
+                "revises": None,
+            }
+        ]
+        watermark = {"agreement_count": 0, "seen_proposal_ids": ["c4e8"]}
+        text = format_agreements_for_prompt(config, "b", watermark=watermark)
+        assert "(still pending" in text
+        assert "REVISE" in text
+        # Full content should NOT be shown for already-seen proposals
+        assert "Add a GraphQL gateway." not in text
+
+    def test_new_pending_proposal_revise_placeholder_style(self, make_config):
+        """New pending proposals use '...revised content...' placeholder."""
+        config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
+        config.pending_proposals = [
+            {
+                "id": "c4e8",
+                "title": "Add GraphQL",
+                "content": "Add a GraphQL gateway.",
+                "summary": "Add a GraphQL gateway.",
+                "proposed_by": "a",
+                "turn": 9,
+                "revises": None,
+            }
+        ]
+        text = format_agreements_for_prompt(config, "b")
+        assert "...revised content..." in text
+        assert "improved content" not in text
+
 
 class TestConfigLoadSummaryBackfill:
     def test_backfills_agreement_summary(self, tmp_storms):

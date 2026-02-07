@@ -336,7 +336,10 @@ def format_agreements_for_prompt(
         for p in pending_for_me:
             if p["id"] in seen_ids:
                 # Already-seen proposal: compact one-liner
-                lines.append(f"- [{p['id']}] **{p['title']}** (still pending)")
+                lines.append(
+                    f"- [{p['id']}] **{p['title']}** (still pending"
+                    " — ACCEPT, REJECT, or REVISE)"
+                )
             else:
                 # New proposal: full content with instructions
                 proposer = "Agent A" if p["proposed_by"] == "a" else "Agent B"
@@ -350,7 +353,7 @@ def format_agreements_for_prompt(
                 lines.append(
                     f'  \u2192 Use [ACCEPT id="{p["id"]}"] or '
                     f'[REJECT id="{p["id"]}" reason="..."] or '
-                    f'[REVISE id="{p["id"]}"]improved content[/REVISE]'
+                    f'[REVISE id="{p["id"]}"]...revised content...[/REVISE]'
                 )
         sections.append("\n".join(lines))
 
