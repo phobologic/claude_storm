@@ -36,21 +36,20 @@ def _build_role_section(config: SessionConfig, agent: str) -> str:
     role = config.role_a if agent == "a" else config.role_b
     other = config.agent_label("b" if agent == "a" else "a")
 
+    parts = ["# Role and Context\n"]
+
     if role:
-        persona = (
-            f"You are playing the role of **{role}** "
-            "in a structured brainstorming session."
+        parts.append(
+            "You are one of two agents in a structured brainstorming session. "
+            "Your role is described below."
         )
+        parts.append(f"\n## Your Role\n{role.strip()}")
     else:
-        persona = (
+        parts.append(
             "You are a brainstorming partner in a structured two-agent discussion."
         )
 
-    parts = [
-        "# Role and Context\n",
-        persona,
-        f"\n**Topic:** {config.topic}",
-    ]
+    parts.append(f"\n**Topic:** {config.topic}")
     if config.goal:
         parts.append(f"**Goal:** {config.goal}")
 

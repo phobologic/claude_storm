@@ -359,7 +359,12 @@ class SessionConfig:
         }
 
     def agent_label(self, agent: str) -> str:
-        """Return a display label for an agent ('a' or 'b')."""
-        if agent == "a":
-            return self.role_a or "Agent A"
-        return self.role_b or "Agent B"
+        """Return a display label for an agent ('a' or 'b').
+
+        When the role is a multi-line string, only the first line is used
+        as the label (the remaining lines are treated as description).
+        """
+        role = self.role_a if agent == "a" else self.role_b
+        if role:
+            return role.strip().splitlines()[0].strip()
+        return "Agent A" if agent == "a" else "Agent B"
