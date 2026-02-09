@@ -58,6 +58,9 @@ topic = """
 # truncate_conversation = true
 # Per-turn agent timeout in seconds (default: 600)
 # agent_timeout = 600
+# Agent backend: "subprocess" (new process per turn) or "long-running"
+# (persistent process, faster but experimental)
+# agent_backend = "subprocess"
 '''
 
 
@@ -271,6 +274,7 @@ _KNOWN_KEYS: list[tuple[str, str, str]] = [
     ("interactive", "options", "# interactive = false"),
     ("truncate_conversation", "options", "# truncate_conversation = true"),
     ("agent_timeout", "options", "# agent_timeout = 600"),
+    ("agent_backend", "options", '# agent_backend = "subprocess"'),
 ]
 
 

@@ -9,7 +9,12 @@ import time
 from collections import deque
 from dataclasses import asdict
 
-from claude_storm.agents import AgentResponse, invoke_agent
+from claude_storm.agents import (
+    AgentBackend,
+    AgentResponse,
+    create_backend,
+    invoke_agent,
+)
 from claude_storm.agreements import (
     accept_proposal,
     create_proposal,
@@ -81,6 +86,7 @@ def _run_turn(
     search_query: str | None = None,
     user_input: str | None = None,
     nudge_queue: deque[str] | None = None,
+    backend: AgentBackend | None = None,
 ) -> tuple[AgentResponse, ParsedDirectives, str, str | None]:
     """Execute a single agent turn.
 
@@ -147,7 +153,8 @@ def _run_turn(
         )
 
     display.show_agent_stream_start(config, agent)
-    response = invoke_agent(
+    _invoke = backend.invoke if backend is not None else invoke_agent
+    response = _invoke(
         config=config,
         agent=agent,
         prompt=turn_prompt,
@@ -362,6 +369,8 @@ def run_session(
     if config.interactive:
         display.show_input_hint()
 
+    backend = create_backend(config.agent_backend)
+
     start_time = time.time()
     other_response = ""
     current_agent = "a"
@@ -397,6 +406,7 @@ def run_session(
                 search_query=search_query,
                 user_input=user_input,
                 nudge_queue=nudge_queue,
+                backend=backend,
             )
 
             if response.is_error:
@@ -450,6 +460,7 @@ def run_session(
             current_agent = "b" if current_agent == "a" else "a"
 
     finally:
+        backend.shutdown()
         if old_handler is not None:
             signal.signal(signal.SIGINT, old_handler)
         config.save()

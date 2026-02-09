@@ -94,6 +94,7 @@ class SessionConfig:
     deliverables: list[str] = field(default_factory=list)
     reference_dirs: list[str] = field(default_factory=list)
     agent_timeout: int = 600
+    agent_backend: str = "subprocess"
     truncate_conversation: bool = True
     pending_proposals: list[dict] = field(default_factory=list)
     accepted_agreements: list[dict] = field(default_factory=list)
@@ -145,6 +146,7 @@ class SessionConfig:
         reference_dirs: list[str] | None = None,
         truncate_conversation: bool = True,
         agent_timeout: int = 600,
+        agent_backend: str = "subprocess",
         storms_dir: str = "",
     ) -> SessionConfig:
         """Create a new session config with generated IDs."""
@@ -167,6 +169,7 @@ class SessionConfig:
             deliverables=deliverables or [],
             reference_dirs=reference_dirs or [],
             agent_timeout=agent_timeout,
+            agent_backend=agent_backend,
             truncate_conversation=truncate_conversation,
             storms_dir=storms_dir,
         )

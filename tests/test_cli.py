@@ -1154,6 +1154,7 @@ class TestResolveStartConfig:
             deliverable=None,
             reference_dir=None,
             agent_timeout=None,
+            agent_backend=None,
             debug=False,
             console=console,
         )
@@ -1180,6 +1181,7 @@ class TestResolveStartConfig:
             deliverable=None,
             reference_dir=None,
             agent_timeout=None,
+            agent_backend=None,
             debug=False,
             console=console,
         )
@@ -1206,6 +1208,7 @@ class TestResolveStartConfig:
                 deliverable=None,
                 reference_dir=None,
                 agent_timeout=None,
+                agent_backend=None,
                 debug=False,
                 console=console,
             )
@@ -1232,6 +1235,7 @@ class TestResolveStartConfig:
                 deliverable=None,
                 reference_dir=[P("/nonexistent/path")],
                 agent_timeout=None,
+                agent_backend=None,
                 debug=False,
                 console=console,
             )
@@ -1253,6 +1257,7 @@ class TestResolveStartConfig:
             deliverable=None,
             reference_dir=None,
             agent_timeout=None,
+            agent_backend=None,
             debug=True,
             console=console,
         )

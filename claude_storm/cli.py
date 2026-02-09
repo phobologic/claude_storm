@@ -142,6 +142,7 @@ def _resolve_start_config(
     deliverable: list[str] | None,
     reference_dir: list[Path] | None,
     agent_timeout: int | None,
+    agent_backend: str | None,
     debug: bool,
     console: Console,
 ) -> SessionConfig:
@@ -184,6 +185,7 @@ def _resolve_start_config(
         "reference_dirs": [],
         "truncate_conversation": True,
         "agent_timeout": 600,
+        "agent_backend": "subprocess",
     }
 
     # Layer 2: TOML config (if available)
@@ -218,6 +220,8 @@ def _resolve_start_config(
         merged["reference_dirs"] = [str(p) for p in reference_dir]
     if agent_timeout is not None:
         merged["agent_timeout"] = agent_timeout
+    if agent_backend is not None:
+        merged["agent_backend"] = agent_backend
 
     # Validate: each reference dir must exist
     try:
@@ -252,6 +256,7 @@ def _resolve_start_config(
         reference_dirs=merged["reference_dirs"],
         truncate_conversation=merged["truncate_conversation"],
         agent_timeout=merged["agent_timeout"],
+        agent_backend=merged["agent_backend"],
         storms_dir=storms_dir,
     )
 
@@ -300,6 +305,11 @@ def start(
         "--agent-timeout",
         help="Per-turn agent timeout in seconds (default: 600)",
     ),
+    agent_backend: str | None = typer.Option(
+        None,
+        "--agent-backend",
+        help='Agent backend: "subprocess" (default) or "long-running"',
+    ),
 ) -> None:
     """Start a new brainstorming session."""
     console = Console()
@@ -316,6 +326,7 @@ def start(
         deliverable=deliverable,
         reference_dir=reference_dir,
         agent_timeout=agent_timeout,
+        agent_backend=agent_backend,
         debug=_debug_mode,
         console=console,
     )
