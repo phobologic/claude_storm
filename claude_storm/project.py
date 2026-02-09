@@ -16,45 +16,64 @@ MID_PROGRESS_PCT = 50
 EARLY_PHASE_PCT = 20
 
 _TEMPLATE = '''\
+# Storm session configuration.
+# CLI flags override values set here. Run `storm init --update` to add
+# newly supported keys after upgrading.
+
 [session]
+# The subject or question for the brainstorm. Multi-line strings supported.
 topic = """
 {topic}
 """
 
-# Desired outcome or success criterion
-# (not a deliverable — describes direction/quality)
+# Desired outcome or success criterion — describes direction/quality,
+# not a specific document. Reinforced in pacing nudges and used during
+# post-session deliverable compilation.
 # goal = """
 # Favor battle-tested technologies; produce production-ready
 # designs with clear trade-off analysis.
 # """
 
-# Agent personas (appear in system prompts)
+# Agent personas. Each replaces Claude Code's default system prompt for
+# that agent. The first line is used as the display label in the TUI —
+# keep it short (e.g. a title). Additional lines provide detailed
+# persona guidance.
 # role_a = """
 # Subject Matter Expert - Deep domain knowledge and practical experience.
+# Favors pragmatic, battle-tested approaches.
 # """
-
+#
 # role_b = """
 # Critical Analyst - Focuses on gaps, risks, and alternative perspectives.
+# Challenges assumptions and probes failure modes.
 # """
 
-# Documents to produce as [ARTIFACT] files (drives pacing and post-session compilation)
+# Documents to produce as [ARTIFACT] files. Drives pacing (agents are
+# nudged to start drafts at 50% and finalize by 75%) and post-session
+# compilation. Draft artifacts with matching filenames are used as
+# foundations for the final compiled versions.
 # deliverables = [
 #     "Summary document",
 # ]
 
-# Read-only directories for background materials
+# Read-only directories agents can browse via Read/Glob/Grep for
+# background context. Agents cannot write to these paths.
 # reference_dirs = ["/path/to/notes"]
 
 [options]
 # Turn budget — shapes percentage-based pacing (default: 20)
 # max_turns = 20
-# Claude model: "sonnet", "opus", or full model ID
+# Wall-clock time limit in minutes; session pauses when exceeded (default: none)
+# max_minutes = 60
+# Claude model: "sonnet", "opus", or a full model ID (default: "sonnet")
 # model = "sonnet"
-# Let agents signal [DONE] when topic is explored (default: true)
+# Let agents signal [DONE] when the topic is explored; both agents must
+# agree before the session ends (default: true)
 # auto_complete = true
 # Enable user nudges and [ASK_USER] agent questions (default: false)
 # interactive = false
-# Truncate conversation log during deliverable compilation (default: true)
+# Truncate conversation to last ~50k chars when compiling deliverables,
+# keeping token usage manageable for long sessions (default: true)
 # truncate_conversation = true
 # Per-turn agent timeout in seconds (default: 600)
 # agent_timeout = 600
@@ -266,6 +285,7 @@ _KNOWN_KEYS: list[tuple[str, str, str]] = [
     # (key_name, section, commented_default_line)
     ("reference_dirs", "session", '# reference_dirs = ["/path/to/notes"]'),
     ("max_turns", "options", "# max_turns = 20"),
+    ("max_minutes", "options", "# max_minutes = 60"),
     ("model", "options", '# model = "sonnet"'),
     ("auto_complete", "options", "# auto_complete = true"),
     ("interactive", "options", "# interactive = false"),
