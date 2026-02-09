@@ -37,10 +37,15 @@ def _build_role_section(config: SessionConfig, agent: str) -> str:
     other = config.agent_label("b" if agent == "a" else "a")
 
     if role:
+        role_lines = role.strip().splitlines()
+        title = role_lines[0].strip()
         persona = (
-            f"You are playing the role of **{role}** "
+            f"You are playing the role of **{title}** "
             "in a structured brainstorming session."
         )
+        description = "\n".join(role_lines[1:]).strip()
+        if description:
+            persona += f"\n\n{description}"
     else:
         persona = (
             "You are a brainstorming partner in a structured two-agent discussion."
