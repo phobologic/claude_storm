@@ -70,7 +70,14 @@ def merge_user_input(
             lines.append(nudge_queue.popleft())
         buffered = "\n".join(lines)
         parts.append(f"[User nudge]: {buffered}")
-    return "\n\n".join(parts) if parts else None
+    if not parts:
+        return None
+    body = "\n\n".join(parts)
+    return (
+        ">>> HUMAN USER INPUT (not from the other agent) <<<\n"
+        f"{body}\n"
+        ">>> END USER INPUT <<<"
+    )
 
 
 def _run_turn(

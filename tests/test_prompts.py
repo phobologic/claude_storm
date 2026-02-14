@@ -129,12 +129,12 @@ class TestBuildSystemPrompt:
         config = make_config(ensure_dirs=False, interactive=True)
         prompt = build_system_prompt(config, "a")
         assert "nudge" in prompt.lower()
-        assert "steering guidance" in prompt
+        assert "human operator" in prompt
 
     def test_nudge_guidance_hidden_when_not_interactive(self, make_config):
         config = make_config(ensure_dirs=False, interactive=False)
         prompt = build_system_prompt(config, "a")
-        assert "steering guidance" not in prompt
+        assert "human operator" not in prompt
 
     def test_no_role_uses_default(self, make_config):
         config = make_config(ensure_dirs=False, role_a=None)

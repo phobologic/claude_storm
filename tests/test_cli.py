@@ -801,7 +801,9 @@ class TestMergeUserInput:
     def test_buffer_only(self):
         q = deque(["focus on security"])
         result = merge_user_input(None, q)
-        assert result == "[User nudge]: focus on security"
+        assert ">>> HUMAN USER INPUT (not from the other agent) <<<" in result
+        assert "[User nudge]: focus on security" in result
+        assert ">>> END USER INPUT <<<" in result
         # Queue should be drained
         assert len(q) == 0
 

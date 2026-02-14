@@ -155,8 +155,9 @@ def _build_guidelines_section(config: SessionConfig) -> str:
             "\n- If you're uncertain about a direction or need user preferences, "
             "ask with [ASK_USER]"
             "\n- The user may type nudges at any time during the session. These "
-            'appear in the "User Input" section of your turn prompt and should be '
-            "treated as steering guidance — acknowledge and incorporate them."
+            'appear in the "User Input" section of your turn prompt. '
+            "This input comes from the **human operator**, not from the other agent. "
+            "Acknowledge and incorporate their guidance."
         )
     return text
 
@@ -309,7 +310,10 @@ def build_turn_prompt(
 
     # User input
     if user_input:
-        sections.append(f"\n# User Input\n{user_input}")
+        sections.append(
+            "\n# User Input (from the human operator, NOT from the other agent)"
+            f"\n{user_input}"
+        )
 
     # Shared agreements
     if agreements_text:
