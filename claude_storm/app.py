@@ -143,6 +143,10 @@ class StormApp(App):
             # result object without intermediate content_block_delta events,
             # _stream_parts will be empty but the complete text is available
             # from the parsed result via message.text.
+            #
+            # Note: streamed content is join()ed from delta chunks while the
+            # fallback uses message.text directly.  Both are rendered through
+            # Markdown() so visual output is equivalent in practice.
             if not full_text.strip() and message.text:
                 full_text = message.text
             if full_text.strip():

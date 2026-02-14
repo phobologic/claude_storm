@@ -277,6 +277,7 @@ class PlainDisplay:
             if not self._stream_has_content and text.strip():
                 self.console.print(Markdown(text))
             self.console.print()
+        self._stream_has_content = False
 
     @contextmanager
     def thinking_status(
@@ -312,6 +313,7 @@ class TextualDisplay:
 
     def __init__(self, app: object) -> None:
         self._app = app  # StormApp instance
+        self._thinking_cleared = False
 
     def _post(self, message: object) -> None:
         self._app.post_message(message)  # type: ignore[union-attr]
@@ -452,13 +454,17 @@ class TextualDisplay:
         from claude_storm.messages import StreamStart, UpdateThinking
 
         label = _truncate_label(config.agent_label(agent))
+        self._thinking_cleared = False
         self._post(StreamStart())
         self._post(UpdateThinking(label, timeout=config.agent_timeout))
 
     def show_agent_stream_delta(self, text: str) -> None:
         """Post a StreamDelta message to the TUI."""
-        from claude_storm.messages import StreamDelta
+        from claude_storm.messages import ClearThinking, StreamDelta
 
+        if not self._thinking_cleared:
+            self._post(ClearThinking(0))
+            self._thinking_cleared = True
         self._post(StreamDelta(text))
 
     def show_agent_stream_end(self, error: bool = False, text: str = "") -> None:
@@ -472,7 +478,8 @@ class TextualDisplay:
         """
         from claude_storm.messages import ClearThinking, StreamEnd
 
-        self._post(ClearThinking(0))
+        if not self._thinking_cleared:
+            self._post(ClearThinking(0))
         self._post(StreamEnd(error=error, text=text))
 
     @contextmanager
