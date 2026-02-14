@@ -27,6 +27,8 @@ from claude_storm.widgets import (
     ThinkingBar,
 )
 
+_TOPIC_SUMMARY_MAX_LEN = 88
+
 
 class StormApp(App):
     """Textual app for running a Claude Storm brainstorming session."""
@@ -76,10 +78,10 @@ class StormApp(App):
         if self.config.interactive:
             mode_parts.append("interactive")
         # Two-row header: row 1 = app name + session ID + mode info,
-        # row 2 = topic (truncated to 88 chars).
+        # row 2 = topic (truncated to _TOPIC_SUMMARY_MAX_LEN chars).
         topic_summary = self.config.topic.split("\n")[0].strip()
-        if len(topic_summary) > 88:
-            topic_summary = topic_summary[:87] + "…"
+        if len(topic_summary) > _TOPIC_SUMMARY_MAX_LEN:
+            topic_summary = topic_summary[: _TOPIC_SUMMARY_MAX_LEN - 1] + "…"
         header.update(
             f"[bold magenta]Claude Storm[/bold magenta]  "
             f"[dim italic]{self.config.session_id}[/dim italic]  "

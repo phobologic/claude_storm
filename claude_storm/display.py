@@ -248,7 +248,12 @@ class PlainDisplay:
         )
 
     def show_agent_stream_start(self, config: SessionConfig, agent: str) -> None:
-        """Reset stream state before streaming begins."""
+        """Reset stream state before streaming begins.
+
+        Args:
+            config: Session configuration (unused; required by DisplayProtocol).
+            agent: Agent identifier (unused; required by DisplayProtocol).
+        """
         self._stream_has_content = False
 
     def show_agent_stream_delta(self, text: str) -> None:
