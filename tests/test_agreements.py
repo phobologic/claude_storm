@@ -1,8 +1,10 @@
 """Tests for the shared agreements protocol."""
 
 import json
+from unittest.mock import MagicMock
 
 from claude_storm.agreements import (
+    RevisionContext,
     _agreement_filename,
     _extract_summary,
     _slugify,
@@ -16,6 +18,7 @@ from claude_storm.agreements import (
     write_agreement_files,
 )
 from claude_storm.config import SessionConfig
+from claude_storm.session import _resolve_revision_context
 
 
 class TestGenerateProposalId:
@@ -68,8 +71,20 @@ class TestCreateProposal:
 
     def test_creates_revision_proposal(self, make_config):
         config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
+        revision = RevisionContext(
+            revises="a3f2",
+            title="Use REST v2",
+            original_content=None,
+            original_turn=None,
+            original_agent=None,
+        )
         create_proposal(
-            config, "Use REST v2", "REST with pagination", "b", 8, revises="a3f2"
+            config,
+            "Use REST v2",
+            "REST with pagination",
+            "b",
+            8,
+            revision=revision,
         )
         assert config.pending_proposals[0]["revises"] == "a3f2"
 
@@ -125,8 +140,20 @@ class TestAcceptProposal:
         config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
         orig = create_proposal(config, "Use REST", "REST is good", "a", 4)
         accept_proposal(config, orig, 5)
+        revision = RevisionContext(
+            revises=orig,
+            title="Use REST",
+            original_content="REST is good",
+            original_turn=4,
+            original_agent="a",
+        )
         rev = create_proposal(
-            config, "Use REST", "REST with caching", "b", 8, revises=orig
+            config,
+            "Use REST",
+            "REST with caching",
+            "b",
+            8,
+            revision=revision,
         )
         accepted = accept_proposal(config, rev, 9)
         assert accepted["revises"] == orig
@@ -804,23 +831,36 @@ class TestConfigLoadSummaryBackfill:
 class TestRevisionOriginalContent:
     """Tests for preserving original content through the revision pipeline."""
 
+    def _assert_revision_ctx(self, ctx, title, content, turn, agent):
+        """Assert a RevisionContext matches expected original values."""
+        assert ctx is not None
+        assert ctx.title == title
+        assert ctx.original_content == content
+        assert ctx.original_turn == turn
+        assert ctx.original_agent == agent
+
     def test_create_proposal_stores_original_content(self, make_config):
         config = make_config(session_id="rev-test", max_turns=20, current_turn=5)
+        revision = RevisionContext(
+            revises="a3f2",
+            title="Use REST v2",
+            original_content="REST API with pagination.",
+            original_turn=4,
+            original_agent="a",
+        )
         create_proposal(
             config,
             "Use REST v2",
             "REST with caching",
             "b",
             6,
-            revises="a3f2",
-            original_content="REST API with pagination.",
-            original_turn=4,
-            original_agent="a",
+            revision=revision,
         )
         proposal = config.pending_proposals[0]
         assert proposal["original_content"] == "REST API with pagination."
         assert proposal["original_turn"] == 4
         assert proposal["original_agent"] == "a"
+        assert proposal["revises"] == "a3f2"
 
     def test_create_proposal_without_original_content(self, make_config):
         """When original_content is not provided, keys are absent (not None)."""
@@ -832,16 +872,20 @@ class TestRevisionOriginalContent:
 
     def test_accept_revision_carries_original_content(self, make_config):
         config = make_config(session_id="rev-test", max_turns=20, current_turn=5)
+        revision = RevisionContext(
+            revises="a3f2",
+            title="Use REST v2",
+            original_content="REST API with pagination.",
+            original_turn=4,
+            original_agent="a",
+        )
         pid = create_proposal(
             config,
             "Use REST v2",
             "REST with caching",
             "b",
             6,
-            revises="a3f2",
-            original_content="REST API with pagination.",
-            original_turn=4,
-            original_agent="a",
+            revision=revision,
         )
         accepted = accept_proposal(config, pid, 7)
         assert accepted["original_content"] == "REST API with pagination."
@@ -851,18 +895,22 @@ class TestRevisionOriginalContent:
     def test_revision_agreement_file_contains_both_sections(self, make_config):
         """Accepted revision renders original + revision in agreement file."""
         config = make_config(session_id="rev-test", max_turns=20, current_turn=5)
+        revision = RevisionContext(
+            revises="9235",
+            title="Chapter Outline",
+            original_content=(
+                "# Act 1\n\nCh 0: Prologue\nCh 1: Introduction\nCh 3: Original"
+            ),
+            original_turn=5,
+            original_agent="a",
+        )
         pid = create_proposal(
             config,
             "Chapter Outline",
             "All chapters remain with revisions to Ch 3 and Ch 7.",
             "b",
             6,
-            revises="9235",
-            original_content=(
-                "# Act 1\n\nCh 0: Prologue\nCh 1: Introduction\nCh 3: Original"
-            ),
-            original_turn=5,
-            original_agent="a",
+            revision=revision,
         )
         accept_proposal(config, pid, 7)
 
@@ -906,23 +954,20 @@ class TestRevisionOriginalContent:
     def test_revision_of_accepted_agreement_preserves_content(self, make_config):
         """Revising an already-accepted agreement captures its content."""
         config = make_config(session_id="rev-test", max_turns=20, current_turn=5)
-        # First: create and accept original
         orig_id = create_proposal(
             config, "API Design", "Use REST with JSON responses.", "a", 4
         )
         accept_proposal(config, orig_id, 5)
-        # Now revise the accepted agreement (simulating process_directives path)
-        from unittest.mock import MagicMock
-
-        from claude_storm.session import _resolve_revision_context
 
         display = MagicMock()
         ctx = _resolve_revision_context(config, orig_id, "b", display)
-        assert ctx is not None
-        assert ctx.title == "API Design"
-        assert ctx.original_content == "Use REST with JSON responses."
-        assert ctx.original_turn == 4
-        assert ctx.original_agent == "a"
+        self._assert_revision_ctx(
+            ctx,
+            "API Design",
+            "Use REST with JSON responses.",
+            4,
+            "a",
+        )
 
     def test_revision_of_pending_proposal_preserves_content(self, make_config):
         """Revising a pending proposal captures the original proposal's content."""
@@ -930,47 +975,40 @@ class TestRevisionOriginalContent:
         orig_id = create_proposal(
             config, "API Design", "Use REST with JSON responses.", "a", 4
         )
-        from unittest.mock import MagicMock
-
-        from claude_storm.session import _resolve_revision_context
 
         display = MagicMock()
         ctx = _resolve_revision_context(config, orig_id, "b", display)
-        assert ctx is not None
-        assert ctx.title == "API Design"
-        assert ctx.original_content == "Use REST with JSON responses."
-        assert ctx.original_turn == 4
-        assert ctx.original_agent == "a"
-        # Original should be removed from pending
+        self._assert_revision_ctx(
+            ctx,
+            "API Design",
+            "Use REST with JSON responses.",
+            4,
+            "a",
+        )
         assert len(config.pending_proposals) == 0
 
     def test_chained_revision_preserves_root_original(self, make_config):
-        """Revising a revision (A→B→C) preserves the root original content."""
+        """Revising a revision (A->B->C) preserves the root original content."""
         config = make_config(session_id="rev-test", max_turns=20, current_turn=5)
-        # Original agreement: v1 by agent a at turn 4
         orig_id = create_proposal(config, "API Design", "v1: Use REST.", "a", 4)
         accept_proposal(config, orig_id, 5)
-        # First revision: v2 by agent b at turn 6, revising orig
+        revision = RevisionContext(
+            revises=orig_id,
+            title="API Design",
+            original_content="v1: Use REST.",
+            original_turn=4,
+            original_agent="a",
+        )
         rev1_id = create_proposal(
             config,
             "API Design",
             "v2: REST with caching.",
             "b",
             6,
-            revises=orig_id,
-            original_content="v1: Use REST.",
-            original_turn=4,
-            original_agent="a",
+            revision=revision,
         )
         accept_proposal(config, rev1_id, 7)
-        # Now revise the revision — should get root original (v1), not v2
-        from unittest.mock import MagicMock
-
-        from claude_storm.session import _resolve_revision_context
 
         display = MagicMock()
         ctx = _resolve_revision_context(config, rev1_id, "a", display)
-        assert ctx is not None
-        assert ctx.original_content == "v1: Use REST."
-        assert ctx.original_turn == 4
-        assert ctx.original_agent == "a"
+        self._assert_revision_ctx(ctx, "API Design", "v1: Use REST.", 4, "a")

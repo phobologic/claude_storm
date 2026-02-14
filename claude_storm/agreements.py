@@ -3,25 +3,58 @@
 from __future__ import annotations
 
 import re
+from typing import NamedTuple, NotRequired, TypedDict
 from uuid import uuid4
 
 from claude_storm.config import SessionConfig
 
-_ORIGINAL_FIELDS = ("original_content", "original_turn", "original_agent")
+
+class ProposalDict(TypedDict):
+    """Shape of a pending proposal dict."""
+
+    id: str
+    title: str
+    content: str
+    proposed_by: str
+    turn: int
+    revises: str | None
+    summary: str
+    original_content: NotRequired[str]
+    original_turn: NotRequired[int]
+    original_agent: NotRequired[str]
 
 
-def _copy_original_fields(source: dict, target: dict) -> None:
-    """Copy optional original-revision fields from source to target.
+class AgreementDict(TypedDict):
+    """Shape of an accepted agreement dict."""
 
-    Only copies fields that are present and not None in source.
+    id: str
+    title: str
+    content: str
+    proposed_by: str
+    proposed_turn: int
+    accepted_turn: int
+    revises: str | None
+    summary: str
+    original_content: NotRequired[str]
+    original_turn: NotRequired[int]
+    original_agent: NotRequired[str]
 
-    Args:
-        source: Dict to read original_* fields from.
-        target: Dict to write original_* fields into.
+
+class RevisionContext(NamedTuple):
+    """Context resolved for a REVISE directive target.
+
+    Bundles the target ID with the original content so the revision
+    fields are always present or absent as a group.
     """
-    for key in _ORIGINAL_FIELDS:
-        if source.get(key) is not None:
-            target[key] = source[key]
+
+    revises: str
+    title: str
+    original_content: str | None
+    original_turn: int | None
+    original_agent: str | None
+
+
+_ORIGINAL_FIELDS = ("original_content", "original_turn", "original_agent")
 
 
 def generate_proposal_id() -> str:
@@ -78,10 +111,7 @@ def create_proposal(
     content: str,
     agent: str,
     turn: int,
-    revises: str | None = None,
-    original_content: str | None = None,
-    original_turn: int | None = None,
-    original_agent: str | None = None,
+    revision: RevisionContext | None = None,
 ) -> str:
     """Store a pending proposal and return the assigned ID.
 
@@ -91,11 +121,9 @@ def create_proposal(
         content: Full proposal content.
         agent: Which agent proposed ('a' or 'b').
         turn: The turn number when proposed.
-        revises: ID of an existing agreement being revised, if any.
-        original_content: Content of the original proposal/agreement being
-            revised. Stored so the accepted agreement is self-contained.
-        original_turn: Turn number when the original was proposed.
-        original_agent: Agent who proposed the original ('a' or 'b').
+        revision: Context from the original proposal/agreement being
+            revised.  Carries the target ID and original content so the
+            accepted agreement file is self-contained.
 
     Returns:
         The generated proposal ID.
@@ -107,17 +135,13 @@ def create_proposal(
         "content": content,
         "proposed_by": agent,
         "turn": turn,
-        "revises": revises,
+        "revises": revision.revises if revision else None,
         "summary": _extract_summary(content),
     }
-    _copy_original_fields(
-        {
-            "original_content": original_content,
-            "original_turn": original_turn,
-            "original_agent": original_agent,
-        },
-        proposal,
-    )
+    if revision and revision.original_content is not None:
+        proposal["original_content"] = revision.original_content
+        proposal["original_turn"] = revision.original_turn
+        proposal["original_agent"] = revision.original_agent
     config.pending_proposals.append(proposal)
     return proposal_id
 
@@ -156,7 +180,10 @@ def accept_proposal(
         "revises": proposal.get("revises"),
         "summary": proposal.get("summary", _extract_summary(proposal["content"])),
     }
-    _copy_original_fields(proposal, agreement)
+    # Copy original_* fields atomically — all three or none
+    if proposal.get("original_content") is not None:
+        for key in _ORIGINAL_FIELDS:
+            agreement[key] = proposal.get(key)
     config.accepted_agreements.append(agreement)
     write_agreement_files(config)
     return agreement
@@ -194,10 +221,9 @@ def _format_agreement_block(a: dict) -> str:
         Markdown string with header, metadata, and content.
     """
     label = "Agent A" if a["proposed_by"] == "a" else "Agent B"
+
     if a.get("revises"):
         header = f"## [{a['revises']} \u2192 {a['id']}] {a['title']} (revised)"
-        # Use original_turn (the turn the original was proposed) when available;
-        # fall back to '?' rather than using 'revises' which is an ID, not a turn.
         orig_turn = a.get("original_turn", "?")
         orig_agent = a.get("original_agent")
         orig_label = (
@@ -208,20 +234,22 @@ def _format_agreement_block(a: dict) -> str:
             f"**Revised:** Turn {a['proposed_turn']} by {label} | "
             f"**Accepted:** Turn {a['accepted_turn']}"
         )
-        if a.get("original_content"):
-            return (
-                f"{header}\n{meta}\n\n"
+        if a.get("original_content") is not None:
+            body = (
                 f"### Original proposal\n{a['original_content']}\n\n"
                 f"### Revisions\n{a['content']}"
             )
-        return f"{header}\n{meta}\n\n{a['content']}"
+        else:
+            body = a["content"]
     else:
         header = f"## [{a['id']}] {a['title']}"
         meta = (
             f"**Proposed:** Turn {a['proposed_turn']} by {label} | "
             f"**Accepted:** Turn {a['accepted_turn']}"
         )
-    return f"{header}\n{meta}\n\n{a['content']}"
+        body = a["content"]
+
+    return f"{header}\n{meta}\n\n{body}"
 
 
 def write_agreement_files(config: SessionConfig) -> None:

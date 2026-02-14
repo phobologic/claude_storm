@@ -99,12 +99,12 @@ def _build_directives_section(config: SessionConfig) -> str:
         '- `[REVISE id="..."]revised content[/REVISE]` — Propose a '
         "revised version of a confirmed agreement or a pending "
         "proposal. Include the COMPLETE revised text, not just "
-        "your changes — the original is kept as context but the "
-        "agreement is easier to use when the revision is self-"
-        "contained. When used on a confirmed agreement, creates a "
-        "new pending proposal. When used on a pending proposal, "
-        "replaces it with your revised version for the other "
-        "agent to review.\n"
+        "your changes — the system stores the original for "
+        "comparison, but the revision should stand on its own as "
+        "the current version of the agreement. When used on a "
+        "confirmed agreement, creates a new pending proposal. "
+        "When used on a pending proposal, replaces it with your "
+        "revised version for the other agent to review.\n"
         '- `[ARTIFACT filename="..."]content[/ARTIFACT]`'
         " — Produce a shared output file "
         "(code, document, etc.).\n"

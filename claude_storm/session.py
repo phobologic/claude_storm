@@ -8,10 +8,10 @@ import threading
 import time
 from collections import deque
 from dataclasses import asdict
-from typing import NamedTuple
 
 from claude_storm.agents import AgentResponse, invoke_agent
 from claude_storm.agreements import (
+    RevisionContext,
     accept_proposal,
     create_proposal,
     format_agreements_for_prompt,
@@ -181,27 +181,18 @@ def _run_turn(
     return response, directives, turn_prompt, system_prompt
 
 
-class _RevisionContext(NamedTuple):
-    """Context resolved for a REVISE directive target."""
-
-    title: str
-    original_content: str | None
-    original_turn: int | None
-    original_agent: str | None
-
-
 def _resolve_revision_context(
     config: SessionConfig,
     target_id: str,
     agent: str,
     display: DisplayProtocol,
-) -> _RevisionContext | None:
+) -> RevisionContext | None:
     """Resolve context for a REVISE directive target.
 
     Looks up target_id in accepted agreements first, then pending proposals.
     Removes the pending proposal if found and not self-revision.
 
-    For chained revisions (A→B→C), the deepest original is preserved so
+    For chained revisions (A->B->C), the deepest original is preserved so
     the root content is never lost.
 
     Args:
@@ -211,8 +202,8 @@ def _resolve_revision_context(
         display: Display interface for warnings.
 
     Returns:
-        A _RevisionContext with the original title and content, or None to
-        skip (self-revision).
+        A RevisionContext with the target ID and original content, or None
+        to skip (self-revision).
     """
     original = next(
         (a for a in config.accepted_agreements if a["id"] == target_id),
@@ -220,7 +211,8 @@ def _resolve_revision_context(
     )
     if original:
         # For chained revisions, preserve the deepest original
-        return _RevisionContext(
+        return RevisionContext(
+            revises=target_id,
             title=original["title"],
             original_content=original.get("original_content", original["content"]),
             original_turn=original.get("original_turn", original.get("proposed_turn")),
@@ -238,7 +230,8 @@ def _resolve_revision_context(
             )
             return None
         config.pending_proposals.remove(pending)
-        return _RevisionContext(
+        return RevisionContext(
+            revises=target_id,
             title=pending["title"],
             original_content=pending.get("original_content", pending["content"]),
             original_turn=pending.get("original_turn", pending.get("turn")),
@@ -248,7 +241,13 @@ def _resolve_revision_context(
     display.show_warning(
         f"REVISE target {target_id!r} not found; creating proposal with fallback title"
     )
-    return _RevisionContext("Revised agreement", None, None, None)
+    return RevisionContext(
+        revises=target_id,
+        title="Revised agreement",
+        original_content=None,
+        original_turn=None,
+        original_agent=None,
+    )
 
 
 def process_directives(
@@ -332,10 +331,7 @@ def process_directives(
             content,
             agent,
             turn,
-            revises=target_id,
-            original_content=ctx.original_content,
-            original_turn=ctx.original_turn,
-            original_agent=ctx.original_agent,
+            revision=ctx,
         )
         display.show_revision_proposed(agent, target_id, new_id)
 
