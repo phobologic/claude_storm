@@ -285,7 +285,6 @@ class TestRefSymlinks:
             reference_dirs=[str(ref_a), str(ref_b)],
             storms_dir=str(tmp_storms),
         )
-        config.session_dir().mkdir(parents=True, exist_ok=True)
         config.ensure_dirs()
         refs_dir = config.session_dir() / "refs"
         assert (refs_dir / "ref_1").is_symlink()
@@ -303,7 +302,6 @@ class TestRefSymlinks:
             reference_dirs=[str(ref)],
             storms_dir=str(tmp_storms),
         )
-        config.session_dir().mkdir(parents=True, exist_ok=True)
         config.ensure_dirs()
         config.ensure_dirs()  # second call
         link = config.session_dir() / "refs" / "ref_1"
@@ -320,10 +318,9 @@ class TestRefSymlinks:
             reference_dirs=[str(ref)],
             storms_dir=str(tmp_storms),
         )
-        config.session_dir().mkdir(parents=True, exist_ok=True)
-        # Create a broken symlink manually
+        # Create a broken symlink manually before ensure_dirs repairs it
         refs_dir = config.session_dir() / "refs"
-        refs_dir.mkdir()
+        refs_dir.mkdir(parents=True)
         broken = refs_dir / "ref_1"
         broken.symlink_to(tmp_path / "nonexistent")
         assert broken.is_symlink()
@@ -340,7 +337,6 @@ class TestRefSymlinks:
             reference_dirs=[],
             storms_dir=str(tmp_storms),
         )
-        config.session_dir().mkdir(parents=True, exist_ok=True)
         config.ensure_dirs()
         assert not (config.session_dir() / "refs").exists()
 

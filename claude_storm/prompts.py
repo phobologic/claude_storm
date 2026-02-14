@@ -178,8 +178,12 @@ def _build_reference_section(config: SessionConfig) -> str:
         symlink = symlink_paths[i]
         # Fall back to raw path when symlink is missing (e.g. creation failed)
         use_path = symlink if symlink.is_symlink() else Path(raw_path)
-        # Show the last component(s) of the actual path for human context
-        short_actual = Path(raw_path).name
+        # Show the last 2 components so dirs with the same leaf name
+        # (e.g. /a/docs and /b/docs) are distinguishable.
+        parts = Path(raw_path).parts
+        short_actual = (
+            str(Path(*parts[-2:])) if len(parts) >= 2 else Path(raw_path).name
+        )
         rows.append(f"| `{use_path}` | `{short_actual}` |")
     table = "\n".join(rows)
     return (
