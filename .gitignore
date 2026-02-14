@@ -15,3 +15,4 @@ sessions/
 tmp/
 .code-review/
 scratchpad/
+.cache/

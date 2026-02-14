@@ -11,6 +11,17 @@
           }
         ]
       }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "repoguide \"$CLAUDE_PROJECT_DIR\" --cache \"$CLAUDE_PROJECT_DIR/.cache/repoguide.toon\""
+          }
+        ]
+      }
     ]
+
   }
 }
