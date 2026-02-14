@@ -49,11 +49,6 @@ class RequestUserInput(Message):
 class StreamStart(Message):
     """Begin streaming an agent response."""
 
-    def __init__(self, label: str, color: str) -> None:
-        super().__init__()
-        self.label = label
-        self.color = color
-
 
 class StreamDelta(Message):
     """Incremental text chunk from a streaming agent response."""

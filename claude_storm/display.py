@@ -447,9 +447,7 @@ class TextualDisplay:
         from claude_storm.messages import StreamStart, UpdateThinking
 
         label = _truncate_label(config.agent_label(agent))
-        style = AGENT_STYLES.get(agent, AGENT_STYLES["a"])
-        color = style["border"]
-        self._post(StreamStart(label, color))
+        self._post(StreamStart())
         self._post(UpdateThinking(label, timeout=config.agent_timeout))
 
     def show_agent_stream_delta(self, text: str) -> None:
