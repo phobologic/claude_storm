@@ -746,6 +746,33 @@ class TestConfigLoadSummaryBackfill:
         assert config.accepted_agreements[0]["summary"] == "REST Design"
         assert config.pending_proposals[0]["summary"] == "Use Redis for caching"
 
+    def test_backfills_original_content_fields_gracefully(self, tmp_storms):
+        """Legacy revisions without original_content load without error."""
+        session_id = "legacy-revision"
+        session_dir = tmp_storms / session_id
+        session_dir.mkdir()
+        data = {
+            "session_id": session_id,
+            "topic": "Test",
+            "storms_dir": str(tmp_storms),
+            "accepted_agreements": [
+                {
+                    "id": "e9d4",
+                    "title": "Use PostgreSQL",
+                    "content": "PostgreSQL with Redis.",
+                    "proposed_by": "a",
+                    "proposed_turn": 12,
+                    "accepted_turn": 13,
+                    "revises": "b7c1",
+                }
+            ],
+            "pending_proposals": [],
+        }
+        (session_dir / "session.json").write_text(json.dumps(data, indent=2) + "\n")
+        config = SessionConfig.load(session_id, storms_dir=str(tmp_storms))
+        # Should load without error; original_content not present
+        assert config.accepted_agreements[0].get("original_content") is None
+
     def test_preserves_existing_summary(self, tmp_storms):
         """Agreements with existing summary are not overwritten."""
         session_id = "existing-summary"
@@ -772,3 +799,178 @@ class TestConfigLoadSummaryBackfill:
         (session_dir / "session.json").write_text(json.dumps(data, indent=2) + "\n")
         config = SessionConfig.load(session_id, storms_dir=str(tmp_storms))
         assert config.accepted_agreements[0]["summary"] == "Custom summary"
+
+
+class TestRevisionOriginalContent:
+    """Tests for preserving original content through the revision pipeline."""
+
+    def test_create_proposal_stores_original_content(self, make_config):
+        config = make_config(session_id="rev-test", max_turns=20, current_turn=5)
+        create_proposal(
+            config,
+            "Use REST v2",
+            "REST with caching",
+            "b",
+            6,
+            revises="a3f2",
+            original_content="REST API with pagination.",
+            original_turn=4,
+            original_agent="a",
+        )
+        proposal = config.pending_proposals[0]
+        assert proposal["original_content"] == "REST API with pagination."
+        assert proposal["original_turn"] == 4
+        assert proposal["original_agent"] == "a"
+
+    def test_create_proposal_without_original_content(self, make_config):
+        """When original_content is not provided, keys are absent (not None)."""
+        config = make_config(session_id="rev-test", max_turns=20, current_turn=5)
+        create_proposal(config, "Use REST", "REST is good", "a", 4)
+        proposal = config.pending_proposals[0]
+        assert "original_content" not in proposal
+        assert "original_turn" not in proposal
+
+    def test_accept_revision_carries_original_content(self, make_config):
+        config = make_config(session_id="rev-test", max_turns=20, current_turn=5)
+        pid = create_proposal(
+            config,
+            "Use REST v2",
+            "REST with caching",
+            "b",
+            6,
+            revises="a3f2",
+            original_content="REST API with pagination.",
+            original_turn=4,
+            original_agent="a",
+        )
+        accepted = accept_proposal(config, pid, 7)
+        assert accepted["original_content"] == "REST API with pagination."
+        assert accepted["original_turn"] == 4
+        assert accepted["original_agent"] == "a"
+
+    def test_revision_agreement_file_contains_both_sections(self, make_config):
+        """Accepted revision renders original + revision in agreement file."""
+        config = make_config(session_id="rev-test", max_turns=20, current_turn=5)
+        pid = create_proposal(
+            config,
+            "Chapter Outline",
+            "All chapters remain with revisions to Ch 3 and Ch 7.",
+            "b",
+            6,
+            revises="9235",
+            original_content=(
+                "# Act 1\n\nCh 0: Prologue\nCh 1: Introduction\nCh 3: Original"
+            ),
+            original_turn=5,
+            original_agent="a",
+        )
+        accept_proposal(config, pid, 7)
+
+        per_file = config.session_dir() / "agreements" / f"{pid}_chapter-outline.md"
+        content = per_file.read_text()
+        # Header shows revision chain
+        assert "9235" in content
+        assert pid in content
+        assert "revised" in content
+        # Both sections present
+        assert "### Original proposal" in content
+        assert "Ch 0: Prologue" in content
+        assert "### Revisions" in content
+        assert "All chapters remain" in content
+        # Metadata uses original_turn, not the revises ID
+        assert "Turn 5 by Agent A" in content
+
+    def test_revision_without_original_content_renders_normally(self, make_config):
+        """Legacy revision (no original_content) still renders without error."""
+        config = make_config(session_id="rev-test", max_turns=20, current_turn=5)
+        config.accepted_agreements = [
+            {
+                "id": "e9d4",
+                "title": "Use PostgreSQL",
+                "content": "PostgreSQL with Redis.",
+                "proposed_by": "a",
+                "proposed_turn": 12,
+                "accepted_turn": 13,
+                "revises": "b7c1",
+            }
+        ]
+        write_agreement_files(config)
+        content = (config.session_dir() / "agreements.md").read_text()
+        assert "revised" in content
+        assert "PostgreSQL with Redis." in content
+        # No "Original proposal" section when original_content is absent
+        assert "### Original proposal" not in content
+        # original_turn fallback to '?'
+        assert "Turn ?" in content
+
+    def test_revision_of_accepted_agreement_preserves_content(self, make_config):
+        """Revising an already-accepted agreement captures its content."""
+        config = make_config(session_id="rev-test", max_turns=20, current_turn=5)
+        # First: create and accept original
+        orig_id = create_proposal(
+            config, "API Design", "Use REST with JSON responses.", "a", 4
+        )
+        accept_proposal(config, orig_id, 5)
+        # Now revise the accepted agreement (simulating process_directives path)
+        from unittest.mock import MagicMock
+
+        from claude_storm.session import _resolve_revision_context
+
+        display = MagicMock()
+        ctx = _resolve_revision_context(config, orig_id, "b", display)
+        assert ctx is not None
+        assert ctx.title == "API Design"
+        assert ctx.original_content == "Use REST with JSON responses."
+        assert ctx.original_turn == 4
+        assert ctx.original_agent == "a"
+
+    def test_revision_of_pending_proposal_preserves_content(self, make_config):
+        """Revising a pending proposal captures the original proposal's content."""
+        config = make_config(session_id="rev-test", max_turns=20, current_turn=5)
+        orig_id = create_proposal(
+            config, "API Design", "Use REST with JSON responses.", "a", 4
+        )
+        from unittest.mock import MagicMock
+
+        from claude_storm.session import _resolve_revision_context
+
+        display = MagicMock()
+        ctx = _resolve_revision_context(config, orig_id, "b", display)
+        assert ctx is not None
+        assert ctx.title == "API Design"
+        assert ctx.original_content == "Use REST with JSON responses."
+        assert ctx.original_turn == 4
+        assert ctx.original_agent == "a"
+        # Original should be removed from pending
+        assert len(config.pending_proposals) == 0
+
+    def test_chained_revision_preserves_root_original(self, make_config):
+        """Revising a revision (A→B→C) preserves the root original content."""
+        config = make_config(session_id="rev-test", max_turns=20, current_turn=5)
+        # Original agreement: v1 by agent a at turn 4
+        orig_id = create_proposal(config, "API Design", "v1: Use REST.", "a", 4)
+        accept_proposal(config, orig_id, 5)
+        # First revision: v2 by agent b at turn 6, revising orig
+        rev1_id = create_proposal(
+            config,
+            "API Design",
+            "v2: REST with caching.",
+            "b",
+            6,
+            revises=orig_id,
+            original_content="v1: Use REST.",
+            original_turn=4,
+            original_agent="a",
+        )
+        accept_proposal(config, rev1_id, 7)
+        # Now revise the revision — should get root original (v1), not v2
+        from unittest.mock import MagicMock
+
+        from claude_storm.session import _resolve_revision_context
+
+        display = MagicMock()
+        ctx = _resolve_revision_context(config, rev1_id, "a", display)
+        assert ctx is not None
+        assert ctx.original_content == "v1: Use REST."
+        assert ctx.original_turn == 4
+        assert ctx.original_agent == "a"

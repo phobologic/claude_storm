@@ -96,9 +96,12 @@ def _build_directives_section(config: SessionConfig) -> str:
         "proposal by its ID.\n"
         '- `[REJECT id="..." reason="..."]` — Reject a '
         "pending proposal with an explanation.\n"
-        '- `[REVISE id="..."]new content[/REVISE]` — Propose a '
+        '- `[REVISE id="..."]revised content[/REVISE]` — Propose a '
         "revised version of a confirmed agreement or a pending "
-        "proposal. When used on a confirmed agreement, creates a "
+        "proposal. Include the COMPLETE revised text, not just "
+        "your changes — the original is kept as context but the "
+        "agreement is easier to use when the revision is self-"
+        "contained. When used on a confirmed agreement, creates a "
         "new pending proposal. When used on a pending proposal, "
         "replaces it with your revised version for the other "
         "agent to review.\n"
