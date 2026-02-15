@@ -588,11 +588,12 @@ class TestStreamResult:
     def test_tuple_unpacking(self):
         """NamedTuple is backward-compatible with tuple unpacking."""
         sr = _StreamResult("hello", {"type": "result"}, True, False)
-        text, result_event, timed_out, oversized = sr
+        text, result_event, timed_out, oversized, compaction = sr
         assert text == "hello"
         assert result_event == {"type": "result"}
         assert timed_out
         assert not oversized
+        assert compaction is None
 
 
 class TestBrokenPipeError:
@@ -663,3 +664,176 @@ class TestStderrCap:
         lines = _drain_stderr(mock_proc)
         joined = "".join(lines)
         assert "[stderr truncated]" in joined
+
+
+# ---------- Compaction detection + usage extraction ----------
+
+
+class TestCompactionDetection:
+    """Compaction events are detected in the stream."""
+
+    def _run_with_events(self, events):
+        """Helper to run _read_stream with mocked selectors."""
+        proc = _mock_stream_popen(events)
+        mock_sel = MagicMock()
+        mock_sel.select.return_value = [(None, None)]
+        with patch(_SEL_PATCH, return_value=mock_sel):
+            return _read_stream(proc, 600, None)
+
+    def test_compaction_delta_detected(self):
+        """Compaction delta event is captured as compaction_summary."""
+        events = [
+            {
+                "type": "stream_event",
+                "event": {
+                    "type": "content_block_delta",
+                    "index": 0,
+                    "delta": {
+                        "type": "compaction_delta",
+                        "summary": "Context was compacted to save tokens",
+                    },
+                },
+            },
+            {"type": "result", "subtype": "success", "result": "response text"},
+        ]
+        sr = self._run_with_events(events)
+        assert sr.compaction_summary == "Context was compacted to save tokens"
+        assert sr.text == "response text"
+
+    def test_compaction_delta_not_mixed_with_text(self):
+        """Compaction text does not appear in text_parts."""
+        events = [
+            {
+                "type": "stream_event",
+                "event": {
+                    "type": "content_block_delta",
+                    "index": 0,
+                    "delta": {"type": "text_delta", "text": "real output"},
+                },
+            },
+            {
+                "type": "stream_event",
+                "event": {
+                    "type": "content_block_delta",
+                    "index": 1,
+                    "delta": {
+                        "type": "compaction_delta",
+                        "summary": "compacted",
+                    },
+                },
+            },
+            {"type": "result", "subtype": "success", "result": "real output"},
+        ]
+        sr = self._run_with_events(events)
+        assert sr.text == "real output"
+        assert sr.compaction_summary == "compacted"
+
+    def test_no_compaction_returns_none(self):
+        """Normal stream has None compaction_summary."""
+        events = [
+            {
+                "type": "stream_event",
+                "event": {
+                    "type": "content_block_delta",
+                    "index": 0,
+                    "delta": {"type": "text_delta", "text": "hello"},
+                },
+            },
+            {"type": "result", "subtype": "success", "result": "hello"},
+        ]
+        sr = self._run_with_events(events)
+        assert sr.compaction_summary is None
+
+    def test_compaction_delta_text_fallback(self):
+        """Falls back to 'text' key when 'summary' is absent."""
+        events = [
+            {
+                "type": "stream_event",
+                "event": {
+                    "type": "content_block_delta",
+                    "index": 0,
+                    "delta": {
+                        "type": "compaction_delta",
+                        "text": "fallback text",
+                    },
+                },
+            },
+            {"type": "result", "subtype": "success", "result": "ok"},
+        ]
+        sr = self._run_with_events(events)
+        assert sr.compaction_summary == "fallback text"
+
+
+class TestUsageExtraction:
+    """Usage data is extracted from the result event."""
+
+    def test_usage_extracted_from_result(self, make_config):
+        """AgentResponse.usage is populated from the result event."""
+        events = [
+            {
+                "type": "result",
+                "subtype": "success",
+                "result": "response",
+                "usage": {"input_tokens": 80890, "output_tokens": 464},
+                "total_cost_usd": 0.1738,
+            },
+        ]
+        mock_proc = _mock_stream_popen(events)
+        mock_sel = MagicMock()
+        mock_sel.select.return_value = [(None, None)]
+
+        with (
+            patch(_POPEN_PATCH, return_value=mock_proc),
+            patch(_SEL_PATCH, return_value=mock_sel),
+        ):
+            response = invoke_agent(make_config(), "a", "prompt")
+
+        assert response.usage is not None
+        assert response.usage["input_tokens"] == 80890
+        assert response.usage["output_tokens"] == 464
+        assert response.raw["total_cost_usd"] == 0.1738
+
+    def test_no_usage_returns_none(self, make_config):
+        """AgentResponse.usage is None when result has no usage."""
+        events = [
+            {"type": "result", "subtype": "success", "result": "response"},
+        ]
+        mock_proc = _mock_stream_popen(events)
+        mock_sel = MagicMock()
+        mock_sel.select.return_value = [(None, None)]
+
+        with (
+            patch(_POPEN_PATCH, return_value=mock_proc),
+            patch(_SEL_PATCH, return_value=mock_sel),
+        ):
+            response = invoke_agent(make_config(), "a", "prompt")
+
+        assert response.usage is None
+
+    def test_compaction_summary_in_response(self, make_config):
+        """AgentResponse.compaction_summary is populated from stream."""
+        events = [
+            {
+                "type": "stream_event",
+                "event": {
+                    "type": "content_block_delta",
+                    "index": 0,
+                    "delta": {
+                        "type": "compaction_delta",
+                        "summary": "context compacted",
+                    },
+                },
+            },
+            {"type": "result", "subtype": "success", "result": "ok"},
+        ]
+        mock_proc = _mock_stream_popen(events)
+        mock_sel = MagicMock()
+        mock_sel.select.return_value = [(None, None)]
+
+        with (
+            patch(_POPEN_PATCH, return_value=mock_proc),
+            patch(_SEL_PATCH, return_value=mock_sel),
+        ):
+            response = invoke_agent(make_config(), "a", "prompt")
+
+        assert response.compaction_summary == "context compacted"

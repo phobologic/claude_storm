@@ -125,6 +125,87 @@ class TestDisplay:
         assert isinstance(display, DisplayProtocol)
 
 
+class TestShowCompaction:
+    def test_show_compaction_plain(self, capture_display):
+        display, buf = capture_display
+        display.show_compaction("a", "Context was trimmed")
+        output = _plain(buf)
+        assert "Warning" in output
+        assert "A" in output
+        assert "compacted" in output
+        assert "Context was trimmed" in output
+
+    def test_show_compaction_no_summary(self, capture_display):
+        display, buf = capture_display
+        display.show_compaction("b", "")
+        output = _plain(buf)
+        assert "B" in output
+        assert "compacted" in output
+
+
+class TestShowTurnStats:
+    def test_cost_and_duration(self, capture_display):
+        display, buf = capture_display
+        display.show_turn_stats("a", cost_usd=0.1738, duration_ms=12900)
+        output = _plain(buf)
+        assert "$0.1738" in output
+        assert "12.9s" in output
+
+    def test_with_usage(self, capture_display):
+        display, buf = capture_display
+        display.show_turn_stats(
+            "a",
+            cost_usd=0.05,
+            duration_ms=5000,
+            usage={"input_tokens": 80890, "output_tokens": 464},
+        )
+        output = _plain(buf)
+        assert "$0.0500" in output
+        assert "5.0s" in output
+        assert "80,890" in output
+        assert "464" in output
+
+    def test_no_stats_no_output(self, capture_display):
+        display, buf = capture_display
+        display.show_turn_stats("a", cost_usd=None, duration_ms=None)
+        output = buf.getvalue()
+        assert output == ""
+
+    def test_cost_only(self, capture_display):
+        display, buf = capture_display
+        display.show_turn_stats("a", cost_usd=0.25, duration_ms=None)
+        output = _plain(buf)
+        assert "$0.2500" in output
+
+
+class TestShowCompletionWithStats:
+    def test_completion_with_cost(self, make_config, capture_display):
+        display, buf = capture_display
+        config = make_config(ensure_dirs=False, current_turn=4)
+        config.agent_watermarks["a"] = {
+            "total_cost_usd": 0.50,
+            "total_input_tokens": 10000,
+            "total_output_tokens": 500,
+        }
+        config.agent_watermarks["b"] = {
+            "total_cost_usd": 0.30,
+            "total_input_tokens": 8000,
+            "total_output_tokens": 400,
+        }
+        display.show_completion(config)
+        output = _plain(buf)
+        assert "$0.8000" in output
+        assert "18,000" in output
+        assert "900" in output
+
+    def test_completion_without_stats(self, make_config, capture_display):
+        display, buf = capture_display
+        config = make_config(ensure_dirs=False, current_turn=4)
+        display.show_completion(config)
+        output = _plain(buf)
+        assert "Total:" not in output
+
+
 class TestTruncateLabel:
     def test_short_passthrough(self):
         assert _truncate_label("Architect") == "Architect"

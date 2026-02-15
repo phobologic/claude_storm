@@ -340,22 +340,48 @@ class SessionConfig:
             "agreement_count": 0,
             "seen_proposal_ids": [],
             "last_turn": -1,
+            "total_cost_usd": 0.0,
+            "total_input_tokens": 0,
+            "total_output_tokens": 0,
+            "compaction_count": 0,
         }
         wm = self.agent_watermarks.get(agent, {})
         return {**defaults, **wm}
 
-    def update_watermark(self, agent: str, memory_count: int) -> None:
+    def update_watermark(
+        self,
+        agent: str,
+        memory_count: int,
+        usage: dict | None = None,
+        cost_usd: float | None = None,
+        compacted: bool = False,
+    ) -> None:
         """Snapshot the current state into the agent's watermark.
 
         Args:
             agent: Which agent ('a' or 'b').
             memory_count: Number of memories the agent currently has.
+            usage: Token usage dict from the CLI result event.
+            cost_usd: Cost in USD for this turn.
+            compacted: Whether compaction occurred this turn.
         """
+        wm = self.get_watermark(agent)
+        if usage:
+            wm["total_input_tokens"] += usage.get("input_tokens", 0)
+            wm["total_output_tokens"] += usage.get("output_tokens", 0)
+        if cost_usd is not None:
+            wm["total_cost_usd"] += cost_usd
+        if compacted:
+            wm["compaction_count"] += 1
         self.agent_watermarks[agent] = {
             "memory_count": memory_count,
             "agreement_count": len(self.accepted_agreements),
             "seen_proposal_ids": [p["id"] for p in self.pending_proposals],
             "last_turn": self.current_turn,
+            "total_cost_usd": wm["total_cost_usd"],
+            "total_input_tokens": wm["total_input_tokens"],
+            "total_output_tokens": wm["total_output_tokens"],
+            "compaction_count": wm["compaction_count"],
         }
 
     def agent_label(self, agent: str) -> str:

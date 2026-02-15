@@ -34,6 +34,7 @@ class _StreamResult(NamedTuple):
     result_event: dict | None
     timed_out: bool
     oversized: bool
+    compaction_summary: str | None = None
 
 
 _active_process: subprocess.Popen | None = None
@@ -57,6 +58,8 @@ class AgentResponse:
     cmd: list[str] = None
     is_error: bool = False
     timed_out: bool = False
+    compaction_summary: str | None = None
+    usage: dict | None = None
 
 
 def _get_session_id(config: SessionConfig, agent: str) -> str:
@@ -187,6 +190,7 @@ def _read_stream(
     result_event: dict | None = None
     timed_out = False
     oversized = False
+    compaction_summary: str | None = None
 
     try:
         while True:
@@ -227,6 +231,16 @@ def _read_stream(
             # Track the final result event
             if event is not None and event.get("type") == "result":
                 result_event = event
+
+            # Detect compaction events
+            if (
+                event is not None
+                and event.get("type") == "stream_event"
+                and event.get("event", {}).get("type") == "content_block_delta"
+                and event["event"].get("delta", {}).get("type") == "compaction_delta"
+            ):
+                delta_obj = event["event"]["delta"]
+                compaction_summary = delta_obj.get("summary", delta_obj.get("text", ""))
     finally:
         sel.unregister(proc.stdout)
         sel.close()
@@ -237,7 +251,9 @@ def _read_stream(
     else:
         final_text = "".join(text_parts)
 
-    return _StreamResult(final_text, result_event, timed_out, oversized)
+    return _StreamResult(
+        final_text, result_event, timed_out, oversized, compaction_summary
+    )
 
 
 def _drain_stderr(proc: subprocess.Popen) -> list[str]:
@@ -394,4 +410,11 @@ def invoke_agent(
         )
 
     raw = sr.result_event if sr.result_event is not None else {"result": sr.text}
-    return AgentResponse(text=sr.text, raw=raw, cmd=cmd)
+    usage = raw.get("usage") if isinstance(raw, dict) else None
+    return AgentResponse(
+        text=sr.text,
+        raw=raw,
+        cmd=cmd,
+        compaction_summary=sr.compaction_summary,
+        usage=usage,
+    )

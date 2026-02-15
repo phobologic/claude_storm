@@ -82,6 +82,14 @@ class DisplayProtocol(Protocol):
         """
         ...
 
+    def show_compaction(self, agent: str, summary: str) -> None: ...
+    def show_turn_stats(
+        self,
+        agent: str,
+        cost_usd: float | None,
+        duration_ms: int | None,
+        usage: dict | None = None,
+    ) -> None: ...
     def thinking_status(
         self, label: str, timeout: int = 600, **kwargs: object
     ) -> object: ...
@@ -179,7 +187,53 @@ class PlainDisplay:
         self.console.print(f"[bold]{status_msg}[/bold]")
         if config.stop_error:
             self.console.print(f"[red]Error: {config.stop_error}[/red]")
+        # Cumulative cost/token summary from watermarks
+        total_cost = 0.0
+        total_in = 0
+        total_out = 0
+        for agent_key in ("a", "b"):
+            wm = config.get_watermark(agent_key)
+            total_cost += wm.get("total_cost_usd", 0.0)
+            total_in += wm.get("total_input_tokens", 0)
+            total_out += wm.get("total_output_tokens", 0)
+        if total_cost > 0 or total_in > 0:
+            parts = []
+            if total_cost > 0:
+                parts.append(f"${total_cost:.4f}")
+            if total_in > 0 or total_out > 0:
+                parts.append(f"In: {total_in:,} Out: {total_out:,}")
+            self.console.print(f"[dim]Total: {' · '.join(parts)}[/dim]")
         self.console.print(f"Session directory: {config.session_dir()}")
+
+    def show_compaction(self, agent: str, summary: str) -> None:
+        """Display a compaction warning."""
+        label = agent.upper()
+        self.console.print(
+            f"[bold yellow]  Warning: Agent {label} context was compacted[/bold yellow]"
+        )
+        if summary:
+            self.console.print(f"[dim]  {summary}[/dim]")
+
+    def show_turn_stats(
+        self,
+        agent: str,
+        cost_usd: float | None,
+        duration_ms: int | None,
+        usage: dict | None = None,
+    ) -> None:
+        """Display per-turn cost/duration stats."""
+        parts: list[str] = []
+        if cost_usd is not None:
+            parts.append(f"${cost_usd:.4f}")
+        if duration_ms is not None:
+            secs = duration_ms / 1000
+            parts.append(f"{secs:.1f}s")
+        if usage:
+            in_tok = usage.get("input_tokens", 0)
+            out_tok = usage.get("output_tokens", 0)
+            parts.append(f"In: {in_tok:,} Out: {out_tok:,}")
+        if parts:
+            self.console.print(f"[dim]  {' · '.join(parts)}[/dim]")
 
     def prompt_user(self, question: str) -> str:
         """Prompt the user for input during interactive mode."""
@@ -374,7 +428,55 @@ class TextualDisplay:
         self._show(Text(status_msg, style="bold"))
         if config.stop_error:
             self._show(Text(f"Error: {config.stop_error}", style="red"))
+        total_cost = 0.0
+        total_in = 0
+        total_out = 0
+        for agent_key in ("a", "b"):
+            wm = config.get_watermark(agent_key)
+            total_cost += wm.get("total_cost_usd", 0.0)
+            total_in += wm.get("total_input_tokens", 0)
+            total_out += wm.get("total_output_tokens", 0)
+        if total_cost > 0 or total_in > 0:
+            parts = []
+            if total_cost > 0:
+                parts.append(f"${total_cost:.4f}")
+            if total_in > 0 or total_out > 0:
+                parts.append(f"In: {total_in:,} Out: {total_out:,}")
+            self._show(Text(f"Total: {' · '.join(parts)}", style="dim"))
         self._show(Text(f"Session directory: {config.session_dir()}"))
+
+    def show_compaction(self, agent: str, summary: str) -> None:
+        """Display a compaction warning in the TUI."""
+        label = agent.upper()
+        self._show(
+            Text(
+                f"  Warning: Agent {label} context was compacted",
+                style="bold yellow",
+            )
+        )
+        if summary:
+            self._show(Text(f"  {summary}", style="dim"))
+
+    def show_turn_stats(
+        self,
+        agent: str,
+        cost_usd: float | None,
+        duration_ms: int | None,
+        usage: dict | None = None,
+    ) -> None:
+        """Display per-turn cost/duration stats in the TUI."""
+        parts: list[str] = []
+        if cost_usd is not None:
+            parts.append(f"${cost_usd:.4f}")
+        if duration_ms is not None:
+            secs = duration_ms / 1000
+            parts.append(f"{secs:.1f}s")
+        if usage:
+            in_tok = usage.get("input_tokens", 0)
+            out_tok = usage.get("output_tokens", 0)
+            parts.append(f"In: {in_tok:,} Out: {out_tok:,}")
+        if parts:
+            self._show(Text(f"  {' · '.join(parts)}", style="dim"))
 
     def prompt_user(self, question: str) -> str:
         from claude_storm.messages import RequestUserInput

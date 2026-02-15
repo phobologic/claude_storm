@@ -165,6 +165,24 @@ def _run_turn(
     )
     display.show_agent_stream_end(error=response.is_error, text=response.text)
 
+    # Surface compaction warning (always)
+    if response.compaction_summary:
+        display.show_compaction(agent, response.compaction_summary)
+
+    # Surface per-turn stats
+    cost_usd = (
+        response.raw.get("total_cost_usd") if isinstance(response.raw, dict) else None
+    )
+    duration_ms = (
+        response.raw.get("duration_ms") if isinstance(response.raw, dict) else None
+    )
+    display.show_turn_stats(
+        agent,
+        cost_usd,
+        duration_ms,
+        usage=response.usage if config.debug else None,
+    )
+
     # Parse directives
     directives = parse_directives(response.text)
 
@@ -463,7 +481,14 @@ def run_session(
             # Update watermark before advancing turn
             agent_dir = config.session_dir() / f"agent-{current_agent}"
             memory_count = len(get_memory_index(agent_dir))
-            config.update_watermark(current_agent, memory_count)
+            raw = response.raw
+            config.update_watermark(
+                current_agent,
+                memory_count,
+                usage=response.usage,
+                cost_usd=(raw.get("total_cost_usd") if isinstance(raw, dict) else None),
+                compacted=response.compaction_summary is not None,
+            )
 
             # Advance turn
             other_response = response.text

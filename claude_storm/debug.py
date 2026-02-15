@@ -71,6 +71,17 @@ def write_debug_response(
     lines.append(json.dumps(raw_response, indent=2))
     lines.append("")
 
+    if "usage" in raw_response:
+        usage = raw_response["usage"]
+        lines.append("--- USAGE SUMMARY ---")
+        lines.append(f"Input: {usage.get('input_tokens', 0):,}")
+        lines.append(f"Output: {usage.get('output_tokens', 0):,}")
+        if "total_cost_usd" in raw_response:
+            lines.append(f"Cost: ${raw_response['total_cost_usd']:.4f}")
+        if "iterations" in usage:
+            lines.append(f"Compaction iterations: {len(usage['iterations'])}")
+        lines.append("")
+
     lines.append("--- DIRECTIVES ---")
     directive_summary = {
         "memories": [(t, tags) for t, tags, _ in directives.get("memories", [])],
