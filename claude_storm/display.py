@@ -159,7 +159,12 @@ class DisplayProtocol(Protocol):
     def show_summary(self, summary: str) -> None: ...
     def show_user_nudge(self, text: str) -> None: ...
     def show_input_hint(self) -> None: ...
-    def show_agent_stream_start(self, config: SessionConfig, agent: str) -> None: ...
+    def show_agent_stream_start(
+        self,
+        config: SessionConfig,
+        agent: str,
+        label: str | None = None,
+    ) -> None: ...
     def show_agent_stream_delta(self, text: str) -> None: ...
     def show_agent_stream_end(self, error: bool = False, text: str = "") -> None:
         """Finalize the streamed response.
@@ -385,12 +390,18 @@ class PlainDisplay:
             " nudge the conversation.[/bold yellow]"
         )
 
-    def show_agent_stream_start(self, config: SessionConfig, agent: str) -> None:
+    def show_agent_stream_start(
+        self,
+        config: SessionConfig,
+        agent: str,
+        label: str | None = None,
+    ) -> None:
         """Reset stream state before streaming begins.
 
         Args:
             config: Session configuration (unused; required by DisplayProtocol).
             agent: Agent identifier (unused; required by DisplayProtocol).
+            label: Optional override label (unused; Plain doesn't show thinking).
         """
         self._stream_has_content = False
 
@@ -609,11 +620,16 @@ class TextualDisplay:
         # No-op: the InputBar placeholder already displays this hint.
         pass
 
-    def show_agent_stream_start(self, config: SessionConfig, agent: str) -> None:
+    def show_agent_stream_start(
+        self,
+        config: SessionConfig,
+        agent: str,
+        label: str | None = None,
+    ) -> None:
         """Post a StreamStart message to the TUI."""
         from claude_storm.messages import StreamStart, UpdateThinking
 
-        label = _truncate_label(config.agent_label(agent))
+        label = _truncate_label(label or config.agent_label(agent))
         self._thinking_cleared = False
         self._post(StreamStart())
         self._post(UpdateThinking(label, timeout=config.agent_timeout))

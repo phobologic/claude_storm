@@ -119,7 +119,11 @@ def compile_deliverables(config: SessionConfig, display: DisplayProtocol) -> Non
                 turn_prompt=prompt,
             )
 
-        display.show_agent_stream_start(config, "a")
+        display.show_agent_stream_start(
+            config,
+            "a",
+            label=f"Compiling: {deliverable}",
+        )
         response = invoke_agent(
             config=config,
             agent="a",
@@ -178,7 +182,7 @@ def generate_summary(config: SessionConfig, display: DisplayProtocol) -> None:
             turn_prompt=summary_prompt,
         )
 
-    display.show_agent_stream_start(config, "a")
+    display.show_agent_stream_start(config, "a", label="Generating summary")
     response = invoke_agent(
         config=config,
         agent="a",
