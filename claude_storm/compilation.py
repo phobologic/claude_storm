@@ -137,6 +137,12 @@ def compile_deliverables(config: SessionConfig, display: DisplayProtocol) -> Non
             safe_name = re.sub(r"[^\w\s-]", "", deliverable).strip()
             safe_name = re.sub(r"[\s]+", "_", safe_name).lower()
             artifact_path = artifacts_dir / f"{safe_name}.md"
+
+            # Preserve any existing agent draft before overwriting
+            draft_backup = artifacts_dir / f"{safe_name}.draft.md"
+            if artifact_path.exists() and not draft_backup.exists():
+                artifact_path.rename(draft_backup)
+
             artifact_path.write_text(response.text + "\n")
             display.show_artifact_save(f"{safe_name}.md")
         else:
