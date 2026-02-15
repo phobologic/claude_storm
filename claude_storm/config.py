@@ -366,23 +366,18 @@ class SessionConfig:
             compacted: Whether compaction occurred this turn.
         """
         wm = self.get_watermark(agent)
-        if usage:
+        if usage is not None:
             wm["total_input_tokens"] += usage.get("input_tokens", 0)
             wm["total_output_tokens"] += usage.get("output_tokens", 0)
         if cost_usd is not None:
             wm["total_cost_usd"] += cost_usd
         if compacted:
             wm["compaction_count"] += 1
-        self.agent_watermarks[agent] = {
-            "memory_count": memory_count,
-            "agreement_count": len(self.accepted_agreements),
-            "seen_proposal_ids": [p["id"] for p in self.pending_proposals],
-            "last_turn": self.current_turn,
-            "total_cost_usd": wm["total_cost_usd"],
-            "total_input_tokens": wm["total_input_tokens"],
-            "total_output_tokens": wm["total_output_tokens"],
-            "compaction_count": wm["compaction_count"],
-        }
+        wm["memory_count"] = memory_count
+        wm["agreement_count"] = len(self.accepted_agreements)
+        wm["seen_proposal_ids"] = [p["id"] for p in self.pending_proposals]
+        wm["last_turn"] = self.current_turn
+        self.agent_watermarks[agent] = wm
 
     def agent_label(self, agent: str) -> str:
         """Return a display label for an agent ('a' or 'b').

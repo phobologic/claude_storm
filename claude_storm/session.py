@@ -170,12 +170,9 @@ def _run_turn(
         display.show_compaction(agent, response.compaction_summary)
 
     # Surface per-turn stats
-    cost_usd = (
-        response.raw.get("total_cost_usd") if isinstance(response.raw, dict) else None
-    )
-    duration_ms = (
-        response.raw.get("duration_ms") if isinstance(response.raw, dict) else None
-    )
+    raw = response.raw if isinstance(response.raw, dict) else {}
+    cost_usd = raw.get("total_cost_usd")
+    duration_ms = raw.get("duration_ms")
     display.show_turn_stats(
         agent,
         cost_usd,
