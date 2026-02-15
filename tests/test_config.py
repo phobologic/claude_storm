@@ -11,6 +11,7 @@ import pytest
 from claude_storm.config import (
     SessionConfig,
     _validate_reference_dir,
+    format_duration,
     validate_reference_dirs,
 )
 
@@ -597,6 +598,54 @@ class TestValidateReferenceDirs:
         rel_dir.mkdir()
         result = validate_reference_dirs(["relative_dir"])
         assert result == [str(rel_dir.resolve())]
+
+
+class TestAggregateWatermarks:
+    """SessionConfig.aggregate_watermarks() totals across agents."""
+
+    def test_sums_both_agents(self, make_config):
+        config = make_config(ensure_dirs=False)
+        config.agent_watermarks["a"] = {
+            "total_cost_usd": 0.50,
+            "total_input_tokens": 10000,
+            "total_output_tokens": 500,
+            "compaction_count": 1,
+        }
+        config.agent_watermarks["b"] = {
+            "total_cost_usd": 0.30,
+            "total_input_tokens": 8000,
+            "total_output_tokens": 400,
+            "compaction_count": 0,
+        }
+        totals = config.aggregate_watermarks()
+        assert totals["total_cost_usd"] == pytest.approx(0.80)
+        assert totals["total_input_tokens"] == 18000
+        assert totals["total_output_tokens"] == 900
+        assert totals["total_compactions"] == 1
+
+    def test_empty_watermarks(self, make_config):
+        config = make_config(ensure_dirs=False)
+        totals = config.aggregate_watermarks()
+        assert totals["total_cost_usd"] == 0.0
+        assert totals["total_input_tokens"] == 0
+        assert totals["total_output_tokens"] == 0
+        assert totals["total_compactions"] == 0
+
+
+class TestFormatDuration:
+    """format_duration in config module."""
+
+    def test_seconds_only(self):
+        assert format_duration(45) == "45s"
+
+    def test_minutes_and_seconds(self):
+        assert format_duration(125) == "2m 05s"
+
+    def test_zero(self):
+        assert format_duration(0) == "0s"
+
+    def test_exact_minute(self):
+        assert format_duration(60) == "1m 00s"
 
 
 class TestValidateReferenceDirConfig:

@@ -461,9 +461,9 @@ def show(
         console.print(f"Ended: {config.ended_at}")
     duration_s = config.total_duration_s
     if duration_s is not None:
-        from claude_storm.display import _format_duration
+        from claude_storm.config import format_duration
 
-        console.print(f"Duration: {_format_duration(duration_s)}")
+        console.print(f"Duration: {format_duration(duration_s)}")
     # Show cost/token totals from watermarks
     from claude_storm.display import _format_session_totals
 

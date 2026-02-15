@@ -3,10 +3,10 @@
 import re
 from io import StringIO
 
+from claude_storm.config import format_duration
 from claude_storm.display import (
     DisplayProtocol,
     PlainDisplay,
-    _format_duration,
     _truncate_label,
 )
 
@@ -222,13 +222,13 @@ class TestShowCompletionWithStats:
 
 class TestFormatDuration:
     def test_seconds_only(self):
-        assert _format_duration(42) == "42s"
+        assert format_duration(42) == "42s"
 
     def test_minutes_and_seconds(self):
-        assert _format_duration(330) == "5m 30s"
+        assert format_duration(330) == "5m 30s"
 
     def test_zero(self):
-        assert _format_duration(0) == "0s"
+        assert format_duration(0) == "0s"
 
 
 class TestTruncateLabel:

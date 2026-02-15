@@ -29,6 +29,21 @@ _SENSITIVE_PATHS = frozenset(
 )
 
 
+def format_duration(seconds: int) -> str:
+    """Format a duration in seconds as 'Xm Ys'.
+
+    Args:
+        seconds: Duration in seconds.
+
+    Returns:
+        Human-readable duration string.
+    """
+    minutes, secs = divmod(seconds, 60)
+    if minutes > 0:
+        return f"{minutes}m {secs:02d}s"
+    return f"{secs}s"
+
+
 def _validate_reference_dir(path: str) -> bool:
     """Check whether a reference directory path is safe to use.
 
@@ -364,6 +379,27 @@ class SessionConfig:
         }
         wm = self.agent_watermarks.get(agent, {})
         return {**defaults, **wm}
+
+    def aggregate_watermarks(self) -> dict[str, int | float]:
+        """Aggregate cost and token totals across both agents.
+
+        Returns:
+            Dict with total_cost_usd, total_input_tokens,
+            total_output_tokens, and total_compactions.
+        """
+        totals: dict[str, int | float] = {
+            "total_cost_usd": 0.0,
+            "total_input_tokens": 0,
+            "total_output_tokens": 0,
+            "total_compactions": 0,
+        }
+        for agent_key in ("a", "b"):
+            wm = self.get_watermark(agent_key)
+            totals["total_cost_usd"] += wm.get("total_cost_usd", 0.0)
+            totals["total_input_tokens"] += wm.get("total_input_tokens", 0)
+            totals["total_output_tokens"] += wm.get("total_output_tokens", 0)
+            totals["total_compactions"] += wm.get("compaction_count", 0)
+        return totals
 
     def update_watermark(
         self,

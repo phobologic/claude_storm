@@ -13,28 +13,13 @@ from rich.markdown import Markdown
 from rich.rule import Rule
 from rich.text import Text
 
-from claude_storm.config import SessionConfig
+from claude_storm.config import SessionConfig, format_duration
 
 # Agent color scheme
 AGENT_STYLES = {
     "a": {"border": "blue", "title_style": "bold blue"},
     "b": {"border": "green", "title_style": "bold green"},
 }
-
-
-def _format_duration(seconds: int) -> str:
-    """Format a duration in seconds as 'Xm Ys'.
-
-    Args:
-        seconds: Duration in seconds.
-
-    Returns:
-        Human-readable duration string.
-    """
-    minutes, secs = divmod(seconds, 60)
-    if minutes > 0:
-        return f"{minutes}m {secs:02d}s"
-    return f"{secs}s"
 
 
 def _format_session_totals(config: SessionConfig) -> str | None:
@@ -46,20 +31,16 @@ def _format_session_totals(config: SessionConfig) -> str | None:
     Returns:
         Formatted totals string, or None if no cost/token data is available.
     """
-    total_cost = 0.0
-    total_in = 0
-    total_out = 0
-    for agent_key in ("a", "b"):
-        wm = config.get_watermark(agent_key)
-        total_cost += wm.get("total_cost_usd", 0.0)
-        total_in += wm.get("total_input_tokens", 0)
-        total_out += wm.get("total_output_tokens", 0)
+    totals = config.aggregate_watermarks()
+    total_cost = totals["total_cost_usd"]
+    total_in = totals["total_input_tokens"]
+    total_out = totals["total_output_tokens"]
     duration_s = config.total_duration_s
     if not (total_cost > 0 or total_in > 0 or duration_s is not None):
         return None
     parts = []
     if duration_s is not None:
-        parts.append(_format_duration(duration_s))
+        parts.append(format_duration(duration_s))
     if total_cost > 0:
         parts.append(f"${total_cost:.4f}")
     if total_in > 0 or total_out > 0:

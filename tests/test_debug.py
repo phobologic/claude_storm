@@ -4,8 +4,8 @@ import os
 import re
 import stat
 
+from claude_storm.config import format_duration
 from claude_storm.debug import (
-    _format_duration,
     write_debug_entry,
     write_debug_phase_banner,
     write_debug_request,
@@ -339,16 +339,16 @@ class TestWriteDebugPhaseBanner:
 
 class TestFormatDuration:
     def test_seconds_only(self):
-        assert _format_duration(45) == "45s"
+        assert format_duration(45) == "45s"
 
     def test_minutes_and_seconds(self):
-        assert _format_duration(125) == "2m 05s"
+        assert format_duration(125) == "2m 05s"
 
     def test_zero(self):
-        assert _format_duration(0) == "0s"
+        assert format_duration(0) == "0s"
 
     def test_exact_minute(self):
-        assert _format_duration(60) == "1m 00s"
+        assert format_duration(60) == "1m 00s"
 
 
 class TestWriteDebugSummary:

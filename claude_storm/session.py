@@ -8,6 +8,7 @@ import threading
 import time
 from collections import deque
 from dataclasses import asdict
+from datetime import UTC, datetime
 
 from claude_storm.agents import AgentResponse, invoke_agent
 from claude_storm.agreements import (
@@ -516,8 +517,6 @@ def run_session(
     finally:
         if old_handler is not None:
             signal.signal(signal.SIGINT, old_handler)
-        from datetime import UTC, datetime
-
         config.ended_at = datetime.now(UTC).isoformat()
         config.save()
 
@@ -525,6 +524,8 @@ def run_session(
     if config.status == "completed":
         compile_deliverables(config, display)
         generate_summary(config, display)
+        config.ended_at = datetime.now(UTC).isoformat()
+        config.save()
 
     display.show_completion(config)
 

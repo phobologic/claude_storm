@@ -7,6 +7,8 @@ import os
 from datetime import UTC, datetime
 from pathlib import Path
 
+from claude_storm.config import SessionConfig, format_duration
+
 
 def _append_restricted(log_path: Path, content: str) -> None:
     """Append content to a log file with owner-only permissions (0o600).
@@ -149,17 +151,9 @@ def write_debug_phase_banner(log_path: Path, phase_name: str) -> None:
     _append_restricted(log_path, "\n".join(lines))
 
 
-def _format_duration(seconds: int) -> str:
-    """Format a duration in seconds as 'Xm Ys'."""
-    minutes, secs = divmod(seconds, 60)
-    if minutes > 0:
-        return f"{minutes}m {secs:02d}s"
-    return f"{secs}s"
-
-
 def write_debug_summary(
     log_path: Path,
-    config: object,
+    config: SessionConfig,
     duration_s: int | None,
 ) -> None:
     """Write a session summary footer to the debug log.
@@ -174,34 +168,32 @@ def write_debug_summary(
         "=======================================",
         "=== SESSION SUMMARY ===",
         "=======================================",
-        f"Turns: {config.current_turn}/{config.max_turns}",  # type: ignore[attr-defined]
+        f"Turns: {config.current_turn}/{config.max_turns}",
     ]
     if duration_s is not None:
-        lines.append(f"Duration: {_format_duration(duration_s)}")
+        lines.append(f"Duration: {format_duration(duration_s)}")
 
-    status = config.status  # type: ignore[attr-defined]
-    if config.stop_reason:  # type: ignore[attr-defined]
-        lines.append(f"Status: {status} ({config.stop_reason})")  # type: ignore[attr-defined]
+    status = config.status
+    if config.stop_reason:
+        lines.append(f"Status: {status} ({config.stop_reason})")
     else:
         lines.append(f"Status: {status}")
 
     # Aggregate totals from watermarks
-    total_cost = 0.0
-    total_in = 0
-    total_out = 0
-    total_compactions = 0
+    totals = config.aggregate_watermarks()
+    total_cost = totals["total_cost_usd"]
+    total_in = totals["total_input_tokens"]
+    total_out = totals["total_output_tokens"]
+    total_compactions = totals["total_compactions"]
+
     agent_lines: list[str] = []
     for agent_key in ("a", "b"):
-        wm = config.get_watermark(agent_key)  # type: ignore[attr-defined]
+        wm = config.get_watermark(agent_key)
         cost = wm.get("total_cost_usd", 0.0)
         inp = wm.get("total_input_tokens", 0)
         out = wm.get("total_output_tokens", 0)
         comp = wm.get("compaction_count", 0)
-        total_cost += cost
-        total_in += inp
-        total_out += out
-        total_compactions += comp
-        label = config.agent_label(agent_key)  # type: ignore[attr-defined]
+        label = config.agent_label(agent_key)
         agent_lines.append(
             f"  {label}: ${cost:.4f}"
             f" \u00b7 In: {inp:,} Out: {out:,}"
