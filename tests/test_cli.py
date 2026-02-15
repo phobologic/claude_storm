@@ -401,6 +401,36 @@ class TestCLICommands:
         assert "Thinker" in result.output
         assert "completed" in result.output
 
+    def test_show_displays_duration_and_cost(self, mock_storms_dir):
+        config = SessionConfig(
+            session_id="showstats",
+            topic="Stats test",
+            max_turns=10,
+            current_turn=8,
+            status="completed",
+            started_at="2026-02-14T10:00:00+00:00",
+            ended_at="2026-02-14T10:38:12+00:00",
+            storms_dir=str(mock_storms_dir),
+        )
+        config.agent_watermarks["a"] = {
+            "total_cost_usd": 0.50,
+            "total_input_tokens": 10000,
+            "total_output_tokens": 500,
+        }
+        config.agent_watermarks["b"] = {
+            "total_cost_usd": 0.30,
+            "total_input_tokens": 8000,
+            "total_output_tokens": 400,
+        }
+        config.ensure_dirs()
+        config.save()
+
+        result = runner.invoke(app, ["show", "showstats"])
+        assert result.exit_code == 0
+        assert "38m 12s" in result.output
+        assert "$0.8000" in result.output
+        assert "18,000" in result.output
+
     def test_show_nonexistent(self, mock_storms_dir):
         result = runner.invoke(app, ["show", "nonexistent"])
         assert result.exit_code == 1

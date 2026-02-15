@@ -457,6 +457,19 @@ def show(
     if config.deliverables:
         console.print(f"Deliverables: {', '.join(config.deliverables)}")
     console.print(f"Started: {config.started_at}")
+    if config.ended_at:
+        console.print(f"Ended: {config.ended_at}")
+    duration_s = config.total_duration_s
+    if duration_s is not None:
+        from claude_storm.display import _format_duration
+
+        console.print(f"Duration: {_format_duration(duration_s)}")
+    # Show cost/token totals from watermarks
+    from claude_storm.display import _format_session_totals
+
+    totals = _format_session_totals(config)
+    if totals:
+        console.print(totals)
     console.print(f"Directory: {config.session_dir()}")
 
     # Show conversation if it exists

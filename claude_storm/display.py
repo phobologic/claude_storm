@@ -22,6 +22,21 @@ AGENT_STYLES = {
 }
 
 
+def _format_duration(seconds: int) -> str:
+    """Format a duration in seconds as 'Xm Ys'.
+
+    Args:
+        seconds: Duration in seconds.
+
+    Returns:
+        Human-readable duration string.
+    """
+    minutes, secs = divmod(seconds, 60)
+    if minutes > 0:
+        return f"{minutes}m {secs:02d}s"
+    return f"{secs}s"
+
+
 def _format_session_totals(config: SessionConfig) -> str | None:
     """Aggregate cost/token totals across agents and return formatted string.
 
@@ -39,14 +54,17 @@ def _format_session_totals(config: SessionConfig) -> str | None:
         total_cost += wm.get("total_cost_usd", 0.0)
         total_in += wm.get("total_input_tokens", 0)
         total_out += wm.get("total_output_tokens", 0)
-    if not (total_cost > 0 or total_in > 0):
+    duration_s = config.total_duration_s
+    if not (total_cost > 0 or total_in > 0 or duration_s is not None):
         return None
     parts = []
+    if duration_s is not None:
+        parts.append(_format_duration(duration_s))
     if total_cost > 0:
         parts.append(f"${total_cost:.4f}")
     if total_in > 0 or total_out > 0:
         parts.append(f"In: {total_in:,} Out: {total_out:,}")
-    return f"Total: {' · '.join(parts)}"
+    return f"Total: {' \u00b7 '.join(parts)}"
 
 
 def _format_turn_stats(

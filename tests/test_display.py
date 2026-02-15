@@ -3,7 +3,12 @@
 import re
 from io import StringIO
 
-from claude_storm.display import DisplayProtocol, PlainDisplay, _truncate_label
+from claude_storm.display import (
+    DisplayProtocol,
+    PlainDisplay,
+    _format_duration,
+    _truncate_label,
+)
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 
@@ -198,12 +203,32 @@ class TestShowCompletionWithStats:
         assert "18,000" in output
         assert "900" in output
 
+    def test_completion_with_duration(self, make_config, capture_display):
+        display, buf = capture_display
+        config = make_config(ensure_dirs=False, current_turn=4)
+        config.started_at = "2026-02-14T10:00:00+00:00"
+        config.ended_at = "2026-02-14T10:05:30+00:00"
+        display.show_completion(config)
+        output = _plain(buf)
+        assert "5m 30s" in output
+
     def test_completion_without_stats(self, make_config, capture_display):
         display, buf = capture_display
         config = make_config(ensure_dirs=False, current_turn=4)
         display.show_completion(config)
         output = _plain(buf)
         assert "Total:" not in output
+
+
+class TestFormatDuration:
+    def test_seconds_only(self):
+        assert _format_duration(42) == "42s"
+
+    def test_minutes_and_seconds(self):
+        assert _format_duration(330) == "5m 30s"
+
+    def test_zero(self):
+        assert _format_duration(0) == "0s"
 
 
 class TestTruncateLabel:

@@ -9,7 +9,11 @@ from uuid import uuid4
 from claude_storm.agents import invoke_agent
 from claude_storm.agreements import format_agreements_for_compilation
 from claude_storm.config import SessionConfig
-from claude_storm.debug import write_debug_request, write_debug_response
+from claude_storm.debug import (
+    write_debug_phase_banner,
+    write_debug_request,
+    write_debug_response,
+)
 from claude_storm.display import DisplayProtocol
 from claude_storm.prompts import build_deliverable_prompt, build_summary_prompt
 
@@ -86,6 +90,10 @@ def compile_deliverables(config: SessionConfig, display: DisplayProtocol) -> Non
     artifacts_dir = config.session_dir() / "artifacts"
     artifacts_dir.mkdir(parents=True, exist_ok=True)
 
+    if config.debug:
+        debug_log = config.session_dir() / "debug.log"
+        write_debug_phase_banner(debug_log, "COMPILATION PHASE")
+
     for deliverable in config.deliverables:
         display.show_deliverable_compile(deliverable)
 
@@ -161,6 +169,7 @@ def generate_summary(config: SessionConfig, display: DisplayProtocol) -> None:
 
     if config.debug:
         debug_log = config.session_dir() / "debug.log"
+        write_debug_phase_banner(debug_log, "SUMMARY PHASE")
         write_debug_request(
             log_path=debug_log,
             turn="summary",

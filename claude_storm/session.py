@@ -19,7 +19,11 @@ from claude_storm.agreements import (
 )
 from claude_storm.compilation import compile_deliverables, generate_summary
 from claude_storm.config import SessionConfig
-from claude_storm.debug import write_debug_request, write_debug_response
+from claude_storm.debug import (
+    write_debug_request,
+    write_debug_response,
+    write_debug_summary,
+)
 from claude_storm.directives import ParsedDirectives, parse_directives
 from claude_storm.display import Display, DisplayProtocol
 from claude_storm.memory import (
@@ -512,6 +516,9 @@ def run_session(
     finally:
         if old_handler is not None:
             signal.signal(signal.SIGINT, old_handler)
+        from datetime import UTC, datetime
+
+        config.ended_at = datetime.now(UTC).isoformat()
         config.save()
 
     # Compile deliverables and generate summary if completed
@@ -520,6 +527,11 @@ def run_session(
         generate_summary(config, display)
 
     display.show_completion(config)
+
+    # Write debug summary at session end
+    if config.debug:
+        debug_log = config.session_dir() / "debug.log"
+        write_debug_summary(debug_log, config, config.total_duration_s)
 
     if config.interactive and isinstance(display, Display):
         with contextlib.suppress(EOFError, KeyboardInterrupt):

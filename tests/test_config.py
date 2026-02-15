@@ -269,6 +269,51 @@ class TestSessionConfig:
         loaded = SessionConfig.load("legacy000", storms_dir=str(tmp_storms))
         assert loaded.done_signals == {}
 
+    def test_ended_at_default_empty(self):
+        config = SessionConfig.create(topic="Test")
+        assert config.ended_at == ""
+
+    def test_ended_at_serializes(self, tmp_storms):
+        config = SessionConfig.create(topic="Test", storms_dir=str(tmp_storms))
+        config.ended_at = "2026-02-14T12:00:00+00:00"
+        config.save()
+        loaded = SessionConfig.load(config.session_id, storms_dir=str(tmp_storms))
+        assert loaded.ended_at == "2026-02-14T12:00:00+00:00"
+
+    def test_total_duration_s_both_set(self):
+        config = SessionConfig(
+            session_id="dur1",
+            topic="Test",
+            started_at="2026-02-14T10:00:00+00:00",
+            ended_at="2026-02-14T10:38:12+00:00",
+        )
+        assert config.total_duration_s == 2292
+
+    def test_total_duration_s_missing_ended(self):
+        config = SessionConfig(
+            session_id="dur2",
+            topic="Test",
+            started_at="2026-02-14T10:00:00+00:00",
+        )
+        assert config.total_duration_s is None
+
+    def test_total_duration_s_missing_started(self):
+        config = SessionConfig(
+            session_id="dur3",
+            topic="Test",
+            ended_at="2026-02-14T10:00:00+00:00",
+        )
+        assert config.total_duration_s is None
+
+    def test_total_duration_s_invalid_timestamps(self):
+        config = SessionConfig(
+            session_id="dur4",
+            topic="Test",
+            started_at="not-a-date",
+            ended_at="also-not-a-date",
+        )
+        assert config.total_duration_s is None
+
 
 class TestRefSymlinks:
     """Symlinks in refs/ for LLM-friendly reference directory access."""

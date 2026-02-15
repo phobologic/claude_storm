@@ -89,6 +89,7 @@ class SessionConfig:
     model: str = "sonnet"
     current_turn: int = 0
     started_at: str = ""
+    ended_at: str = ""
     status: str = "active"
     done_signals: dict[str, str] = field(default_factory=dict)
     deliverables: list[str] = field(default_factory=list)
@@ -177,6 +178,22 @@ class SessionConfig:
             return Path(self.storms_dir) / self.session_id
         # Fallback for legacy sessions
         return Path("sessions") / self.session_id
+
+    @property
+    def total_duration_s(self) -> int | None:
+        """Compute total session duration in seconds.
+
+        Returns:
+            Duration in seconds, or None if started_at or ended_at is missing.
+        """
+        if not self.started_at or not self.ended_at:
+            return None
+        try:
+            start = datetime.fromisoformat(self.started_at)
+            end = datetime.fromisoformat(self.ended_at)
+            return max(0, int((end - start).total_seconds()))
+        except (ValueError, TypeError):
+            return None
 
     def save(self) -> None:
         """Save config to session directory as session.json.
