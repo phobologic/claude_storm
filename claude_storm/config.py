@@ -30,7 +30,7 @@ _SENSITIVE_PATHS = frozenset(
 
 
 def format_duration(seconds: int) -> str:
-    """Format a duration in seconds as 'Xm Ys'.
+    """Format a duration in seconds as 'Xh Ym Zs', 'Xm Ys', or 'Xs'.
 
     Args:
         seconds: Duration in seconds.
@@ -39,6 +39,9 @@ def format_duration(seconds: int) -> str:
         Human-readable duration string.
     """
     minutes, secs = divmod(seconds, 60)
+    hours, minutes = divmod(minutes, 60)
+    if hours > 0:
+        return f"{hours}h {minutes:02d}m {secs:02d}s"
     if minutes > 0:
         return f"{minutes}m {secs:02d}s"
     return f"{secs}s"

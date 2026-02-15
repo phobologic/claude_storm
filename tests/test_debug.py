@@ -121,7 +121,7 @@ class TestWriteDebugRequest:
         assert "3 lines]" in content
         # Turn prompt: 1 line
         assert f"[{len(turn):,} chars" in content
-        assert "1 lines]" in content
+        assert "1 line]" in content
 
     def test_omits_system_prompt_when_none(self, tmp_path):
         log_path = tmp_path / "debug.log"
@@ -203,6 +203,17 @@ class TestWriteDebugResponse:
         )
         content = log_path.read_text()
         assert "--- RESPONSE TEXT" not in content
+
+    def test_usage_none_skips_summary(self, tmp_path):
+        log_path = tmp_path / "debug.log"
+        write_debug_response(
+            log_path=log_path,
+            cmd=["claude", "-p"],
+            raw_response={"result": "ok", "usage": None},
+            directives=EMPTY_DIRECTIVES,
+        )
+        content = log_path.read_text()
+        assert "--- USAGE SUMMARY ---" not in content
 
     def test_does_not_contain_header(self, tmp_path):
         log_path = tmp_path / "debug.log"

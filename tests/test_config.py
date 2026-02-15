@@ -647,6 +647,15 @@ class TestFormatDuration:
     def test_exact_minute(self):
         assert format_duration(60) == "1m 00s"
 
+    def test_one_hour(self):
+        assert format_duration(3600) == "1h 00m 00s"
+
+    def test_hour_minutes_seconds(self):
+        assert format_duration(3661) == "1h 01m 01s"
+
+    def test_two_hours(self):
+        assert format_duration(7200) == "2h 00m 00s"
+
 
 class TestValidateReferenceDirConfig:
     """_validate_reference_dir moved to config module."""

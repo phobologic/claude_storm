@@ -22,11 +22,15 @@ AGENT_STYLES = {
 }
 
 
-def _format_session_totals(config: SessionConfig) -> str | None:
+def _format_session_totals(
+    config: SessionConfig, duration_s: int | None = None
+) -> str | None:
     """Aggregate cost/token totals across agents and return formatted string.
 
     Args:
         config: Session configuration containing agent watermarks.
+        duration_s: Pre-computed duration in seconds.  When ``None``
+            (the default), the value is computed from ``config.total_duration_s``.
 
     Returns:
         Formatted totals string, or None if no cost/token data is available.
@@ -35,7 +39,8 @@ def _format_session_totals(config: SessionConfig) -> str | None:
     total_cost = totals["total_cost_usd"]
     total_in = totals["total_input_tokens"]
     total_out = totals["total_output_tokens"]
-    duration_s = config.total_duration_s
+    if duration_s is None:
+        duration_s = config.total_duration_s
     if not (total_cost > 0 or total_in > 0 or duration_s is not None):
         return None
     parts = []

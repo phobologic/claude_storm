@@ -47,15 +47,19 @@ def write_debug_request(
     if system_prompt is not None:
         sp_chars = len(system_prompt)
         sp_lines = system_prompt.count("\n") + 1
+        sp_unit = "line" if sp_lines == 1 else "lines"
         lines.append(
-            f"--- SYSTEM PROMPT --- [{sp_chars:,} chars \u00b7 {sp_lines:,} lines]"
+            f"--- SYSTEM PROMPT --- [{sp_chars:,} chars \u00b7 {sp_lines:,} {sp_unit}]"
         )
         lines.append(system_prompt)
         lines.append("")
 
     tp_chars = len(turn_prompt)
     tp_lines = turn_prompt.count("\n") + 1
-    lines.append(f"--- TURN PROMPT --- [{tp_chars:,} chars \u00b7 {tp_lines:,} lines]")
+    tp_unit = "line" if tp_lines == 1 else "lines"
+    lines.append(
+        f"--- TURN PROMPT --- [{tp_chars:,} chars \u00b7 {tp_lines:,} {tp_unit}]"
+    )
     lines.append(turn_prompt)
     lines.append("")
 
@@ -71,6 +75,15 @@ def write_debug_response(
     """Write the response half of a debug entry (after agent invocation).
 
     Writes the CLI command, raw response, and parsed directives.
+
+    Args:
+        log_path: Path to the debug log file.
+        cmd: The CLI command that was executed.
+        raw_response: Agent response dict with expected keys:
+            ``result`` (str) — agent response text,
+            ``usage`` (dict | None) — ``{input_tokens, output_tokens, iterations}``,
+            ``total_cost_usd`` (float) — cost in USD.
+        directives: Parsed directives dict from ``parse_directives``.
     """
     lines: list[str] = []
     lines.append("--- CLI COMMAND ---")
@@ -83,19 +96,20 @@ def write_debug_response(
 
     if "usage" in raw_response:
         usage = raw_response["usage"]
-        lines.append("--- USAGE SUMMARY ---")
-        lines.append(f"Input: {usage.get('input_tokens', 0):,}")
-        lines.append(f"Output: {usage.get('output_tokens', 0):,}")
-        if "total_cost_usd" in raw_response:
-            lines.append(f"Cost: ${raw_response['total_cost_usd']:.4f}")
-        if "iterations" in usage:
-            lines.append(f"Compaction iterations: {len(usage['iterations'])}")
-        lines.append("")
+        if isinstance(usage, dict):
+            lines.append("--- USAGE SUMMARY ---")
+            lines.append(f"Input: {usage.get('input_tokens', 0):,}")
+            lines.append(f"Output: {usage.get('output_tokens', 0):,}")
+            if "total_cost_usd" in raw_response:
+                lines.append(f"Cost: ${raw_response['total_cost_usd']:.4f}")
+            if "iterations" in usage:
+                lines.append(f"Compaction iterations: {len(usage['iterations'])}")
+            lines.append("")
 
     # Human-readable response excerpt
     result_text = raw_response.get("result", "")
     if result_text:
-        excerpt_lines = result_text.split("\n")[:80]
+        excerpt_lines = result_text.split("\n", maxsplit=80)[:80]
         lines.append("--- RESPONSE TEXT (first 80 lines) ---")
         lines.append("\n".join(excerpt_lines))
         lines.append("")

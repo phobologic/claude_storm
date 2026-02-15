@@ -467,7 +467,7 @@ def show(
     # Show cost/token totals from watermarks
     from claude_storm.display import _format_session_totals
 
-    totals = _format_session_totals(config)
+    totals = _format_session_totals(config, duration_s=duration_s)
     if totals:
         console.print(totals)
     console.print(f"Directory: {config.session_dir()}")
