@@ -365,11 +365,17 @@ def build_turn_prompt(
     return "\n".join(sections)
 
 
-def build_summary_prompt(config: SessionConfig) -> str:
+def build_summary_prompt(
+    config: SessionConfig,
+    agreements_text: str = "",
+    conversation_text: str = "",
+) -> str:
     """Build a prompt requesting a session summary.
 
     Args:
         config: The session configuration.
+        agreements_text: Formatted shared agreements text.
+        conversation_text: The full conversation log.
 
     Returns:
         The summary request prompt.
@@ -399,6 +405,20 @@ def build_summary_prompt(config: SessionConfig) -> str:
             + "\n".join(f"- {d}" for d in config.deliverables)
             + "\n\nPlease assess which were produced and their completeness."
         )
+
+    if agreements_text:
+        parts.append(f"\n---\n\n## Shared Agreements\n\n{agreements_text}")
+
+    if conversation_text:
+        if (
+            config.truncate_conversation
+            and len(conversation_text) > _TRUNCATION_THRESHOLD
+        ):
+            conversation_text = (
+                "[...earlier conversation truncated...]\n\n"
+                + conversation_text[-_TRUNCATION_THRESHOLD:]
+            )
+        parts.append(f"\n---\n\n## Conversation Log\n\n{conversation_text}")
 
     return "\n".join(parts)
 

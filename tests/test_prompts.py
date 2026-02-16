@@ -465,6 +465,47 @@ class TestBuildSummaryPrompt:
         assert "Doc B" in prompt
         assert "completeness" in prompt
 
+    def test_includes_agreements_text(self, make_config):
+        config = make_config(ensure_dirs=False, current_turn=8)
+        prompt = build_summary_prompt(
+            config, agreements_text="We agreed on caching strategy"
+        )
+        assert "Shared Agreements" in prompt
+        assert "We agreed on caching strategy" in prompt
+
+    def test_includes_conversation_text(self, make_config):
+        config = make_config(ensure_dirs=False, current_turn=8)
+        prompt = build_summary_prompt(
+            config, conversation_text="Turn 1: discussed architecture"
+        )
+        assert "Conversation Log" in prompt
+        assert "Turn 1: discussed architecture" in prompt
+
+    def test_no_agreements_section_when_empty(self, make_config):
+        config = make_config(ensure_dirs=False, current_turn=8)
+        prompt = build_summary_prompt(config, agreements_text="")
+        assert "Shared Agreements" not in prompt
+
+    def test_no_conversation_section_when_empty(self, make_config):
+        config = make_config(ensure_dirs=False, current_turn=8)
+        prompt = build_summary_prompt(config, conversation_text="")
+        assert "Conversation Log" not in prompt
+
+    def test_conversation_truncated_when_over_threshold(self, make_config):
+        config = make_config(ensure_dirs=False, current_turn=8)
+        long_text = "x" * 60_000
+        prompt = build_summary_prompt(config, conversation_text=long_text)
+        assert "[...earlier conversation truncated...]" in prompt
+        assert len(prompt) < len(long_text)
+
+    def test_conversation_not_truncated_when_disabled(self, make_config):
+        config = make_config(
+            ensure_dirs=False, current_turn=8, truncate_conversation=False
+        )
+        long_text = "x" * 60_000
+        prompt = build_summary_prompt(config, conversation_text=long_text)
+        assert "[...earlier conversation truncated...]" not in prompt
+
 
 class TestBuildDeliverablePrompt:
     def test_includes_deliverable_name(self, make_config):

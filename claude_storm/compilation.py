@@ -169,7 +169,17 @@ def generate_summary(config: SessionConfig, display: DisplayProtocol) -> None:
         display: The display manager.
     """
     display.show_status("Generating session summary...")
-    summary_prompt = build_summary_prompt(config)
+
+    agreements_text = format_agreements_for_compilation(config)
+
+    conv_path = config.session_dir() / "conversation.md"
+    conversation_text = conv_path.read_text() if conv_path.exists() else ""
+
+    summary_prompt = build_summary_prompt(
+        config,
+        agreements_text=agreements_text,
+        conversation_text=conversation_text,
+    )
 
     if config.debug:
         debug_log = config.session_dir() / "debug.log"
