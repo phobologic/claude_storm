@@ -555,6 +555,33 @@ class TestCLICommands:
         assert result.exit_code == 1
 
 
+class TestDraftPrefixBasename:
+    def test_subdir_artifact_prefixes_basename_only(self, make_config, capture_display):
+        """draft- prefix should apply to basename, not the full path."""
+        config = make_config(session_id="draft-test", current_turn=1)
+        display, _buf = capture_display
+        directives = parse_directives(
+            '[ARTIFACT filename="subdir/chapter1.md"]Content[/ARTIFACT]'
+        )
+        process_directives(config, "a", directives, display)
+        artifacts_dir = config.session_dir() / "artifacts"
+        expected = artifacts_dir / "subdir" / "draft-chapter1.md"
+        assert expected.exists()
+        assert expected.read_text() == "Content\n"
+
+    def test_flat_artifact_prefixes_normally(self, make_config, capture_display):
+        """Flat filenames still get draft- prefix as before."""
+        config = make_config(session_id="draft-test-flat", current_turn=1)
+        display, _buf = capture_display
+        directives = parse_directives(
+            '[ARTIFACT filename="notes.md"]Notes here[/ARTIFACT]'
+        )
+        process_directives(config, "a", directives, display)
+        artifacts_dir = config.session_dir() / "artifacts"
+        expected = artifacts_dir / "draft-notes.md"
+        assert expected.exists()
+
+
 class TestConsensus:
     def test_done_signal_stored_in_dict(self, make_config, capture_display):
         config = make_config(
@@ -1057,18 +1084,18 @@ class TestFindMatchingArtifacts:
     def test_finds_matching_files(self, tmp_path):
         artifacts_dir = tmp_path / "artifacts"
         artifacts_dir.mkdir()
-        (artifacts_dir / "chapter_summaries.md").write_text("# Summaries")
-        (artifacts_dir / "unrelated.md").write_text("# Other")
+        (artifacts_dir / "draft-chapter_summaries.md").write_text("# Summaries")
+        (artifacts_dir / "draft-unrelated.md").write_text("# Other")
 
         result = find_matching_artifacts(artifacts_dir, "Chapter Summaries")
-        assert "chapter_summaries.md" in result
-        assert result["chapter_summaries.md"] == "# Summaries"
-        assert "unrelated.md" not in result
+        assert "draft-chapter_summaries.md" in result
+        assert result["draft-chapter_summaries.md"] == "# Summaries"
+        assert "draft-unrelated.md" not in result
 
     def test_returns_empty_for_no_matches(self, tmp_path):
         artifacts_dir = tmp_path / "artifacts"
         artifacts_dir.mkdir()
-        (artifacts_dir / "something_else.md").write_text("content")
+        (artifacts_dir / "draft-something_else.md").write_text("content")
 
         result = find_matching_artifacts(artifacts_dir, "Chapter Summaries")
         assert result == {}
@@ -1080,12 +1107,12 @@ class TestFindMatchingArtifacts:
     def test_matches_partial_overlap(self, tmp_path):
         artifacts_dir = tmp_path / "artifacts"
         artifacts_dir.mkdir()
-        (artifacts_dir / "act_1_chapters.md").write_text("# Act 1")
-        (artifacts_dir / "act_2_chapters.md").write_text("# Act 2")
+        (artifacts_dir / "draft-act_1_chapters.md").write_text("# Act 1")
+        (artifacts_dir / "draft-act_2_chapters.md").write_text("# Act 2")
 
         result = find_matching_artifacts(artifacts_dir, "chapters")
-        assert "act_1_chapters.md" in result
-        assert "act_2_chapters.md" in result
+        assert "draft-act_1_chapters.md" in result
+        assert "draft-act_2_chapters.md" in result
 
     def test_compile_passes_existing_artifacts(self, make_config, capture_display):
         config = make_config(
@@ -1095,9 +1122,9 @@ class TestFindMatchingArtifacts:
             deliverables=["Chapter Summaries"],
         )
 
-        # Create pre-existing artifact
+        # Create pre-existing draft-prefixed artifact (as agents now produce)
         artifacts_dir = config.session_dir() / "artifacts"
-        (artifacts_dir / "chapter_summaries.md").write_text("# Draft content")
+        (artifacts_dir / "draft-chapter_summaries.md").write_text("# Draft content")
         (config.session_dir() / "conversation.md").write_text("## Turn 1\nHello")
 
         display, _buf = capture_display

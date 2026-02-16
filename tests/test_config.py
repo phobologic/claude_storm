@@ -12,6 +12,7 @@ from claude_storm.config import (
     SessionConfig,
     _validate_reference_dir,
     format_duration,
+    slugify,
     validate_reference_dirs,
 )
 
@@ -655,6 +656,33 @@ class TestFormatDuration:
 
     def test_two_hours(self):
         assert format_duration(7200) == "2h 00m 00s"
+
+
+class TestSlugify:
+    """Tests for the shared slugify function."""
+
+    def test_basic_title(self):
+        assert slugify("Design Document") == "design-document"
+
+    def test_underscore_separator(self):
+        assert slugify("Design Document", sep="_") == "design_document"
+
+    def test_truncates_to_max_len(self):
+        result = slugify("a" * 100)
+        assert len(result) == 60
+
+    def test_no_truncation_when_zero(self):
+        result = slugify("a" * 100, max_len=0)
+        assert len(result) == 100
+
+    def test_special_chars_stripped(self):
+        assert slugify("hello@world!") == "helloworld"
+
+    def test_empty_returns_note(self):
+        assert slugify("!!!") == "note"
+
+    def test_collapses_multiple_separators(self):
+        assert slugify("a   b---c__d") == "a-b-c-d"
 
 
 class TestValidateReferenceDirConfig:

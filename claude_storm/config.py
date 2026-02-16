@@ -47,6 +47,24 @@ def format_duration(seconds: int) -> str:
     return f"{secs}s"
 
 
+def slugify(title: str, *, sep: str = "-", max_len: int = 60) -> str:
+    """Convert a title to a filename-safe slug.
+
+    Args:
+        title: The title to slugify.
+        sep: Separator character (default: hyphen).
+        max_len: Maximum length (0 for unlimited). Default: 60.
+
+    Returns:
+        A lowercase slug truncated to *max_len* characters.
+    """
+    slug = re.sub(r"[^\w\s-]", "", title.lower())
+    slug = re.sub(r"[\s_-]+", sep, slug).strip(sep)
+    if max_len:
+        slug = slug[:max_len]
+    return slug or "note"
+
+
 def _validate_reference_dir(path: str) -> bool:
     """Check whether a reference directory path is safe to use.
 

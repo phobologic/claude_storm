@@ -8,7 +8,7 @@ from uuid import uuid4
 
 from claude_storm.agents import invoke_agent
 from claude_storm.agreements import format_agreements_for_compilation
-from claude_storm.config import SessionConfig
+from claude_storm.config import SessionConfig, slugify
 from claude_storm.debug import (
     write_debug_phase_banner,
     write_debug_request,
@@ -39,14 +39,21 @@ def find_matching_artifacts(
     if not artifacts_dir.exists():
         return {}
 
-    # Normalize deliverable name into lowercase tokens
-    deliv_words = set(re.sub(r"[^\w\s]", "", deliverable_name).lower().split())
+    # Strip file extension before tokenizing to avoid "season_summarymd"
+    deliv_base = re.sub(r"\.[a-zA-Z]{1,5}$", "", deliverable_name)
+    # Normalize underscores/hyphens to spaces so "season_summary" → {season, summary}
+    deliv_words = set(
+        re.sub(r"[_\-]", " ", re.sub(r"[^\w\s-]", "", deliv_base)).lower().split()
+    )
     if not deliv_words:
         return {}
 
     matches: dict[str, str] = {}
-    for path in sorted(artifacts_dir.glob("*.md")):
-        stem_words = set(re.sub(r"[_\-]", " ", path.stem).lower().split())
+    for path in sorted(artifacts_dir.glob("draft-*.md")):
+        # Only consider draft files (agent-produced) to avoid feeding compiled
+        # output back into the compilation prompt on re-runs.
+        stem = re.sub(r"^draft-", "", path.stem)
+        stem_words = set(re.sub(r"[_\-]", " ", stem).lower().split())
         overlap = deliv_words & stem_words
         if len(overlap) >= max(1, len(deliv_words) // MIN_WORD_OVERLAP_DIVISOR):
             matches[path.name] = path.read_text()
@@ -145,15 +152,10 @@ def compile_deliverables(config: SessionConfig, display: DisplayProtocol) -> Non
             )
 
         if not response.is_error:
-            # Sanitize filename
-            safe_name = re.sub(r"[^\w\s-]", "", deliverable).strip()
-            safe_name = re.sub(r"[\s]+", "_", safe_name).lower()
+            # Strip file extension before sanitizing to avoid "season_summarymd.md"
+            base = re.sub(r"\.[a-zA-Z]{1,5}$", "", deliverable)
+            safe_name = slugify(base, sep="_", max_len=0)
             artifact_path = artifacts_dir / f"{safe_name}.md"
-
-            # Preserve any existing agent draft before overwriting
-            draft_backup = artifacts_dir / f"{safe_name}.draft.md"
-            if artifact_path.exists() and not draft_backup.exists():
-                artifact_path.rename(draft_backup)
 
             artifact_path.write_text(response.text + "\n")
             display.show_artifact_save(f"{safe_name}.md")

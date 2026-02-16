@@ -6,7 +6,7 @@ import re
 from typing import NamedTuple, NotRequired, TypedDict
 from uuid import uuid4
 
-from claude_storm.config import SessionConfig
+from claude_storm.config import SessionConfig, slugify
 
 
 class ProposalDict(TypedDict):
@@ -87,9 +87,7 @@ def _slugify(title: str) -> str:
     Returns:
         A lowercase, hyphenated slug truncated to 60 characters.
     """
-    slug = re.sub(r"[^\w\s-]", "", title.lower())
-    slug = re.sub(r"[\s_]+", "-", slug).strip("-")
-    return slug[:60]
+    return slugify(title)
 
 
 def _agreement_filename(agreement: dict) -> str:

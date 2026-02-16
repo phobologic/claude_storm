@@ -9,6 +9,7 @@ import time
 from collections import deque
 from dataclasses import asdict
 from datetime import UTC, datetime
+from pathlib import PurePosixPath
 
 from claude_storm.agents import AgentResponse, invoke_agent
 from claude_storm.agreements import (
@@ -300,16 +301,23 @@ def process_directives(
     if directives.memory_searches:
         search_query = directives.memory_searches[0]
 
-    # Save artifacts
+    # Save artifacts (auto-prefix with draft- so agent drafts are
+    # distinct from compiled finals written by compile_deliverables)
     artifacts_dir = config.session_dir() / "artifacts"
     for filename, content in directives.artifacts:
-        artifact_path = (artifacts_dir / filename).resolve()
+        base = PurePosixPath(filename)
+        draft_filename = (
+            str(base.parent / f"draft-{base.name}")
+            if not base.name.startswith("draft-")
+            else filename
+        )
+        artifact_path = (artifacts_dir / draft_filename).resolve()
         if not artifact_path.is_relative_to(artifacts_dir.resolve()):
             display.show_warning(f"Blocked artifact with unsafe filename: {filename!r}")
             continue
         artifact_path.parent.mkdir(parents=True, exist_ok=True)
         artifact_path.write_text(content + "\n")
-        display.show_artifact_save(filename)
+        display.show_artifact_save(draft_filename)
 
     # Handle done signal (consensus mechanism)
     other_agent = "b" if agent == "a" else "a"

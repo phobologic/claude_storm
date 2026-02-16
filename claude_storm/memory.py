@@ -7,6 +7,8 @@ import re
 from datetime import UTC, datetime
 from pathlib import Path
 
+from claude_storm.config import slugify
+
 
 def _index_path(agent_dir: Path) -> Path:
     """Return path to the agent's memory index file."""
@@ -30,9 +32,7 @@ def _save_index(agent_dir: Path, index: list[dict]) -> None:
 
 def _slugify(title: str) -> str:
     """Convert a title to a filename-safe slug."""
-    slug = re.sub(r"[^\w\s-]", "", title.lower())
-    slug = re.sub(r"[\s_]+", "-", slug).strip("-")
-    return slug[:60] if slug else "note"
+    return slugify(title)
 
 
 def save_memory(agent_dir: Path, title: str, tags: list[str], content: str) -> str:
