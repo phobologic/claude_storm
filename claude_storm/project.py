@@ -188,7 +188,8 @@ def _high_progress_message(goal: str | None) -> str:
     """Build pacing message for 75%+ progress."""
     msg = (
         "Session is 75% complete. Finalize deliverable artifacts now. "
-        "Update or produce `[ARTIFACT]` files for each expected deliverable. "
+        "Update or produce `[ARTIFACT]` files for each expected deliverable — "
+        "these are working drafts that will be refined during compilation. "
         "Break large deliverables into multiple files "
         "(e.g., `part_1.md`, `part_2.md`). "
         "Focus on resolving open questions."
@@ -203,8 +204,9 @@ def _mid_progress_message(goal: str | None) -> str:
     msg = (
         "You're at the halfway point. Start narrowing down "
         "and committing to approaches. "
-        "Start producing draft `[ARTIFACT]` files for deliverables you have enough "
-        "material for. For large deliverables, break them into parts "
+        "Start producing draft `[ARTIFACT]` files — write incremental sections "
+        "for deliverables you have enough material for. These drafts will be "
+        "refined during compilation. For large deliverables, break them into parts "
         "(e.g., `act_1_chapters.md`, `act_2a_chapters.md`). "
         "You can revise artifacts later."
     )

@@ -221,17 +221,18 @@ def _build_session_structure_section(config: SessionConfig) -> str:
             "\nPace yourself: use the early turns to clarify goals and constraints "
             "with the user (via [ASK_USER]), explore broadly through the first half, "
             "then shift toward concrete decisions and producing deliverables in the "
-            "second half. Start writing `[ARTIFACT]` files incrementally from the "
-            "halfway point — don't wait until the end. For large deliverables, break "
-            "them into multiple artifact files that you can "
-            "refine over subsequent turns."
+            "second half. Start writing incremental `[ARTIFACT]` drafts from the "
+            "halfway point — don't wait until the end. These drafts will be refined "
+            "during post-session compilation. For large deliverables, break them into "
+            "multiple artifact files that you can refine over subsequent turns."
         )
     else:
         structure_parts.append(
             "\nPace yourself: explore broadly in the first half, then shift toward "
             "concrete decisions and producing deliverables in the second half. "
-            "Start writing `[ARTIFACT]` files incrementally from the halfway point — "
-            "don't wait until the end. For large deliverables, break them into "
+            "Start writing incremental `[ARTIFACT]` drafts from the halfway point — "
+            "don't wait until the end. These drafts will be refined during "
+            "post-session compilation. For large deliverables, break them into "
             "multiple artifact files that you can refine over subsequent turns."
         )
     return "\n".join(structure_parts)
@@ -396,7 +397,12 @@ def build_summary_prompt(
     )
     if config.goal:
         parts.append("5. Goal assessment — did the session achieve its stated goal?\n")
-    parts.append("Be concise but thorough. Format as markdown.")
+    parts.append(
+        "Be concise but thorough. Format as markdown.\n\n"
+        "IMPORTANT: Output the full summary directly in your response.\n"
+        "Do NOT use Write or Edit tools. Do NOT ask for permission — "
+        "write the actual summary content here."
+    )
 
     if config.deliverables:
         parts.append(

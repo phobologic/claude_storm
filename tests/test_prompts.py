@@ -164,7 +164,7 @@ class TestBuildSystemPrompt:
         prompt = build_system_prompt(config, "a")
         assert "budget of 10 turns" in prompt
         assert "Pace yourself" in prompt
-        assert "incrementally" in prompt
+        assert "incremental" in prompt
         assert "[ARTIFACT]" in prompt
 
     def test_system_prompt_includes_reference_dirs(self, make_config, tmp_path):
