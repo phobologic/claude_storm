@@ -46,7 +46,7 @@ class TestThinkingBar:
             bar.start("Author A", timeout=300)
             await pilot.pause()
             content = str(bar.render())
-            assert "is thinking" in content, f"render() returned: {content!r}"
+            assert "Author A..." in content, f"render() returned: {content!r}"
 
     @pytest.mark.asyncio
     async def test_start_with_multiline_label(self):
@@ -55,7 +55,7 @@ class TestThinkingBar:
             bar.start("\nAuthor A\nSome long description\n", timeout=300)
             await pilot.pause()
             content = str(bar.render())
-            assert "is thinking" in content
+            assert "Author A" in content and "0s / 300s" in content
 
     @pytest.mark.asyncio
     async def test_stop_returns_elapsed(self):

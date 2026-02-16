@@ -88,10 +88,7 @@ class ThinkingBar(Widget):
         if not self._active:
             return ""
         elapsed = int(time.monotonic() - self._start_time)
-        return (
-            f"  [bold]{self._label} is thinking... "
-            f"({elapsed}s / {self._timeout}s)[/bold]"
-        )
+        return f"  [bold]{self._label}... ({elapsed}s / {self._timeout}s)[/bold]"
 
     @property
     def label(self) -> str:
