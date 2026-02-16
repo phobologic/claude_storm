@@ -1,6 +1,6 @@
 [project]
 name = "claude-storm"
-version = "0.1.1"
+version = "0.1.2"
 description = "Dual-agent brainstorming system using Claude Code CLI sessions"
 readme = "README.md"
 license = "MIT"
@@ -53,6 +53,9 @@ known-first-party = ["claude_storm"]
 
 [tool.ruff.format]
 quote-style = "double"
+
+[tool.hatch.build.targets.sdist]
+exclude = [".claude/", ".github/", ".tickets/"]
 
 [build-system]
 requires = ["hatchling"]

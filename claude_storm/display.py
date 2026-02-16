@@ -50,7 +50,8 @@ def _format_session_totals(
         parts.append(f"${total_cost:.4f}")
     if total_in > 0 or total_out > 0:
         parts.append(f"In: {total_in:,} Out: {total_out:,}")
-    return f"Total: {' \u00b7 '.join(parts)}"
+    sep = " \u00b7 "
+    return f"Total: {sep.join(parts)}"
 
 
 def _format_turn_stats(
