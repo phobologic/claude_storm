@@ -2,22 +2,60 @@
 
 A dual-agent brainstorming system that orchestrates two Claude Code CLI instances in strict alternating turns. Each agent maintains a persistent Claude session and has access to a markdown-based memory filesystem for long-term notes.
 
+**Try it now** (no install needed):
+
+```bash
+uvx claude-storm start "Design a REST API for a todo app"
+```
+
+## Prerequisites
+
+- **Claude Code CLI** — must be installed and authenticated (`claude` command available on your `$PATH`). See the [Claude Code docs](https://docs.anthropic.com/en/docs/claude-code/overview) for setup instructions.
+- **Python 3.11+**
+
+**API usage:** Claude Storm spawns Claude Code subprocesses — each agent turn is an API call billed through your Claude Code authentication (Anthropic API key or Claude Pro/Max subscription). Agents often finish early via consensus, so a session with `--max-turns 20` typically uses fewer than 40 calls, plus a few more for deliverable compilation at the end.
+
 ## Installation
 
 ```bash
-uv sync
+# Run without installing (recommended for trying it out)
+uvx claude-storm start "your topic"
+
+# Install globally
+pip install claude-storm
+
+# Or with pipx
+pipx install claude-storm
 ```
+
+Once installed, the `storm` command is available:
+
+```bash
+storm start "your topic"
+```
+
+<details>
+<summary>Development install (from source)</summary>
+
+```bash
+git clone https://github.com/phobologic/claude_storm.git
+cd claude_storm
+uv sync
+uv run storm start "your topic"
+```
+
+</details>
 
 ## Quick Start
 
 ```bash
 # One-off brainstorming session
-uv run storm start "Design a REST API for a todo app" --max-turns 4
+storm start "Design a REST API for a todo app" --max-turns 4
 
 # Project-based workflow (recommended)
-uv run storm init --topic "Design a distributed task queue"
+storm init --topic "Design a distributed task queue"
 # Edit storm.toml to add roles, goal, deliverables...
-uv run storm start
+storm start
 ```
 
 ## Project Configuration
@@ -91,37 +129,37 @@ Sessions are stored in `.storms/` alongside `storm.toml` (add to `.gitignore`).
 
 ```bash
 # Initialize a project config
-uv run storm init [--topic "quick topic"]
-uv run storm init --force             # overwrite existing storm.toml
+storm init [--topic "quick topic"]
+storm init --force             # overwrite existing storm.toml
 
 # Migrate existing config to latest schema
-uv run storm init --update
+storm init --update
 
 # Start a session (reads storm.toml if present, or pass a topic)
-uv run storm start [TOPIC] [OPTIONS]
-uv run storm start --config path/to/storm.toml
-uv run storm start "Quick topic" --max-turns 4
+storm start [TOPIC] [OPTIONS]
+storm start --config path/to/storm.toml
+storm start "Quick topic" --max-turns 4
 
 # With custom roles (one-off mode)
-uv run storm start "Microservices vs monolith" --roles "Advocate" "Skeptic" --auto-complete
+storm start "Microservices vs monolith" --roles "Advocate" "Skeptic" --auto-complete
 
 # CLI flags override TOML values
-uv run storm start --max-turns 6 --model opus
+storm start --max-turns 6 --model opus
 
 # Give agents read-only access to reference materials (repeatable)
-uv run storm start --reference-dir ./research/notes --reference-dir ./design/specs
+storm start --reference-dir ./research/notes --reference-dir ./design/specs
 
 # Interactive mode — type nudges at any time to steer the conversation;
 # agents can ask you questions via [ASK_USER]
-uv run storm start --interactive
+storm start --interactive
 
 # Resume a paused session (Ctrl+C to pause)
-uv run storm resume <session-id>
-uv run storm resume <session-id> --force  # recover after a hard kill
+storm resume <session-id>
+storm resume <session-id> --force  # recover after a hard kill
 
 # List and inspect sessions
-uv run storm list
-uv run storm show <session-id>            # includes why the session stopped
+storm list
+storm show <session-id>            # includes why the session stopped
 ```
 
 ## Agent Protocol
