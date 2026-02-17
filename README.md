@@ -5,7 +5,7 @@ A dual-agent brainstorming system that orchestrates two Claude Code CLI instance
 **Try it now** (no install needed):
 
 ```bash
-uvx claude-storm start "Design a REST API for a todo app"
+uvx --from claude-storm storm start "Design a REST API for a todo app"
 ```
 
 ## Prerequisites
@@ -19,7 +19,7 @@ uvx claude-storm start "Design a REST API for a todo app"
 
 ```bash
 # Run without installing (recommended for trying it out)
-uvx claude-storm start "your topic"
+uvx --from claude-storm storm start "your topic"
 
 # Install globally
 pip install claude-storm
