@@ -1,9 +1,15 @@
 """Tests for compilation module."""
 
+from __future__ import annotations
+
 from unittest.mock import patch
 
 from claude_storm.agents import AgentResponse
-from claude_storm.compilation import compile_deliverables, find_matching_artifacts
+from claude_storm.compilation import (
+    compile_deliverables,
+    find_matching_artifacts,
+    generate_summary,
+)
 
 
 class TestFindMatchingArtifacts:
@@ -61,6 +67,36 @@ class TestFindMatchingArtifacts:
         result = find_matching_artifacts(tmp_path, "Design Document")
         assert "draft-design_document.md" in result
         assert "design_document.md" not in result
+
+    def test_compile_passes_existing_artifacts(self, make_config, capture_display):
+        config = make_config(
+            session_id="artifact-test",
+            current_turn=10,
+            status="completed",
+            deliverables=["Chapter Summaries"],
+        )
+
+        # Create pre-existing draft-prefixed artifact (as agents now produce)
+        artifacts_dir = config.session_dir() / "artifacts"
+        (artifacts_dir / "draft-chapter_summaries.md").write_text("# Draft content")
+        (config.session_dir() / "conversation.md").write_text("## Turn 1\nHello")
+
+        display, _buf = capture_display
+        mock_response = AgentResponse(text="# Final Summaries\n\nDone", raw={})
+
+        prompts_captured = []
+
+        def capture_invoke(**kwargs):
+            prompts_captured.append(kwargs.get("prompt", ""))
+            return mock_response
+
+        with patch("claude_storm.compilation.invoke_agent", side_effect=capture_invoke):
+            compile_deliverables(config, display)
+
+        # The prompt should contain the draft content
+        assert len(prompts_captured) == 1
+        assert "Draft Content" in prompts_captured[0]
+        assert "# Draft content" in prompts_captured[0]
 
 
 class TestCompileDeliverables:
@@ -150,3 +186,187 @@ class TestCompileDeliverables:
             artifacts_dir / "draft-design_document.md"
         ).read_text() == "agent draft\n"
         assert not (artifacts_dir / "design_document.md").exists()
+
+    def test_writes_artifact_files(self, make_config, capture_display):
+        config = make_config(
+            session_id="compile-test",
+            current_turn=10,
+            status="completed",
+            deliverables=["Chapter Summaries", "Character Profiles"],
+        )
+        # Create some memory files
+        mem_dir = config.session_dir() / "agent-a" / "memory"
+        mem_dir.mkdir(parents=True, exist_ok=True)
+        (mem_dir / "note1.md").write_text("Some memory content")
+        # Create conversation log
+        (config.session_dir() / "conversation.md").write_text("## Turn 1\nHello")
+
+        display, _buf = capture_display
+
+        mock_response = AgentResponse(
+            text="# Chapter Summaries\n\nChapter 1...", raw={}
+        )
+        with patch("claude_storm.compilation.invoke_agent", return_value=mock_response):
+            compile_deliverables(config, display)
+
+        artifacts_dir = config.session_dir() / "artifacts"
+        assert artifacts_dir.exists()
+        files = list(artifacts_dir.glob("*.md"))
+        assert len(files) == 2
+
+    def test_uses_distinct_session_ids(self, make_config, capture_display):
+        config = make_config(
+            session_id="compile-test",
+            current_turn=10,
+            status="completed",
+            deliverables=["Chapter Summaries", "Character Profiles"],
+        )
+        (config.session_dir() / "conversation.md").write_text("")
+        display, _buf = capture_display
+
+        mock_response = AgentResponse(text="content", raw={})
+        session_ids = []
+
+        def capture_invoke(**kwargs):
+            session_ids.append(kwargs.get("session_id"))
+            return mock_response
+
+        with patch("claude_storm.compilation.invoke_agent", side_effect=capture_invoke):
+            compile_deliverables(config, display)
+
+        # Should have one session_id per deliverable, all unique and non-None
+        assert len(session_ids) == 2
+        assert all(sid is not None for sid in session_ids)
+        assert session_ids[0] != session_ids[1]
+        # None of them should be the agent's brainstorming session ID
+        assert all(sid != config.claude_session_a for sid in session_ids)
+
+    def test_sanitizes_filenames(self, make_config, capture_display):
+        config = make_config(
+            session_id="compile-test",
+            current_turn=10,
+            status="completed",
+            deliverables=["Chapter: Summaries (All)"],
+        )
+        (config.session_dir() / "conversation.md").write_text("")
+        display, _buf = capture_display
+
+        mock_response = AgentResponse(text="content", raw={})
+        with patch("claude_storm.compilation.invoke_agent", return_value=mock_response):
+            compile_deliverables(config, display)
+
+        artifacts_dir = config.session_dir() / "artifacts"
+        files = list(artifacts_dir.glob("*.md"))
+        assert len(files) == 1
+        # Should not contain colons or parens
+        assert ":" not in files[0].name
+        assert "(" not in files[0].name
+
+    def test_shows_error_on_failed_deliverable(self, make_config, capture_display):
+        config = make_config(
+            session_id="compile-test",
+            current_turn=10,
+            status="completed",
+            deliverables=["Chapter Summaries", "Character Profiles"],
+        )
+        (config.session_dir() / "conversation.md").write_text("")
+        display, buf = capture_display
+
+        error_response = AgentResponse(
+            text="[Agent error: timeout]", raw={"error": "timeout"}, is_error=True
+        )
+        with patch(
+            "claude_storm.compilation.invoke_agent", return_value=error_response
+        ):
+            compile_deliverables(config, display)
+
+        output = buf.getvalue()
+        assert "Failed to compile deliverable" in output
+        # No artifact files should be written
+        artifacts_dir = config.session_dir() / "artifacts"
+        md_files = list(artifacts_dir.glob("*.md")) if artifacts_dir.exists() else []
+        assert len(md_files) == 0
+
+
+class TestCompileDeliverablesDebug:
+    def test_debug_logging_called_during_compilation(
+        self, make_config, capture_display
+    ):
+        config = make_config(
+            session_id="debug-test",
+            current_turn=10,
+            status="completed",
+            deliverables=["Summary Doc"],
+            debug=True,
+        )
+        (config.session_dir() / "conversation.md").write_text("")
+        display, _buf = capture_display
+
+        mock_response = AgentResponse(text="content", raw={})
+        with (
+            patch("claude_storm.compilation.invoke_agent", return_value=mock_response),
+            patch("claude_storm.compilation.write_debug_request") as mock_req,
+            patch("claude_storm.compilation.write_debug_response") as mock_resp,
+        ):
+            compile_deliverables(config, display)
+
+        assert mock_req.call_count == 1
+        assert mock_resp.call_count == 1
+
+    def test_debug_logging_called_during_summary(self, make_config, capture_display):
+        config = make_config(
+            session_id="debug-test",
+            current_turn=10,
+            status="completed",
+            deliverables=["Summary Doc"],
+            debug=True,
+        )
+        display, _buf = capture_display
+
+        mock_response = AgentResponse(text="summary content", raw={})
+        with (
+            patch("claude_storm.compilation.invoke_agent", return_value=mock_response),
+            patch("claude_storm.compilation.write_debug_request") as mock_req,
+            patch("claude_storm.compilation.write_debug_response") as mock_resp,
+        ):
+            generate_summary(config, display)
+
+        assert mock_req.call_count == 1
+        assert mock_resp.call_count == 1
+
+    def test_readonly_passed_during_compilation(self, make_config, capture_display):
+        config = make_config(
+            session_id="debug-test",
+            current_turn=10,
+            status="completed",
+            deliverables=["Summary Doc"],
+            debug=True,
+        )
+        (config.session_dir() / "conversation.md").write_text("")
+        display, _buf = capture_display
+
+        mock_response = AgentResponse(text="content", raw={})
+        with patch(
+            "claude_storm.compilation.invoke_agent", return_value=mock_response
+        ) as mock_invoke:
+            compile_deliverables(config, display)
+
+        assert mock_invoke.call_args.kwargs.get("readonly") is True
+
+    def test_readonly_passed_during_summary(self, make_config, capture_display):
+        config = make_config(
+            session_id="debug-test",
+            current_turn=10,
+            status="completed",
+            deliverables=["Summary Doc"],
+            debug=True,
+        )
+        display, _buf = capture_display
+
+        mock_response = AgentResponse(text="summary content", raw={})
+        with patch(
+            "claude_storm.compilation.invoke_agent", return_value=mock_response
+        ) as mock_invoke:
+            generate_summary(config, display)
+
+        assert mock_invoke.call_args.kwargs.get("readonly") is True

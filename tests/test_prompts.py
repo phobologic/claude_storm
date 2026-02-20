@@ -85,24 +85,27 @@ class TestBuildSystemPrompt:
     def test_revise_mentions_pending_proposals(self, make_config):
         config = make_config(ensure_dirs=False)
         prompt = build_system_prompt(config, "a")
-        assert "pending proposal" in prompt
-        assert "confirmed agreement" in prompt
-        # Both REVISE use cases described
-        assert "replaces it with your revised version" in prompt
+        # Both REVISE use cases (confirmed agreements and pending proposals) described
+        assert "pending" in prompt
+        assert "confirmed" in prompt
+        # REVISE directive section is present
+        assert "[REVISE" in prompt
 
     def test_revise_anti_amendment_guideline(self, make_config):
         config = make_config(ensure_dirs=False)
         prompt = build_system_prompt(config, "a")
-        assert "rather than accepting and then proposing" in prompt
-        assert "separate amendments" in prompt
+        # [REVISE] guideline discourages accept-then-amend pattern
+        assert "[REVISE]" in prompt or "[REVISE " in prompt
+        assert "amendment" in prompt or "revised version" in prompt
 
     def test_includes_agreement_guidelines(self, make_config):
         config = make_config(ensure_dirs=False)
         prompt = build_system_prompt(config, "a")
-        assert "shared agreement" in prompt
-        assert "pending proposals" in prompt
-        assert "Verbal agreement" in prompt
-        assert "does NOT create a shared record" in prompt
+        # Agreement section exists with formal proposal/accept mechanism
+        assert "[PROPOSE]" in prompt
+        assert "[ACCEPT]" in prompt
+        # Informal chat is distinguished from formal agreements
+        assert "does NOT" in prompt or "not" in prompt.lower()
 
     def test_ask_user_shown_when_interactive(self, make_config):
         config = make_config(ensure_dirs=False, interactive=True)

@@ -19,6 +19,7 @@ from claude_storm.agreements import (
 )
 from claude_storm.config import SessionConfig
 from claude_storm.session import _resolve_revision_context
+from tests.conftest import _make_agreement, _make_proposal
 
 
 class TestGenerateProposalId:
@@ -342,16 +343,7 @@ class TestFormatAgreementIndex:
     def test_single_agreement(self, make_config):
         config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
         config.accepted_agreements = [
-            {
-                "id": "a3f2",
-                "title": "Use REST",
-                "content": "REST API with pagination.",
-                "summary": "REST API with pagination.",
-                "proposed_by": "a",
-                "proposed_turn": 4,
-                "accepted_turn": 5,
-                "revises": None,
-            }
+            _make_agreement(content="REST API with pagination.")
         ]
         text = format_agreement_index(config)
         assert "1 confirmed agreement(s)" in text
@@ -364,26 +356,15 @@ class TestFormatAgreementIndex:
     def test_multiple_agreements(self, make_config):
         config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
         config.accepted_agreements = [
-            {
-                "id": "a3f2",
-                "title": "Use REST",
-                "content": "REST API.",
-                "summary": "REST API.",
-                "proposed_by": "a",
-                "proposed_turn": 4,
-                "accepted_turn": 5,
-                "revises": None,
-            },
-            {
-                "id": "b4c3",
-                "title": "Use Redis",
-                "content": "Redis for caching.",
-                "summary": "Redis for caching.",
-                "proposed_by": "b",
-                "proposed_turn": 6,
-                "accepted_turn": 7,
-                "revises": None,
-            },
+            _make_agreement(),
+            _make_agreement(
+                id="b4c3",
+                title="Use Redis",
+                content="Redis for caching.",
+                proposed_by="b",
+                proposed_turn=6,
+                accepted_turn=7,
+            ),
         ]
         text = format_agreement_index(config)
         assert "2 confirmed agreement(s)" in text
@@ -490,16 +471,7 @@ class TestFormatAgreementsForPrompt:
     def test_confirmed_uses_compact_index(self, make_config):
         config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
         config.accepted_agreements = [
-            {
-                "id": "a3f2",
-                "title": "Use REST",
-                "content": "REST API with pagination and lots of detail here.",
-                "summary": "REST API with pagination and lots of detail here.",
-                "proposed_by": "a",
-                "proposed_turn": 4,
-                "accepted_turn": 5,
-                "revises": None,
-            }
+            _make_agreement(content="REST API with pagination and lots of detail here.")
         ]
         text = format_agreements_for_prompt(config, "b")
         assert "# Shared Agreements" in text
@@ -537,16 +509,7 @@ class TestFormatAgreementsForPrompt:
         """File reference tells agents to Read per-agreement files."""
         config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
         config.accepted_agreements = [
-            {
-                "id": "a3f2",
-                "title": "Use REST",
-                "content": "REST API.",
-                "summary": "REST API.",
-                "proposed_by": "a",
-                "proposed_turn": 4,
-                "accepted_turn": 5,
-                "revises": None,
-            }
+            _make_agreement()
         ]
         text = format_agreements_for_prompt(config, "b")
         assert "agreements/" in text
@@ -557,15 +520,7 @@ class TestFormatAgreementsForPrompt:
     def test_pending_proposals_shown_to_other_agent(self, make_config):
         config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
         config.pending_proposals = [
-            {
-                "id": "c4e8",
-                "title": "Add GraphQL",
-                "content": "Add a GraphQL gateway.",
-                "summary": "Add a GraphQL gateway.",
-                "proposed_by": "a",
-                "turn": 9,
-                "revises": None,
-            }
+            _make_proposal(content="Add a GraphQL gateway.")
         ]
         # Agent B should see Agent A's proposal
         text = format_agreements_for_prompt(config, "b")
@@ -579,15 +534,7 @@ class TestFormatAgreementsForPrompt:
     def test_pending_proposals_show_revise_option(self, make_config):
         config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
         config.pending_proposals = [
-            {
-                "id": "c4e8",
-                "title": "Add GraphQL",
-                "content": "Add a GraphQL gateway.",
-                "summary": "Add a GraphQL gateway.",
-                "proposed_by": "a",
-                "turn": 9,
-                "revises": None,
-            }
+            _make_proposal(content="Add a GraphQL gateway.")
         ]
         text = format_agreements_for_prompt(config, "b")
         assert '[REVISE id="c4e8"]' in text
@@ -596,15 +543,7 @@ class TestFormatAgreementsForPrompt:
     def test_pending_not_shown_to_proposer(self, make_config):
         config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
         config.pending_proposals = [
-            {
-                "id": "c4e8",
-                "title": "Add GraphQL",
-                "content": "Add a GraphQL gateway.",
-                "summary": "Add a GraphQL gateway.",
-                "proposed_by": "a",
-                "turn": 9,
-                "revises": None,
-            }
+            _make_proposal(content="Add a GraphQL gateway.")
         ]
         # Agent A should NOT see their own pending proposal as awaiting response
         text = format_agreements_for_prompt(config, "a")
@@ -613,27 +552,10 @@ class TestFormatAgreementsForPrompt:
     def test_both_confirmed_and_pending(self, make_config):
         config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
         config.accepted_agreements = [
-            {
-                "id": "a3f2",
-                "title": "Use REST",
-                "content": "REST API.",
-                "summary": "REST API.",
-                "proposed_by": "a",
-                "proposed_turn": 4,
-                "accepted_turn": 5,
-                "revises": None,
-            }
+            _make_agreement()
         ]
         config.pending_proposals = [
-            {
-                "id": "c4e8",
-                "title": "Add caching",
-                "content": "Use Redis.",
-                "summary": "Use Redis.",
-                "proposed_by": "a",
-                "turn": 9,
-                "revises": None,
-            }
+            _make_proposal(title="Add caching", content="Use Redis.")
         ]
         text = format_agreements_for_prompt(config, "b")
         assert "## Confirmed" in text
@@ -663,16 +585,7 @@ class TestFormatAgreementsForPrompt:
         """When last agreement was 4+ turns ago, show a reminder."""
         config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
         config.accepted_agreements = [
-            {
-                "id": "a3f2",
-                "title": "Use REST",
-                "content": "REST API.",
-                "summary": "REST API.",
-                "proposed_by": "a",
-                "proposed_turn": 4,
-                "accepted_turn": 5,
-                "revises": None,
-            }
+            _make_agreement()
         ]
         text = format_agreements_for_prompt(config, "b", current_turn=9)
         assert "## Confirmed" in text
@@ -683,16 +596,7 @@ class TestFormatAgreementsForPrompt:
         """No stale nudge when last agreement was recent."""
         config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
         config.accepted_agreements = [
-            {
-                "id": "a3f2",
-                "title": "Use REST",
-                "content": "REST API.",
-                "summary": "REST API.",
-                "proposed_by": "a",
-                "proposed_turn": 4,
-                "accepted_turn": 5,
-                "revises": None,
-            }
+            _make_agreement()
         ]
         text = format_agreements_for_prompt(config, "b", current_turn=7)
         assert "several turns since the last agreement" not in text
@@ -701,15 +605,7 @@ class TestFormatAgreementsForPrompt:
         """Already-seen pending proposals include REVISE reminder."""
         config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
         config.pending_proposals = [
-            {
-                "id": "c4e8",
-                "title": "Add GraphQL",
-                "content": "Add a GraphQL gateway.",
-                "summary": "Add a GraphQL gateway.",
-                "proposed_by": "a",
-                "turn": 9,
-                "revises": None,
-            }
+            _make_proposal(content="Add a GraphQL gateway.")
         ]
         watermark = {"agreement_count": 0, "seen_proposal_ids": ["c4e8"]}
         text = format_agreements_for_prompt(config, "b", watermark=watermark)
@@ -722,15 +618,7 @@ class TestFormatAgreementsForPrompt:
         """New pending proposals use '...revised content...' placeholder."""
         config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
         config.pending_proposals = [
-            {
-                "id": "c4e8",
-                "title": "Add GraphQL",
-                "content": "Add a GraphQL gateway.",
-                "summary": "Add a GraphQL gateway.",
-                "proposed_by": "a",
-                "turn": 9,
-                "revises": None,
-            }
+            _make_proposal(content="Add a GraphQL gateway.")
         ]
         text = format_agreements_for_prompt(config, "b")
         assert "...revised content..." in text

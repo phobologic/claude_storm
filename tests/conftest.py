@@ -86,3 +86,69 @@ def mock_storms_dir(monkeypatch, tmp_storms):
     """Patch get_storms_dir to return tmp_storms."""
     monkeypatch.setattr("claude_storm.cli.get_storms_dir", lambda p: tmp_storms)
     return tmp_storms
+
+def _make_response(
+    text="Agent response.",
+    usage=None,
+    is_error=False,
+    timed_out=False,
+    cost_usd=None,
+):
+    """Build an AgentResponse with sensible defaults."""
+    from claude_storm.agents import AgentResponse
+
+    raw = {"result": text}
+    if cost_usd is not None:
+        raw["total_cost_usd"] = cost_usd
+    return AgentResponse(
+        text=text,
+        raw=raw,
+        cmd=["claude", "-p"],
+        is_error=is_error,
+        timed_out=timed_out,
+        usage=usage or {"input_tokens": 100, "output_tokens": 50},
+    )
+
+
+def _make_agreement(
+    id="a3f2",
+    title="Use REST",
+    content="REST API.",
+    proposed_by="a",
+    proposed_turn=4,
+    accepted_turn=5,
+    revises=None,
+    summary=None,
+):
+    """Build an accepted agreement dict with sensible defaults."""
+    return {
+        "id": id,
+        "title": title,
+        "content": content,
+        "summary": summary if summary is not None else content,
+        "proposed_by": proposed_by,
+        "proposed_turn": proposed_turn,
+        "accepted_turn": accepted_turn,
+        "revises": revises,
+    }
+
+
+def _make_proposal(
+    id="c4e8",
+    title="Add GraphQL",
+    content="Add gateway.",
+    proposed_by="a",
+    turn=9,
+    revises=None,
+    summary=None,
+):
+    """Build a pending proposal dict with sensible defaults."""
+    return {
+        "id": id,
+        "title": title,
+        "content": content,
+        "summary": summary if summary is not None else content,
+        "proposed_by": proposed_by,
+        "turn": turn,
+        "revises": revises,
+    }

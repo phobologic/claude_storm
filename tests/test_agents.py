@@ -16,28 +16,8 @@ from claude_storm.agents import (
     _validate_model,
     invoke_agent,
 )
-from claude_storm.config import _validate_reference_dir
 
 # ---------- Security tests ----------
-
-
-class TestValidateReferenceDir:
-    """Issue .3: Reference directory validation."""
-
-    def test_rejects_root(self):
-        assert _validate_reference_dir("/") is False
-
-    def test_rejects_etc(self):
-        assert _validate_reference_dir("/etc") is False
-
-    def test_rejects_var(self):
-        assert _validate_reference_dir("/var") is False
-
-    def test_accepts_normal_path(self):
-        assert _validate_reference_dir("/some/ref/dir") is True
-
-    def test_accepts_home_subdir(self):
-        assert _validate_reference_dir("/Users/mike/projects") is True
 
 
 class TestValidateModel:
@@ -153,6 +133,13 @@ def _mock_stream_popen(events, returncode=0, stderr=""):
     return mock_proc
 
 
+def _make_mock_sel():
+    """Return a pre-configured selector mock that immediately signals readability."""
+    mock_sel = MagicMock()
+    mock_sel.select.return_value = [(None, None)]
+    return mock_sel
+
+
 class TestStreamReader:
     """Test _read_stream with mocked selector and StringIO."""
 
@@ -161,13 +148,9 @@ class TestStreamReader:
         proc = _mock_stream_popen(events)
 
         # Mock the selector since StringIO doesn't have a real fd
-        mock_sel = MagicMock()
-
-        # sel.select() should return a truthy list for each line,
-        # then eventually readline() returns "" (EOF)
-        mock_sel.select.return_value = [(None, None)]
-
-        with patch(_SEL_PATCH, return_value=mock_sel):
+        # sel.select() returns a truthy list for each line;
+        # eventually readline() returns "" (EOF)
+        with patch(_SEL_PATCH, return_value=_make_mock_sel()):
             sr = _read_stream(proc, timeout, on_delta)
 
         return sr.text, sr.result_event, sr.timed_out, sr.oversized, proc
@@ -295,11 +278,8 @@ class TestResponseSizeLimit:
 
         with (
             patch(_POPEN_PATCH, return_value=mock_proc),
-            patch(_SEL_PATCH) as mock_sel_cls,
+            patch(_SEL_PATCH, return_value=_make_mock_sel()),
         ):
-            mock_sel = MagicMock()
-            mock_sel.select.return_value = [(None, None)]
-            mock_sel_cls.return_value = mock_sel
             response = invoke_agent(config, "a", "prompt")
 
         assert response.is_error
@@ -322,11 +302,8 @@ class TestResponseSizeLimit:
 
         with (
             patch(_POPEN_PATCH, return_value=mock_proc),
-            patch(_SEL_PATCH) as mock_sel_cls,
+            patch(_SEL_PATCH, return_value=_make_mock_sel()),
         ):
-            mock_sel = MagicMock()
-            mock_sel.select.return_value = [(None, None)]
-            mock_sel_cls.return_value = mock_sel
             response = invoke_agent(config, "a", "prompt")
 
         assert not response.is_error
@@ -343,11 +320,8 @@ class TestInvokeAgent:
 
         with (
             patch(_POPEN_PATCH, return_value=mock_proc) as mock_popen_cls,
-            patch(_SEL_PATCH) as mock_sel_cls,
+            patch(_SEL_PATCH, return_value=_make_mock_sel()),
         ):
-            mock_sel = MagicMock()
-            mock_sel.select.return_value = [(None, None)]
-            mock_sel_cls.return_value = mock_sel
             response = invoke_agent(config, agent, **kwargs)
 
         return response, mock_popen_cls
@@ -425,6 +399,26 @@ class TestInvokeAgent:
         assert "Glob(//some/ref/dir/**)" in cmd
         assert "Grep(//some/ref/dir/**)" in cmd
 
+    def test_session_id_override_no_system_prompt(self, make_config):
+        """session_id override without system_prompt uses --session-id, not --resume."""
+        config = make_config()
+        events = [{"type": "result", "subtype": "success", "result": "one-shot"}]
+        response, mock_popen_cls = self._invoke_with_events(
+            config,
+            events,
+            prompt="Summarize this",
+            session_id="custom-session-uuid",
+        )
+
+        cmd = mock_popen_cls.call_args[0][0]
+        assert "--session-id" in cmd
+        assert "custom-session-uuid" in cmd
+        assert "--resume" not in cmd
+        assert "--system-prompt" not in cmd
+        assert "--model" in cmd
+        assert "--allowedTools" in cmd
+        assert response.text == "one-shot"
+
     def test_timeout_returns_error(self, make_config):
         config = make_config()
 
@@ -453,12 +447,9 @@ class TestInvokeAgent:
         config = make_config()
         mock_proc = _mock_stream_popen([], returncode=1, stderr="Some error")
 
-        mock_sel = MagicMock()
-        mock_sel.select.return_value = [(None, None)]
-
         with (
             patch(_POPEN_PATCH, return_value=mock_proc),
-            patch(_SEL_PATCH, return_value=mock_sel),
+            patch(_SEL_PATCH, return_value=_make_mock_sel()),
         ):
             response = invoke_agent(config, "a", "prompt")
 
@@ -469,12 +460,9 @@ class TestInvokeAgent:
         config = make_config()
         mock_proc = _mock_stream_popen([], returncode=1, stderr="fail")
 
-        mock_sel = MagicMock()
-        mock_sel.select.return_value = [(None, None)]
-
         with (
             patch(_POPEN_PATCH, return_value=mock_proc),
-            patch(_SEL_PATCH, return_value=mock_sel),
+            patch(_SEL_PATCH, return_value=_make_mock_sel()),
         ):
             response = invoke_agent(config, "a", "prompt")
 
@@ -496,17 +484,9 @@ class TestInvokeAgent:
             {"type": "result", "subtype": "success", "result": "streamed"},
         ]
         deltas = []
-        mock_proc = _mock_stream_popen(events)
-
-        mock_sel = MagicMock()
-        mock_sel.select.return_value = [(None, None)]
-
-        with (
-            patch(_POPEN_PATCH, return_value=mock_proc),
-            patch(_SEL_PATCH, return_value=mock_sel),
-        ):
-            response = invoke_agent(config, "a", "prompt", on_delta=deltas.append)
-
+        response, _ = self._invoke_with_events(
+            config, events, prompt="prompt", on_delta=deltas.append
+        )
         assert deltas == ["streamed"]
         assert response.text == "streamed"
 
@@ -604,12 +584,9 @@ class TestBrokenPipeError:
         mock_proc = _mock_stream_popen([], returncode=1, stderr="broken pipe")
         mock_proc.stdin.write.side_effect = BrokenPipeError("pipe broken")
 
-        mock_sel = MagicMock()
-        mock_sel.select.return_value = [(None, None)]
-
         with (
             patch(_POPEN_PATCH, return_value=mock_proc),
-            patch(_SEL_PATCH, return_value=mock_sel),
+            patch(_SEL_PATCH, return_value=_make_mock_sel()),
         ):
             response = invoke_agent(config, "a", "prompt")
 
@@ -640,13 +617,11 @@ class TestUnparseableLine:
             {"type": "result", "subtype": "success", "result": "kept"},
         ]
         proc = _mock_stream_popen(events)
-        mock_sel = MagicMock()
-        mock_sel.select.return_value = [(None, None)]
 
         def bad_callback(text):
             raise RuntimeError("boom")
 
-        with patch(_SEL_PATCH, return_value=mock_sel):
+        with patch(_SEL_PATCH, return_value=_make_mock_sel()):
             sr = _read_stream(proc, 600, bad_callback)
 
         # Text should still be accumulated despite callback failure
@@ -675,9 +650,7 @@ class TestCompactionDetection:
     def _run_with_events(self, events):
         """Helper to run _read_stream with mocked selectors."""
         proc = _mock_stream_popen(events)
-        mock_sel = MagicMock()
-        mock_sel.select.return_value = [(None, None)]
-        with patch(_SEL_PATCH, return_value=mock_sel):
+        with patch(_SEL_PATCH, return_value=_make_mock_sel()):
             return _read_stream(proc, 600, None)
 
     def test_compaction_delta_detected(self):
@@ -779,12 +752,10 @@ class TestUsageExtraction:
             },
         ]
         mock_proc = _mock_stream_popen(events)
-        mock_sel = MagicMock()
-        mock_sel.select.return_value = [(None, None)]
 
         with (
             patch(_POPEN_PATCH, return_value=mock_proc),
-            patch(_SEL_PATCH, return_value=mock_sel),
+            patch(_SEL_PATCH, return_value=_make_mock_sel()),
         ):
             response = invoke_agent(make_config(), "a", "prompt")
 
@@ -799,12 +770,10 @@ class TestUsageExtraction:
             {"type": "result", "subtype": "success", "result": "response"},
         ]
         mock_proc = _mock_stream_popen(events)
-        mock_sel = MagicMock()
-        mock_sel.select.return_value = [(None, None)]
 
         with (
             patch(_POPEN_PATCH, return_value=mock_proc),
-            patch(_SEL_PATCH, return_value=mock_sel),
+            patch(_SEL_PATCH, return_value=_make_mock_sel()),
         ):
             response = invoke_agent(make_config(), "a", "prompt")
 
@@ -827,12 +796,10 @@ class TestUsageExtraction:
             {"type": "result", "subtype": "success", "result": "ok"},
         ]
         mock_proc = _mock_stream_popen(events)
-        mock_sel = MagicMock()
-        mock_sel.select.return_value = [(None, None)]
 
         with (
             patch(_POPEN_PATCH, return_value=mock_proc),
-            patch(_SEL_PATCH, return_value=mock_sel),
+            patch(_SEL_PATCH, return_value=_make_mock_sel()),
         ):
             response = invoke_agent(make_config(), "a", "prompt")
 

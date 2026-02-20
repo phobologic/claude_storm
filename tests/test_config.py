@@ -693,3 +693,56 @@ class TestValidateReferenceDirConfig:
 
     def test_accepts_normal_path(self):
         assert _validate_reference_dir("/some/ref/dir") is True
+
+
+class TestStopReason:
+    def test_config_has_stop_reason_fields(self):
+        config = SessionConfig(session_id="t", topic="t")
+        assert config.stop_reason is None
+        assert config.stop_error is None
+
+    def test_stop_reason_persisted_in_json(self, make_config):
+        config = make_config(
+            session_id="sr-test",
+            stop_reason="max_turns",
+            stop_error=None,
+        )
+        config.save()
+        loaded = SessionConfig.load("sr-test", storms_dir=config.storms_dir)
+        assert loaded.stop_reason == "max_turns"
+        assert loaded.stop_error is None
+
+    def test_stop_error_persisted_in_json(self, make_config):
+        config = make_config(
+            session_id="se-test",
+            stop_reason="agent_error",
+            stop_error="[Agent error: connection reset]",
+        )
+        config.save()
+        loaded = SessionConfig.load("se-test", storms_dir=config.storms_dir)
+        assert loaded.stop_reason == "agent_error"
+        assert loaded.stop_error == "[Agent error: connection reset]"
+
+    def test_legacy_session_loads_without_stop_fields(self, tmp_storms):
+        """Sessions saved before stop_reason existed should load fine."""
+        session_dir = tmp_storms / "legacy-sr"
+        session_dir.mkdir()
+        data = {
+            "session_id": "legacy-sr",
+            "topic": "t",
+            "claude_session_a": "",
+            "claude_session_b": "",
+            "max_turns": 10,
+            "current_turn": 5,
+            "started_at": "",
+            "status": "paused",
+            "done_signals": {},
+            "deliverables": [],
+            "reference_dirs": [],
+            "truncate_conversation": True,
+            "storms_dir": str(tmp_storms),
+        }
+        (session_dir / "session.json").write_text(json.dumps(data))
+        loaded = SessionConfig.load("legacy-sr", storms_dir=str(tmp_storms))
+        assert loaded.stop_reason is None
+        assert loaded.stop_error is None
