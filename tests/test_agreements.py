@@ -103,6 +103,26 @@ class TestCreateProposal:
         )
         assert config.pending_proposals[0]["summary"] == "Use microservices"
 
+    def test_proposal_id_no_collision(self, make_config, monkeypatch):
+        """Collision is retried until a unique ID is found."""
+        config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
+        config.pending_proposals.append(
+            {
+                "id": "aaaa",
+                "title": "Existing",
+                "content": "x",
+                "proposed_by": "a",
+                "turn": 1,
+            }
+        )
+        calls = iter(["aaaa", "bbbb"])
+        monkeypatch.setattr(
+            "claude_storm.agreements.generate_proposal_id", lambda: next(calls)
+        )
+        pid = create_proposal(config, "Title", "Content", "a", 2)
+        assert pid == "bbbb"
+        assert config.pending_proposals[-1]["id"] == "bbbb"
+
 
 class TestAcceptProposal:
     def test_moves_to_accepted(self, make_config):

@@ -126,7 +126,12 @@ def create_proposal(
     Returns:
         The generated proposal ID.
     """
+    existing_ids = {p["id"] for p in config.pending_proposals} | {
+        a["id"] for a in config.accepted_agreements
+    }
     proposal_id = generate_proposal_id()
+    while proposal_id in existing_ids:
+        proposal_id = generate_proposal_id()
     proposal: dict = {
         "id": proposal_id,
         "title": title,
