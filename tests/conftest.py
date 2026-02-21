@@ -87,6 +87,7 @@ def mock_storms_dir(monkeypatch, tmp_storms):
     monkeypatch.setattr("claude_storm.cli.get_storms_dir", lambda p: tmp_storms)
     return tmp_storms
 
+
 def _make_response(
     text="Agent response.",
     usage=None,

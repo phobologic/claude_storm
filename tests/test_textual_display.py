@@ -127,7 +127,8 @@ class TestTextualDisplayAgentStream:
         display.show_agent_stream_delta("chunk2")
 
         clear_calls = [
-            c for c in app.post_message.call_args_list
+            c
+            for c in app.post_message.call_args_list
             if isinstance(c[0][0], ClearThinking)
         ]
         assert len(clear_calls) == 1
@@ -242,6 +243,7 @@ class TestTextualDisplayPromptUser:
 
         # Wait until the message is captured, then respond
         import time
+
         for _ in range(20):
             if captured_msg:
                 break

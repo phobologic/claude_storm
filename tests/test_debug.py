@@ -347,8 +347,6 @@ class TestWriteDebugPhaseBanner:
         assert "=== SUMMARY PHASE ===" in content
 
 
-
-
 class TestWriteDebugSummary:
     def test_writes_summary_with_duration(self, make_config):
         config = make_config(current_turn=10)

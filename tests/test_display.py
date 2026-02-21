@@ -219,8 +219,6 @@ class TestShowCompletionWithStats:
         assert "Total:" not in output
 
 
-
-
 class TestTruncateLabel:
     def test_short_passthrough(self):
         assert _truncate_label("Architect") == "Architect"

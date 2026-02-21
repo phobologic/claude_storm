@@ -508,9 +508,7 @@ class TestFormatAgreementsForPrompt:
     def test_file_reference_included(self, make_config):
         """File reference tells agents to Read per-agreement files."""
         config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
-        config.accepted_agreements = [
-            _make_agreement()
-        ]
+        config.accepted_agreements = [_make_agreement()]
         text = format_agreements_for_prompt(config, "b")
         assert "agreements/" in text
         assert "Read tool" in text
@@ -519,9 +517,7 @@ class TestFormatAgreementsForPrompt:
 
     def test_pending_proposals_shown_to_other_agent(self, make_config):
         config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
-        config.pending_proposals = [
-            _make_proposal(content="Add a GraphQL gateway.")
-        ]
+        config.pending_proposals = [_make_proposal(content="Add a GraphQL gateway.")]
         # Agent B should see Agent A's proposal
         text = format_agreements_for_prompt(config, "b")
         assert "Pending Proposals" in text
@@ -533,27 +529,21 @@ class TestFormatAgreementsForPrompt:
 
     def test_pending_proposals_show_revise_option(self, make_config):
         config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
-        config.pending_proposals = [
-            _make_proposal(content="Add a GraphQL gateway.")
-        ]
+        config.pending_proposals = [_make_proposal(content="Add a GraphQL gateway.")]
         text = format_agreements_for_prompt(config, "b")
         assert '[REVISE id="c4e8"]' in text
         assert "[/REVISE]" in text
 
     def test_pending_not_shown_to_proposer(self, make_config):
         config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
-        config.pending_proposals = [
-            _make_proposal(content="Add a GraphQL gateway.")
-        ]
+        config.pending_proposals = [_make_proposal(content="Add a GraphQL gateway.")]
         # Agent A should NOT see their own pending proposal as awaiting response
         text = format_agreements_for_prompt(config, "a")
         assert "Pending Proposals" not in text
 
     def test_both_confirmed_and_pending(self, make_config):
         config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
-        config.accepted_agreements = [
-            _make_agreement()
-        ]
+        config.accepted_agreements = [_make_agreement()]
         config.pending_proposals = [
             _make_proposal(title="Add caching", content="Use Redis.")
         ]
@@ -584,9 +574,7 @@ class TestFormatAgreementsForPrompt:
     def test_stale_agreement_nudge(self, make_config):
         """When last agreement was 4+ turns ago, show a reminder."""
         config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
-        config.accepted_agreements = [
-            _make_agreement()
-        ]
+        config.accepted_agreements = [_make_agreement()]
         text = format_agreements_for_prompt(config, "b", current_turn=9)
         assert "## Confirmed" in text
         assert "several turns since the last agreement" in text
@@ -595,18 +583,14 @@ class TestFormatAgreementsForPrompt:
     def test_no_stale_nudge_when_recent(self, make_config):
         """No stale nudge when last agreement was recent."""
         config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
-        config.accepted_agreements = [
-            _make_agreement()
-        ]
+        config.accepted_agreements = [_make_agreement()]
         text = format_agreements_for_prompt(config, "b", current_turn=7)
         assert "several turns since the last agreement" not in text
 
     def test_seen_pending_proposal_shows_revise_hint(self, make_config):
         """Already-seen pending proposals include REVISE reminder."""
         config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
-        config.pending_proposals = [
-            _make_proposal(content="Add a GraphQL gateway.")
-        ]
+        config.pending_proposals = [_make_proposal(content="Add a GraphQL gateway.")]
         watermark = {"agreement_count": 0, "seen_proposal_ids": ["c4e8"]}
         text = format_agreements_for_prompt(config, "b", watermark=watermark)
         assert "(still pending" in text
@@ -617,9 +601,7 @@ class TestFormatAgreementsForPrompt:
     def test_new_pending_proposal_revise_placeholder_style(self, make_config):
         """New pending proposals use '...revised content...' placeholder."""
         config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
-        config.pending_proposals = [
-            _make_proposal(content="Add a GraphQL gateway.")
-        ]
+        config.pending_proposals = [_make_proposal(content="Add a GraphQL gateway.")]
         text = format_agreements_for_prompt(config, "b")
         assert "...revised content..." in text
         assert "improved content" not in text
