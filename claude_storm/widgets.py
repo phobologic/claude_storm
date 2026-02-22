@@ -70,6 +70,23 @@ class SelectableRichLog(RichLog):
         self._line_cache.clear()
         self.refresh()
 
+    def truncate_to(self, checkpoint: int) -> None:
+        """Truncate rendered lines back to checkpoint line count.
+
+        Args:
+            checkpoint: Target line count. No-op if already at or below checkpoint.
+        """
+        from textual.geometry import Size
+
+        if checkpoint >= len(self.lines):
+            return
+        self.lines = self.lines[:checkpoint]
+        self._line_cache.clear()
+        # Do NOT reset _start_line — it tracks historical max_lines trimming
+        self._widest_line_width = 0  # Recalculated on next write()
+        self.virtual_size = Size(self._widest_line_width, len(self.lines))
+        self.refresh()
+
 
 class ThinkingBar(Widget):
     """Animated timer bar shown while an agent is thinking."""

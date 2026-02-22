@@ -319,6 +319,9 @@ def invoke_agent(
         "stream-json",
         # --verbose is required for stream-json to emit the final result event
         "--verbose",
+        # --include-partial-messages emits content_block_delta stream events
+        # as the model generates text, enabling real-time streaming display
+        "--include-partial-messages",
     ]
     validated_model = _validate_model(config.model)
 

@@ -54,10 +54,8 @@ class StormApp(App):
         self._deferred_ask: RequestUserInput | None = None
         self._session_error: str | None = None
         self._session_finished: bool = False
-        # Accumulated delta chunks for the current stream. On StreamEnd,
-        # if this list is empty the fallback text from the message is used
-        # instead (see on_stream_end).
-        self._stream_parts: list[str] = []
+        self._stream_start: int = 0
+        self._stream_buffer: str = ""
         self._stream_log: SelectableRichLog | None = None
 
     def compose(self) -> ComposeResult:
@@ -124,35 +122,37 @@ class StormApp(App):
         bar.stop()
 
     def on_stream_start(self, message: StreamStart) -> None:
-        self._stream_parts.clear()
-        self._stream_log = self.query_one("#output-log", SelectableRichLog)
+        log = self.query_one("#output-log", SelectableRichLog)
+        self._stream_start = len(log.lines)
+        self._stream_buffer = ""
+        self._stream_log = log
 
     def on_stream_delta(self, message: StreamDelta) -> None:
-        self._stream_parts.append(message.text)
+        from rich.text import Text
+
+        log = self._stream_log or self.query_one("#output-log", SelectableRichLog)
+        self._stream_buffer += message.text
+        # Flush one log entry per complete line so RichLog.write() doesn't
+        # create a new visual row for every tiny delta chunk.
+        while "\n" in self._stream_buffer:
+            line, self._stream_buffer = self._stream_buffer.split("\n", 1)
+            log.write(Text(line))
 
     def on_stream_end(self, message: StreamEnd) -> None:
         from rich.markdown import Markdown
         from rich.text import Text
 
         log = self._stream_log or self.query_one("#output-log", SelectableRichLog)
+        log.truncate_to(self._stream_start)
+
         if message.error:
             log.write(Text("[stream interrupted]", style="bold red"))
-        else:
-            full_text = "".join(self._stream_parts)
-            # Fallback: when --output-format stream-json yields only a final
-            # result object without intermediate content_block_delta events,
-            # _stream_parts will be empty but the complete text is available
-            # from the parsed result via message.text.
-            #
-            # Note: streamed content is join()ed from delta chunks while the
-            # fallback uses message.text directly.  Both are rendered through
-            # Markdown() so visual output is equivalent in practice.
-            if not full_text.strip() and message.text:
-                full_text = message.text
-            if full_text.strip():
-                log.write(Markdown(full_text))
+        elif message.text.strip():
+            log.write(Markdown(message.text))
+
         log.write(Text(""))
-        self._stream_parts.clear()
+        self._stream_start = 0
+        self._stream_buffer = ""
         self._stream_log = None
 
     def on_request_user_input(self, message: RequestUserInput) -> None:

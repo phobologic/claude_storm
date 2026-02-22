@@ -3,9 +3,20 @@
 from __future__ import annotations
 
 import pytest
+from rich.text import Text
 from textual.app import App, ComposeResult
 
-from claude_storm.widgets import GrowingTextArea, InputBar, ThinkingBar
+from claude_storm.widgets import (
+    GrowingTextArea,
+    InputBar,
+    SelectableRichLog,
+    ThinkingBar,
+)
+
+
+class SelectableRichLogApp(App):
+    def compose(self) -> ComposeResult:
+        yield SelectableRichLog(id="log")
 
 
 class ThinkingBarApp(App):
@@ -89,6 +100,53 @@ class TestInputBar:
             input_bar.set_ask_mode("Question?")
             input_bar.set_nudge_mode()
             assert "nudge" in input_bar._input.border_title.lower()
+
+
+class TestSelectableRichLog:
+    @pytest.mark.asyncio
+    async def test_truncate_to_removes_lines(self):
+        async with SelectableRichLogApp().run_test(size=(80, 24)) as pilot:
+            log = pilot.app.query_one("#log", SelectableRichLog)
+            log.write(Text("line one"))
+            log.write(Text("line two"))
+            log.write(Text("line three"))
+            await pilot.pause()
+            checkpoint = len(log.lines)
+            log.write(Text("line four"))
+            log.write(Text("line five"))
+            await pilot.pause()
+            assert len(log.lines) > checkpoint
+            log.truncate_to(checkpoint)
+            await pilot.pause()
+            assert len(log.lines) == checkpoint
+
+    @pytest.mark.asyncio
+    async def test_truncate_to_noop_when_at_checkpoint(self):
+        async with SelectableRichLogApp().run_test(size=(80, 24)) as pilot:
+            log = pilot.app.query_one("#log", SelectableRichLog)
+            log.write(Text("line one"))
+            await pilot.pause()
+            count_before = len(log.lines)
+            log.truncate_to(count_before)
+            await pilot.pause()
+            assert len(log.lines) == count_before
+
+    @pytest.mark.asyncio
+    async def test_truncate_to_clears_cache(self):
+        async with SelectableRichLogApp().run_test(size=(80, 24)) as pilot:
+            log = pilot.app.query_one("#log", SelectableRichLog)
+            log.write(Text("line one"))
+            await pilot.pause()
+            checkpoint = len(log.lines)
+            log.write(Text("line two"))
+            log.write(Text("line three"))
+            await pilot.pause()
+            lines_after_extra = len(log.lines)
+            log.truncate_to(checkpoint)
+            await pilot.pause()
+            # Cache must not retain entries for the removed lines
+            assert len(log._line_cache) <= checkpoint
+            assert len(log._line_cache) < lines_after_extra
 
 
 class TestGrowingTextArea:
