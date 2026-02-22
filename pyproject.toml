@@ -1,6 +1,6 @@
 [project]
 name = "claude-storm"
-version = "0.1.4"
+version = "0.1.5"
 description = "Dual-agent brainstorming system using Claude Code CLI sessions"
 readme = "README.md"
 license = "MIT"
