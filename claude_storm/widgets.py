@@ -136,6 +136,13 @@ class ThinkingBar(Widget):
         self.refresh()
         return elapsed
 
+    def update_label(self, label: str) -> None:
+        """Update the display label without resetting the timer."""
+        if not self._active:
+            return
+        self._label = label
+        self.refresh()
+
     def _tick(self) -> None:
         if self._active:
             self.refresh()

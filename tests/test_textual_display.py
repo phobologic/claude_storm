@@ -17,6 +17,7 @@ from claude_storm.messages import (
     StreamEnd,
     StreamStart,
     UpdateThinking,
+    UpdateThinkingLabel,
 )
 
 
@@ -99,16 +100,20 @@ class TestTextualDisplayAgentStream:
 
         display.show_agent_stream_start(config, "a")
 
-        posted_types = [type(c[0][0]) for c in app.post_message.call_args_list]
+        posted = [c[0][0] for c in app.post_message.call_args_list]
+        posted_types = [type(m) for m in posted]
         assert StreamStart in posted_types
         assert UpdateThinking in posted_types
+        thinking_msgs = [m for m in posted if isinstance(m, UpdateThinking)]
+        assert "is thinking" in thinking_msgs[0].label
 
     def test_show_agent_stream_delta_posts_stream_delta(self):
         """show_agent_stream_delta posts StreamDelta with the text chunk."""
         app = _make_app()
         display = TextualDisplay(app)
-        # First call to stream_delta will also post ClearThinking
-        display._thinking_cleared = False
+        config = _make_config()
+        display.show_agent_stream_start(config, "a")
+        app.post_message.reset_mock()
 
         display.show_agent_stream_delta("hello")
 
@@ -117,11 +122,32 @@ class TestTextualDisplayAgentStream:
         assert len(delta_msgs) == 1
         assert delta_msgs[0].text == "hello"
 
-    def test_show_agent_stream_delta_clears_thinking_once(self):
-        """First stream_delta posts ClearThinking; subsequent ones do not."""
+    def test_show_agent_stream_delta_posts_update_label_once(self):
+        """First stream_delta posts UpdateThinkingLabel; subsequent ones do not."""
         app = _make_app()
         display = TextualDisplay(app)
-        display._thinking_cleared = False
+        config = _make_config()
+        display.show_agent_stream_start(config, "a")
+        app.post_message.reset_mock()
+
+        display.show_agent_stream_delta("chunk1")
+        display.show_agent_stream_delta("chunk2")
+
+        label_calls = [
+            c[0][0]
+            for c in app.post_message.call_args_list
+            if isinstance(c[0][0], UpdateThinkingLabel)
+        ]
+        assert len(label_calls) == 1
+        assert "is responding" in label_calls[0].label
+
+    def test_show_agent_stream_delta_does_not_clear_thinking(self):
+        """stream_delta never posts ClearThinking; it updates the label instead."""
+        app = _make_app()
+        display = TextualDisplay(app)
+        config = _make_config()
+        display.show_agent_stream_start(config, "a")
+        app.post_message.reset_mock()
 
         display.show_agent_stream_delta("chunk1")
         display.show_agent_stream_delta("chunk2")
@@ -131,13 +157,12 @@ class TestTextualDisplayAgentStream:
             for c in app.post_message.call_args_list
             if isinstance(c[0][0], ClearThinking)
         ]
-        assert len(clear_calls) == 1
+        assert len(clear_calls) == 0
 
     def test_show_agent_stream_end_posts_stream_end(self):
         """show_agent_stream_end posts StreamEnd."""
         app = _make_app()
         display = TextualDisplay(app)
-        display._thinking_cleared = True  # skip ClearThinking branch
 
         display.show_agent_stream_end(error=False, text="final text")
 
@@ -151,7 +176,6 @@ class TestTextualDisplayAgentStream:
         """show_agent_stream_end with error=True sets error flag on StreamEnd."""
         app = _make_app()
         display = TextualDisplay(app)
-        display._thinking_cleared = True
 
         display.show_agent_stream_end(error=True, text="")
 
@@ -159,17 +183,28 @@ class TestTextualDisplayAgentStream:
         end_msgs = [m for m in posted if isinstance(m, StreamEnd)]
         assert end_msgs[0].error is True
 
-    def test_show_agent_stream_end_clears_thinking_when_not_cleared(self):
-        """show_agent_stream_end posts ClearThinking if deltas never arrived."""
+    def test_show_agent_stream_end_always_clears_thinking(self):
+        """show_agent_stream_end always posts ClearThinking."""
         app = _make_app()
         display = TextualDisplay(app)
-        display._thinking_cleared = False  # simulate no deltas received
 
+        # No deltas received — thinking bar was never transitioned to responding
         display.show_agent_stream_end()
 
         posted = [c[0][0] for c in app.post_message.call_args_list]
         clear_msgs = [m for m in posted if isinstance(m, ClearThinking)]
         assert len(clear_msgs) == 1
+
+        # Also clears when deltas were received (responding phase)
+        app2 = _make_app()
+        display2 = TextualDisplay(app2)
+        display2._stream_responding = True
+
+        display2.show_agent_stream_end()
+
+        posted2 = [c[0][0] for c in app2.post_message.call_args_list]
+        clear_msgs2 = [m for m in posted2 if isinstance(m, ClearThinking)]
+        assert len(clear_msgs2) == 1
 
 
 class TestTextualDisplayThinkingStatus:
