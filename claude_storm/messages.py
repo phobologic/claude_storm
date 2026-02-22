@@ -31,6 +31,14 @@ class ClearThinking(Message):
         self.elapsed = elapsed
 
 
+class UpdateThinkingLabel(Message):
+    """Update the thinking bar label without resetting the timer."""
+
+    def __init__(self, label: str) -> None:
+        super().__init__()
+        self.label = label
+
+
 class RequestUserInput(Message):
     """Worker requests user input (ASK_USER directive).
 

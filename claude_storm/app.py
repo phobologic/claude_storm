@@ -19,6 +19,7 @@ from claude_storm.messages import (
     StreamEnd,
     StreamStart,
     UpdateThinking,
+    UpdateThinkingLabel,
 )
 from claude_storm.widgets import (
     GrowingTextArea,
@@ -120,6 +121,10 @@ class StormApp(App):
     def on_clear_thinking(self, message: ClearThinking) -> None:
         bar = self.query_one(ThinkingBar)
         bar.stop()
+
+    def on_update_thinking_label(self, message: UpdateThinkingLabel) -> None:
+        bar = self.query_one(ThinkingBar)
+        bar.update_label(message.label)
 
     def on_stream_start(self, message: StreamStart) -> None:
         log = self.query_one("#output-log", SelectableRichLog)
