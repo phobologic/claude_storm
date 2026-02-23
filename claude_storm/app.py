@@ -71,6 +71,11 @@ class StormApp(App):
         yield Static(
             "▼ Press End to jump to live output", id="scroll-indicator", markup=False
         )
+        yield Static(
+            "  ↑/↓ scroll  │  shift+↑/↓ page  │  End live  │  ^C pause/quit",
+            id="hints-bar",
+            markup=False,
+        )
         yield ThinkingBar()
         if self.config.interactive:
             yield InputBar()

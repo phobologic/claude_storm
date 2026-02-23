@@ -10,6 +10,12 @@
     height: 1fr;
 }
 
+#hints-bar {
+    height: 1;
+    color: $text-muted;
+    padding: 0 1;
+}
+
 ThinkingBar {
     height: 1;
     color: $text;
