@@ -325,6 +325,10 @@ def start(
 
         tui = StormApp(config)
         tui.run()
+        if config.status == "paused":
+            console.print(
+                f"\nSession paused. Resume with: [bold]storm resume {config.session_id}[/bold]"
+            )
     else:
         display = Display()
         run_session(config, display)
@@ -378,6 +382,10 @@ def resume(
 
         tui = StormApp(config, resume=True)
         tui.run()
+        if config.status == "paused":
+            console.print(
+                f"\nSession paused. Resume with: [bold]storm resume {config.session_id}[/bold]"
+            )
     else:
         display = Display()
         run_session(config, display)
