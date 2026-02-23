@@ -14,3 +14,10 @@ ThinkingBar {
     height: 1;
     color: $text;
 }
+
+#scroll-indicator {
+    display: none;
+    height: 1;
+    color: $warning;
+    text-align: center;
+}

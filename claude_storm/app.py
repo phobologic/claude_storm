@@ -7,6 +7,7 @@ from typing import ClassVar
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
+from textual.css.query import NoMatches
 from textual.widgets import Static
 
 from claude_storm.config import SessionConfig
@@ -39,6 +40,8 @@ class StormApp(App):
 
     BINDINGS: ClassVar[list[Binding]] = [
         Binding("ctrl+c", "quit_session", "Pause / Quit", priority=True),
+        Binding("end", "scroll_to_bottom", "Jump to live", show=False),
+        Binding("pageup", "scroll_log_page_up", "Scroll up", show=False),
     ]
 
     def __init__(
@@ -62,6 +65,9 @@ class StormApp(App):
     def compose(self) -> ComposeResult:
         yield Static(id="header-bar")
         yield SelectableRichLog(id="output-log", highlight=True, markup=True, wrap=True)
+        yield Static(
+            "▼ Press End to jump to live output", id="scroll-indicator", markup=False
+        )
         yield ThinkingBar()
         if self.config.interactive:
             yield InputBar()
@@ -126,6 +132,23 @@ class StormApp(App):
         bar = self.query_one(ThinkingBar)
         bar.update_label(message.label)
 
+    def on_selectable_rich_log_following_changed(
+        self, message: SelectableRichLog.FollowingChanged
+    ) -> None:
+        indicator = self.query_one("#scroll-indicator", Static)
+        indicator.display = not message.following
+
+    def action_scroll_to_bottom(self) -> None:
+        """Jump to the bottom of the log and re-engage scroll-lock."""
+        log = self.query_one("#output-log", SelectableRichLog)
+        log.scroll_to_bottom()
+
+    def action_scroll_log_page_up(self) -> None:
+        """Scroll the log up one page and disengage scroll-lock."""
+        log = self.query_one("#output-log", SelectableRichLog)
+        log.following = False
+        log.scroll_page_up(animate=False)
+
     def on_stream_start(self, message: StreamStart) -> None:
         log = self.query_one("#output-log", SelectableRichLog)
         self._stream_start = len(log.lines)
@@ -168,7 +191,7 @@ class StormApp(App):
             if ta.text.strip():
                 self._deferred_ask = message
                 return
-        except Exception:
+        except NoMatches:
             # No InputBar (non-interactive) — unblock with empty response
             message.response = ""
             message.event.set()
@@ -193,7 +216,7 @@ class StormApp(App):
         try:
             input_bar = self.query_one(InputBar)
             input_bar.set_ask_mode(message.question)
-        except Exception:
+        except NoMatches:
             pass
 
     def on_growing_text_area_submitted(self, event: GrowingTextArea.Submitted) -> None:
@@ -207,7 +230,7 @@ class StormApp(App):
             try:
                 input_bar = self.query_one(InputBar)
                 input_bar.set_nudge_mode()
-            except Exception:
+            except NoMatches:
                 pass
         elif text:
             # Nudge input

@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import patch
 
 import pytest
+from textual.widgets import Static
 
 from claude_storm.app import StormApp
 from claude_storm.messages import (
@@ -14,7 +15,7 @@ from claude_storm.messages import (
     StreamEnd,
     StreamStart,
 )
-from claude_storm.widgets import SelectableRichLog
+from claude_storm.widgets import InputBar, SelectableRichLog
 
 
 class TestStormApp:
@@ -56,9 +57,42 @@ class TestStormApp:
         app = StormApp(config)
         with patch.object(app, "_session_worker", return_value=None):
             async with app.run_test() as pilot:
-                from claude_storm.widgets import InputBar
-
                 assert pilot.app.query_one(InputBar) is not None
+
+    @pytest.mark.asyncio
+    async def test_scroll_indicator_hidden_by_default(self, make_config):
+        config = make_config(save=True)
+        app = StormApp(config)
+        with patch.object(app, "_session_worker", return_value=None):
+            async with app.run_test() as pilot:
+                indicator = pilot.app.query_one("#scroll-indicator", Static)
+                assert indicator.display is False
+
+    @pytest.mark.asyncio
+    async def test_scroll_indicator_shows_when_not_following(self, make_config):
+        config = make_config(save=True)
+        app = StormApp(config)
+        with patch.object(app, "_session_worker", return_value=None):
+            async with app.run_test(size=(80, 24)) as pilot:
+                log = pilot.app.query_one("#output-log", SelectableRichLog)
+                log.following = False
+                await pilot.pause()
+                indicator = pilot.app.query_one("#scroll-indicator", Static)
+                assert indicator.display is True
+
+    @pytest.mark.asyncio
+    async def test_scroll_indicator_hides_when_following_resumes(self, make_config):
+        config = make_config(save=True)
+        app = StormApp(config)
+        with patch.object(app, "_session_worker", return_value=None):
+            async with app.run_test(size=(80, 24)) as pilot:
+                log = pilot.app.query_one("#output-log", SelectableRichLog)
+                log.following = False
+                await pilot.pause()
+                log.following = True
+                await pilot.pause()
+                indicator = pilot.app.query_one("#scroll-indicator", Static)
+                assert indicator.display is False
 
     @pytest.mark.asyncio
     async def test_stream_delta_writes_to_log(self, make_config):

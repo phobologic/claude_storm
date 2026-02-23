@@ -149,6 +149,154 @@ class TestSelectableRichLog:
             assert len(log._line_cache) < lines_after_extra
 
 
+def _make_mouse_event(cls, widget):
+    return cls(
+        widget=widget,
+        x=0,
+        y=0,
+        delta_x=0,
+        delta_y=1,
+        button=0,
+        shift=False,
+        meta=False,
+        ctrl=False,
+    )
+
+
+class TestScrollLock:
+    # ── Default state ──────────────────────────────────────────────
+
+    @pytest.mark.asyncio
+    async def test_default_following_is_true(self):
+        async with SelectableRichLogApp().run_test(size=(80, 24)) as pilot:
+            log = pilot.app.query_one("#log", SelectableRichLog)
+            assert log.following is True
+
+    @pytest.mark.asyncio
+    async def test_default_auto_scroll_is_true(self):
+        async with SelectableRichLogApp().run_test(size=(80, 24)) as pilot:
+            log = pilot.app.query_one("#log", SelectableRichLog)
+            assert log.auto_scroll is True
+
+    # ── Mouse event handlers set the _user_scrolling flag ─────────
+
+    @pytest.mark.asyncio
+    async def test_mouse_scroll_up_sets_user_scrolling_flag(self):
+        from textual.events import MouseScrollUp
+
+        async with SelectableRichLogApp().run_test(size=(80, 24)) as pilot:
+            log = pilot.app.query_one("#log", SelectableRichLog)
+            log.on_mouse_scroll_up(_make_mouse_event(MouseScrollUp, log))
+            assert log._user_scrolling is True
+
+    @pytest.mark.asyncio
+    async def test_mouse_scroll_down_sets_user_scrolling_flag(self):
+        from textual.events import MouseScrollDown
+
+        async with SelectableRichLogApp().run_test(size=(80, 24)) as pilot:
+            log = pilot.app.query_one("#log", SelectableRichLog)
+            log.on_mouse_scroll_down(_make_mouse_event(MouseScrollDown, log))
+            assert log._user_scrolling is True
+
+    # ── watch_scroll_y guards on _user_scrolling flag ─────────────
+
+    @pytest.mark.asyncio
+    async def test_watch_scroll_y_without_flag_does_not_change_following(self):
+        async with SelectableRichLogApp().run_test(size=(80, 24)) as pilot:
+            log = pilot.app.query_one("#log", SelectableRichLog)
+            log._user_scrolling = False
+            log.watch_scroll_y(1000.0, 900.0)
+            await pilot.pause()
+            assert log.following is True  # unchanged — no user scroll flag
+
+    @pytest.mark.asyncio
+    async def test_watch_scroll_y_with_flag_not_at_bottom_disengages(self, monkeypatch):
+        async with SelectableRichLogApp().run_test(size=(80, 24)) as pilot:
+            log = pilot.app.query_one("#log", SelectableRichLog)
+            monkeypatch.setattr(
+                type(log), "is_vertical_scroll_end", property(lambda self: False)
+            )
+            log._user_scrolling = True
+            log.watch_scroll_y(1000.0, 900.0)
+            await pilot.pause()
+            assert log.following is False
+
+    @pytest.mark.asyncio
+    async def test_watch_scroll_y_with_flag_at_bottom_re_engages(self, monkeypatch):
+        async with SelectableRichLogApp().run_test(size=(80, 24)) as pilot:
+            log = pilot.app.query_one("#log", SelectableRichLog)
+            log.following = False
+            monkeypatch.setattr(
+                type(log), "is_vertical_scroll_end", property(lambda self: True)
+            )
+            log._user_scrolling = True
+            log.watch_scroll_y(900.0, 1000.0)
+            await pilot.pause()
+            assert log.following is True
+
+    @pytest.mark.asyncio
+    async def test_watch_scroll_y_clears_flag_after_processing(self, monkeypatch):
+        async with SelectableRichLogApp().run_test(size=(80, 24)) as pilot:
+            log = pilot.app.query_one("#log", SelectableRichLog)
+            monkeypatch.setattr(
+                type(log), "is_vertical_scroll_end", property(lambda self: False)
+            )
+            log._user_scrolling = True
+            log.watch_scroll_y(1000.0, 900.0)
+            assert log._user_scrolling is False
+
+    # ── watch_following syncs auto_scroll ─────────────────────────
+
+    @pytest.mark.asyncio
+    async def test_watch_following_syncs_auto_scroll(self):
+        async with SelectableRichLogApp().run_test(size=(80, 24)) as pilot:
+            log = pilot.app.query_one("#log", SelectableRichLog)
+            log.following = False
+            await pilot.pause()
+            assert log.auto_scroll is False
+            log.following = True
+            await pilot.pause()
+            assert log.auto_scroll is True
+
+    @pytest.mark.asyncio
+    async def test_watch_following_posts_following_changed(self):
+        messages: list[SelectableRichLog.FollowingChanged] = []
+
+        class TrackingApp(SelectableRichLogApp):
+            def on_selectable_rich_log_following_changed(
+                self, message: SelectableRichLog.FollowingChanged
+            ) -> None:
+                messages.append(message)
+
+        async with TrackingApp().run_test(size=(80, 24)) as pilot:
+            log = pilot.app.query_one("#log", SelectableRichLog)
+            log.following = False
+            await pilot.pause()
+            assert any(not m.following for m in messages)
+
+    # ── scroll_to_bottom ──────────────────────────────────────────
+
+    @pytest.mark.asyncio
+    async def test_scroll_to_bottom_re_engages_following(self):
+        async with SelectableRichLogApp().run_test(size=(80, 24)) as pilot:
+            log = pilot.app.query_one("#log", SelectableRichLog)
+            log.following = False
+            await pilot.pause()
+            log.scroll_to_bottom()
+            await pilot.pause()
+            assert log.following is True
+
+    @pytest.mark.asyncio
+    async def test_scroll_to_bottom_re_enables_auto_scroll(self):
+        async with SelectableRichLogApp().run_test(size=(80, 24)) as pilot:
+            log = pilot.app.query_one("#log", SelectableRichLog)
+            log.following = False
+            await pilot.pause()
+            log.scroll_to_bottom()
+            await pilot.pause()
+            assert log.auto_scroll is True
+
+
 class TestGrowingTextArea:
     @pytest.mark.asyncio
     async def test_submit_on_enter(self):

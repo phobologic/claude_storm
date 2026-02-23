@@ -6,8 +6,9 @@ import contextlib
 import time
 
 from rich.text import Text
-from textual.events import Key
+from textual.events import Key, MouseScrollDown, MouseScrollUp
 from textual.message import Message
+from textual.reactive import var
 from textual.selection import Selection
 from textual.strip import Strip
 from textual.widget import Widget
@@ -15,7 +16,61 @@ from textual.widgets import RichLog, TextArea
 
 
 class SelectableRichLog(RichLog):
-    """RichLog subclass that supports text selection and copy."""
+    """RichLog subclass that supports text selection, copy, and scroll-lock."""
+
+    following: var[bool] = var(True)
+    """True when auto-scrolling follows new output; False when user has scrolled up."""
+
+    # Set by mouse scroll handlers; consumed and cleared in watch_scroll_y.
+    # Prevents programmatic auto-scrolls from falsely re-engaging scroll-lock.
+    _user_scrolling: bool = False
+
+    class FollowingChanged(Message):
+        """Posted when the following state changes."""
+
+        def __init__(self, following: bool) -> None:
+            super().__init__()
+            self.following = following
+
+    def watch_following(self, following: bool) -> None:
+        """Sync auto_scroll with following state and notify the app."""
+        self.auto_scroll = following
+        self.post_message(self.FollowingChanged(following))
+
+    def on_mouse_scroll_up(self, event: MouseScrollUp) -> None:
+        """Mark that a user scroll event is in progress."""
+        self._user_scrolling = True
+
+    def on_mouse_scroll_down(self, event: MouseScrollDown) -> None:
+        """Mark that a user scroll event is in progress."""
+        self._user_scrolling = True
+
+    def watch_scroll_y(self, old: float, new: float) -> None:
+        """Update scrollbar; disengage or re-engage scroll-lock on user scrolls.
+
+        The _user_scrolling flag gates all following-state changes so that
+        programmatic auto-scrolls (write → scroll_end) and virtual_size
+        clamping from truncate_to() never falsely mutate following.
+
+        Args:
+            old: Previous scroll_y value.
+            new: New scroll_y value.
+        """
+        super().watch_scroll_y(old, new)
+        if not self._user_scrolling:
+            return
+        self._user_scrolling = False
+        if self.is_vertical_scroll_end:
+            if not self.following:
+                self.following = True
+        else:
+            if self.following:
+                self.following = False
+
+    def scroll_to_bottom(self) -> None:
+        """Jump to the bottom and re-engage scroll-lock."""
+        self.following = True
+        self.scroll_end(animate=False)
 
     def _render_line(self, y: int, scroll_x: int, width: int) -> Strip:
         if y >= len(self.lines):
