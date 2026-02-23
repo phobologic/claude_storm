@@ -42,6 +42,8 @@ class StormApp(App):
         Binding("ctrl+c", "quit_session", "Pause / Quit", priority=True),
         Binding("end", "scroll_to_bottom", "Jump to live", show=False),
         Binding("pageup", "scroll_log_page_up", "Scroll up", show=False),
+        Binding("shift+up", "scroll_log_page_up", "Scroll up", show=False),
+        Binding("shift+down", "scroll_log_page_down", "Scroll down", show=False),
     ]
 
     def __init__(
@@ -148,6 +150,13 @@ class StormApp(App):
         log = self.query_one("#output-log", SelectableRichLog)
         log.following = False
         log.scroll_page_up(animate=False)
+
+    def action_scroll_log_page_down(self) -> None:
+        """Scroll the log down one page; re-engage scroll-lock if at bottom."""
+        log = self.query_one("#output-log", SelectableRichLog)
+        log._user_scrolling = True
+        log.scroll_page_down(animate=False)
+        log.call_after_refresh(log._maybe_reengage_following)
 
     def on_stream_start(self, message: StreamStart) -> None:
         log = self.query_one("#output-log", SelectableRichLog)

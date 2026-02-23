@@ -15,7 +15,7 @@ from textual.widget import Widget
 from textual.widgets import RichLog, TextArea
 
 _SCROLL_KEYS: frozenset[str] = frozenset(
-    {"up", "down", "pageup", "pagedown", "home", "end"}
+    {"up", "down", "pageup", "pagedown", "home", "end", "shift+up", "shift+down"}
 )
 
 
