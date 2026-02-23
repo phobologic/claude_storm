@@ -403,6 +403,30 @@ class TestGrowingTextArea:
             assert app.submitted_values[0] == "hi"
 
     @pytest.mark.asyncio
+    async def test_shift_enter_inserts_newline(self):
+        # macOS terminals send shift+enter as ctrl+j; test both code paths.
+        app = GrowingTextAreaApp()
+        async with app.run_test(size=(80, 10)) as pilot:
+            ta = pilot.app.query_one(GrowingTextArea)
+            ta.focus()
+            await pilot.press("a", "ctrl+j", "b")
+            await pilot.pause()
+            assert ta.text == "a\nb"
+            assert len(app.submitted_values) == 0
+
+    @pytest.mark.asyncio
+    async def test_shift_enter_inserts_newline_non_mac(self):
+        # Terminals that send a distinct shift+enter key (non-macOS).
+        app = GrowingTextAreaApp()
+        async with app.run_test(size=(80, 10)) as pilot:
+            ta = pilot.app.query_one(GrowingTextArea)
+            ta.focus()
+            await pilot.press("a", "shift+enter", "b")
+            await pilot.pause()
+            assert ta.text == "a\nb"
+            assert len(app.submitted_values) == 0
+
+    @pytest.mark.asyncio
     async def test_clear_resets_height(self):
         app = GrowingTextAreaApp()
         async with app.run_test(size=(80, 10)) as pilot:

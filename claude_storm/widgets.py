@@ -315,6 +315,11 @@ class GrowingTextArea(TextArea):
             value = self.text
             self.post_message(self.Submitted(self, value))
             return
+        if event.key in ("shift+enter", "ctrl+j"):
+            event.prevent_default()
+            event.stop()
+            self.insert("\n")
+            return
         await super()._on_key(event)
 
     def _on_text_area_changed(self, event: TextArea.Changed) -> None:
