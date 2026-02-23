@@ -325,9 +325,10 @@ def start(
 
         tui = StormApp(config)
         tui.run()
+        console.print(f"\nSession directory: [dim]{config.session_dir()}[/dim]")
         if config.status == "paused":
             console.print(
-                f"\nSession paused. Resume with: "
+                f"Session paused. Resume with: "
                 f"[bold]storm resume {config.session_id}[/bold]"
             )
     else:
@@ -383,9 +384,10 @@ def resume(
 
         tui = StormApp(config, resume=True)
         tui.run()
+        console.print(f"\nSession directory: [dim]{config.session_dir()}[/dim]")
         if config.status == "paused":
             console.print(
-                f"\nSession paused. Resume with: "
+                f"Session paused. Resume with: "
                 f"[bold]storm resume {config.session_id}[/bold]"
             )
     else:
