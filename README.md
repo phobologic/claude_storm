@@ -144,8 +144,12 @@ storm start [TOPIC] [OPTIONS]
 storm start --config path/to/storm.toml
 storm start "Quick topic" --max-turns 4
 
-# With custom roles (one-off mode)
+# With custom roles and a goal (one-off mode)
 storm start "Microservices vs monolith" --roles "Advocate" "Skeptic" --auto-complete
+storm start "API design" --goal "Prefer REST; produce an OpenAPI spec"
+
+# Produce specific deliverables (repeatable)
+storm start --deliverable "Architecture doc" --deliverable "Data model"
 
 # CLI flags override TOML values
 storm start --max-turns 6 --model opus
@@ -159,13 +163,18 @@ storm start --reference-dir ./research/notes --reference-dir ./design/specs
 # agents can ask you questions via [ASK_USER]
 storm start --interactive
 
+# Enable verbose debug logging (agent prompts + raw responses written to debug.log)
+storm --debug start "your topic"
+
 # Resume a paused session (Ctrl+C to pause)
 storm resume <session-id>
 storm resume <session-id> --force  # recover after a hard kill
 
 # List and inspect sessions
 storm list
-storm show <session-id>            # includes why the session stopped
+storm list --config path/to/storm.toml  # locate .storms/ from a specific config
+storm show <session-id>                 # includes why the session stopped
+storm show <session-id> --config path/to/storm.toml
 ```
 
 ## Agent Protocol
