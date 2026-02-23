@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from collections import deque
 from typing import ClassVar
 
@@ -96,6 +97,9 @@ class StormApp(App):
             f"[dim]Topic:[/dim] {topic_summary}"
         )
         self.run_worker(self._session_worker, thread=True)
+        if self.config.interactive:
+            # Start with the log focused (watch mode); input gets focus on ASK_USER.
+            self.set_focus(self.query_one("#output-log", SelectableRichLog))
 
     def _session_worker(self) -> None:
         """Run the session loop in a worker thread."""
@@ -261,6 +265,10 @@ class StormApp(App):
             ask = self._deferred_ask
             self._deferred_ask = None
             self._activate_ask(ask)
+        # Return focus to the log (watch mode) unless an ASK_USER question is active.
+        if self._ask_request is None:
+            with contextlib.suppress(NoMatches):
+                self.set_focus(self.query_one("#output-log", SelectableRichLog))
 
     def on_session_complete(self, message: SessionComplete) -> None:
         log = self.query_one("#output-log", SelectableRichLog)

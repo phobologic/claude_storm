@@ -200,7 +200,7 @@ class TestScrollLock:
 
     @pytest.mark.asyncio
     async def test_mouse_scroll_up_via_post_message_sets_user_scrolling_flag(self):
-        """Integration test: verifies scroll-up handler wiring via Textual's message pump.
+        """Verify scroll-up handler wiring via Textual's message pump.
 
         Unlike the direct on_mouse_scroll_up() call above, this dispatches through
         post_message so that Textual's event routing and handler lookup are exercised.

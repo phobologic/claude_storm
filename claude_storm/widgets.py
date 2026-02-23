@@ -42,12 +42,16 @@ class SelectableRichLog(RichLog):
         self.post_message(self.FollowingChanged(following))
 
     def on_mouse_scroll_up(self, event: MouseScrollUp) -> None:
-        """Mark that a user scroll event is in progress."""
+        """Mark that a user scroll event is in progress and take keyboard focus."""
         self._user_scrolling = True
+        if not self.has_focus:
+            self.focus()
 
     def on_mouse_scroll_down(self, event: MouseScrollDown) -> None:
-        """Mark that a user scroll event is in progress."""
+        """Mark that a user scroll event is in progress and take keyboard focus."""
         self._user_scrolling = True
+        if not self.has_focus:
+            self.focus()
 
     async def _on_key(self, event: Key) -> None:
         """Mark scroll-key events as user-initiated before they update scroll_y."""
@@ -95,9 +99,48 @@ class SelectableRichLog(RichLog):
     def scroll_to_bottom(self) -> None:
         """Jump to the bottom and re-engage scroll-lock."""
         # Set following=True eagerly so the scroll indicator hides immediately;
-        # watch_scroll_y will also set it True once scroll_end resolves (benign double-fire).
+        # watch_scroll_y will also set it True once scroll_end resolves
+        # (benign double-fire).
         self.following = True
         self.scroll_end(animate=False)
+
+    # ── Action overrides ──────────────────────────────────────────────────────
+    # Override Textual's default scroll actions to set _user_scrolling = True
+    # *before* the scroll fires and to use animate=False so watch_scroll_y runs
+    # synchronously (before _maybe_reengage_following can clear the flag).
+
+    def action_scroll_up(self) -> None:
+        """Scroll up and mark as user-initiated."""
+        self._user_scrolling = True
+        self.scroll_up(animate=False)
+
+    def action_scroll_down(self) -> None:
+        """Scroll down and mark as user-initiated; re-engage at bottom."""
+        self._user_scrolling = True
+        self.scroll_down(animate=False)
+        self.call_after_refresh(self._maybe_reengage_following)
+
+    def action_page_up(self) -> None:
+        """Scroll page up and mark as user-initiated."""
+        self._user_scrolling = True
+        self.scroll_page_up(animate=False)
+
+    def action_page_down(self) -> None:
+        """Scroll page down and mark as user-initiated; re-engage at bottom."""
+        self._user_scrolling = True
+        self.scroll_page_down(animate=False)
+        self.call_after_refresh(self._maybe_reengage_following)
+
+    def action_scroll_home(self) -> None:
+        """Scroll to top and mark as user-initiated."""
+        self._user_scrolling = True
+        self.scroll_home(animate=False)
+
+    def action_scroll_end(self) -> None:
+        """Scroll to bottom and mark as user-initiated; re-engage scroll-lock."""
+        self._user_scrolling = True
+        self.scroll_end(animate=False)
+        self.call_after_refresh(self._maybe_reengage_following)
 
     def _render_line(self, y: int, scroll_x: int, width: int) -> Strip:
         if y >= len(self.lines):
