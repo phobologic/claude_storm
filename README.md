@@ -1,6 +1,6 @@
 # Claude Storm
 
-A dual-agent brainstorming system that orchestrates two Claude Code CLI instances in strict alternating turns. Each agent maintains a persistent Claude session and has access to a markdown-based memory filesystem for long-term notes.
+A dual-agent brainstorming system that orchestrates two Claude Code CLI instances in strict alternating turns. Each agent maintains a persistent Claude session.
 
 **Try it now** (no install needed):
 
@@ -170,9 +170,6 @@ Agents communicate via structured directives embedded in their responses.
 
 | Directive | Syntax | Description |
 |-----------|--------|-------------|
-| `[MEMORY]` | `[MEMORY title="..." tags="t1,t2"]content[/MEMORY]` | Save a note to the agent's private long-term memory. Use for working notes, open questions, and ideas in development. |
-| `[MEMORY_SEARCH]` | `[MEMORY_SEARCH query="..."]` | Search saved memories. Results appear in the agent's next turn. |
-
 ### Shared Output
 
 | Directive | Syntax | Description |
@@ -192,7 +189,7 @@ When deliverables or a goal are defined, agents receive pacing guidance based on
 | Progress | Guidance |
 |----------|----------|
 | ≤20% (interactive) | Use `[ASK_USER]` to clarify intent before narrowing |
-| Default | Continue brainstorming, save ideas with `[MEMORY]` |
+| Default | Continue brainstorming |
 | 50% | Start narrowing; produce draft `[ARTIFACT]` files |
 | 75% | Finalize artifacts, resolve open questions |
 | Final 2 turns | Complete all artifacts; produce any missing deliverables |
@@ -223,13 +220,12 @@ shows a scroll indicator; scrolling back to the bottom (or pressing `End`) resum
 
 1. Two Claude Code CLI instances are launched with persistent sessions
 2. Agents take strict alternating turns responding to each other
-3. Each agent can save notes to its memory filesystem for long-term retention
-4. Agents can produce shared artifacts (code, documents)
-5. Agents formalize shared decisions using an agreement protocol (`[PROPOSE]`/`[ACCEPT]`/`[REJECT]`/`[REVISE]`); confirmed agreements persist to `agreements.md` and feed into deliverable compilation. Verbal agreement alone ("I agree", "good point") does **not** create a shared record — only `[PROPOSE]` + `[ACCEPT]` does. Pacing nudges encourage `[PROPOSE]` usage when no agreements have been recorded recently.
-6. Pacing nudges guide agents through exploration, convergence, and deliverable production
-7. In `--auto-complete` mode, agents signal `[DONE]` when the topic is well-explored
-8. Sessions can be paused with Ctrl+C and resumed later; each session records why it stopped (visible via `storm show`)
-9. When running in a terminal, a full-screen TUI provides live-streamed agent output, an animated thinking timer, and a persistent input bar for nudges (Shift+Enter for newlines); the header shows the session ID. Piped/non-TTY output falls back to plain Rich console
+3. Agents can produce shared artifacts (code, documents)
+4. Agents formalize shared decisions using an agreement protocol (`[PROPOSE]`/`[ACCEPT]`/`[REJECT]`/`[REVISE]`); confirmed agreements persist to `agreements.md` and feed into deliverable compilation. Verbal agreement alone ("I agree", "good point") does **not** create a shared record — only `[PROPOSE]` + `[ACCEPT]` does. Pacing nudges encourage `[PROPOSE]` usage when no agreements have been recorded recently.
+5. Pacing nudges guide agents through exploration, convergence, and deliverable production
+6. In `--auto-complete` mode, agents signal `[DONE]` when the topic is well-explored
+7. Sessions can be paused with Ctrl+C and resumed later; each session records why it stopped (visible via `storm show`)
+8. When running in a terminal, a full-screen TUI provides live-streamed agent output, an animated thinking timer, and a persistent input bar for nudges (Shift+Enter for newlines); the header shows the session ID. Piped/non-TTY output falls back to plain Rich console
 
 ## Security
 
