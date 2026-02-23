@@ -185,6 +185,8 @@ class ThinkingBar(Widget):
 
     def stop(self) -> int:
         """Stop the thinking animation and return elapsed seconds."""
+        if not self._active:
+            return 0
         self._active = False
         self.update_timer.pause()
         elapsed = int(time.monotonic() - self._start_time)

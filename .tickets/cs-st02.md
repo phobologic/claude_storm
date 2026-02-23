@@ -1,6 +1,6 @@
 ---
 id: cs-st02
-status: open
+status: closed
 deps: []
 links: []
 created: 2026-02-20T05:06:07Z

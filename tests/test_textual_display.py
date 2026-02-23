@@ -198,7 +198,10 @@ class TestTextualDisplayAgentStream:
         # Also clears when deltas were received (responding phase)
         app2 = _make_app()
         display2 = TextualDisplay(app2)
-        display2._stream_responding = True
+        config2 = _make_config()
+        display2.show_agent_stream_start(config2, "a")
+        display2.show_agent_stream_delta("chunk")
+        app2.post_message.reset_mock()
 
         display2.show_agent_stream_end()
 

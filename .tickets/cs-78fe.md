@@ -1,6 +1,6 @@
 ---
 id: cs-78fe
-status: open
+status: closed
 deps: []
 links: []
 created: 2026-02-22T00:24:48Z

@@ -1,6 +1,6 @@
 ---
 id: cs-3ds5
-status: open
+status: closed
 deps: []
 links: [cs-bezg, cs-yv6q]
 created: 2026-02-22T00:24:20Z
