@@ -5,8 +5,10 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
+import os
 import re
 import selectors
+import signal as _signal
 import subprocess
 import threading
 from collections.abc import Callable
@@ -45,8 +47,14 @@ def cancel_active() -> None:
     """Terminate the currently running agent subprocess, if any."""
     with _process_lock:
         proc = _active_process
-    if proc is not None:
-        proc.terminate()
+    if proc is None:
+        return
+    try:
+        os.killpg(os.getpgid(proc.pid), _signal.SIGKILL)
+    except (ProcessLookupError, PermissionError, OSError):
+        # Process already dead or pgid unavailable — fall back to direct kill
+        with contextlib.suppress(OSError):
+            proc.kill()
 
 
 @dataclass
@@ -350,6 +358,7 @@ def invoke_agent(
             stderr=subprocess.PIPE,
             text=True,
             cwd=cwd,
+            start_new_session=True,
         )
         proc = _active_process
 

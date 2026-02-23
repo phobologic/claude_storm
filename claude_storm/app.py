@@ -284,7 +284,11 @@ class StormApp(App):
         self._session_error = message.error
         self._session_finished = True
         log.write(Text(""))
-        log.write(Text("Session ended. Press Ctrl+C to exit.", style="bold magenta"))
+        if self.config.status == "paused":
+            hint = "Session paused \u2014 Press Ctrl+C to exit."
+        else:
+            hint = "Session ended \u2014 Press Ctrl+C to exit."
+        log.write(Text(hint, style="bold magenta"))
 
     def action_quit_session(self) -> None:
         """Handle Ctrl+C — copy selection if active, otherwise quit."""
