@@ -40,7 +40,7 @@ class StormApp(App):
     TITLE = "Claude Storm"
 
     BINDINGS: ClassVar[list[Binding]] = [
-        Binding("ctrl+c", "quit_session", "Pause / Quit", priority=True),
+        Binding("ctrl+c", "quit_session", "Quit", priority=True),
         Binding("end", "scroll_to_bottom", "Jump to live", show=False),
         Binding("pageup", "scroll_log_page_up", "Scroll up", show=False),
         Binding("shift+up", "scroll_log_page_up", "Scroll up", show=False),
@@ -72,7 +72,7 @@ class StormApp(App):
             "▼ Press End to jump to live output", id="scroll-indicator", markup=False
         )
         yield Static(
-            "  ↑/↓ scroll  │  shift+↑/↓ page  │  End live  │  ^C pause/quit",
+            "  ↑/↓ scroll  │  shift+↑/↓ page  │  End live  │  ^C quit",
             id="hints-bar",
             markup=False,
         )
