@@ -14,6 +14,10 @@ from textual.strip import Strip
 from textual.widget import Widget
 from textual.widgets import RichLog, TextArea
 
+_SCROLL_KEYS: frozenset[str] = frozenset(
+    {"up", "down", "pageup", "pagedown", "home", "end"}
+)
+
 
 class SelectableRichLog(RichLog):
     """RichLog subclass that supports text selection, copy, and scroll-lock."""
@@ -44,6 +48,24 @@ class SelectableRichLog(RichLog):
     def on_mouse_scroll_down(self, event: MouseScrollDown) -> None:
         """Mark that a user scroll event is in progress."""
         self._user_scrolling = True
+
+    async def _on_key(self, event: Key) -> None:
+        """Mark scroll-key events as user-initiated before they update scroll_y."""
+        if event.key in _SCROLL_KEYS:
+            self._user_scrolling = True
+            await super()._on_key(event)
+            # If the scroll landed exactly at the bottom, scroll_y may not have
+            # changed (already clamped), so watch_scroll_y won't fire.  Schedule
+            # a post-render check to re-engage following in that case.
+            self.call_after_refresh(self._maybe_reengage_following)
+        else:
+            await super()._on_key(event)
+
+    def _maybe_reengage_following(self) -> None:
+        """Re-engage following if a keyboard scroll landed at the bottom."""
+        self._user_scrolling = False  # Clear stale flag if watch_scroll_y didn't run
+        if self.is_vertical_scroll_end and not self.following:
+            self.following = True
 
     def watch_scroll_y(self, old: float, new: float) -> None:
         """Update scrollbar; disengage or re-engage scroll-lock on user scrolls.

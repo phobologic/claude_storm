@@ -311,6 +311,83 @@ class TestScrollLock:
             await pilot.pause()
             assert log.auto_scroll is True
 
+    # ── Keyboard scroll keys set _user_scrolling flag ─────────────
+
+    @pytest.mark.asyncio
+    async def test_key_up_sets_user_scrolling_flag(self):
+        from textual.events import Key
+
+        async with SelectableRichLogApp().run_test(size=(80, 24)) as pilot:
+            log = pilot.app.query_one("#log", SelectableRichLog)
+            await log._on_key(Key("up", character=None))
+            assert log._user_scrolling is True
+
+    @pytest.mark.asyncio
+    async def test_key_pageup_sets_user_scrolling_flag(self):
+        from textual.events import Key
+
+        async with SelectableRichLogApp().run_test(size=(80, 24)) as pilot:
+            log = pilot.app.query_one("#log", SelectableRichLog)
+            await log._on_key(Key("pageup", character=None))
+            assert log._user_scrolling is True
+
+    @pytest.mark.asyncio
+    async def test_key_end_sets_user_scrolling_flag(self):
+        from textual.events import Key
+
+        async with SelectableRichLogApp().run_test(size=(80, 24)) as pilot:
+            log = pilot.app.query_one("#log", SelectableRichLog)
+            await log._on_key(Key("end", character=None))
+            assert log._user_scrolling is True
+
+    @pytest.mark.asyncio
+    async def test_non_scroll_key_does_not_set_user_scrolling_flag(self):
+        from textual.events import Key
+
+        async with SelectableRichLogApp().run_test(size=(80, 24)) as pilot:
+            log = pilot.app.query_one("#log", SelectableRichLog)
+            await log._on_key(Key("a", character="a"))
+            assert log._user_scrolling is False
+
+    # ── _maybe_reengage_following ──────────────────────────────────
+
+    @pytest.mark.asyncio
+    async def test_maybe_reengage_clears_stale_user_scrolling_flag(self, monkeypatch):
+        async with SelectableRichLogApp().run_test(size=(80, 24)) as pilot:
+            log = pilot.app.query_one("#log", SelectableRichLog)
+            log._user_scrolling = True
+            monkeypatch.setattr(
+                type(log), "is_vertical_scroll_end", property(lambda self: True)
+            )
+            log._maybe_reengage_following()
+            assert log._user_scrolling is False
+
+    @pytest.mark.asyncio
+    async def test_maybe_reengage_re_engages_at_bottom(self, monkeypatch):
+        async with SelectableRichLogApp().run_test(size=(80, 24)) as pilot:
+            log = pilot.app.query_one("#log", SelectableRichLog)
+            log.following = False
+            await pilot.pause()
+            monkeypatch.setattr(
+                type(log), "is_vertical_scroll_end", property(lambda self: True)
+            )
+            log._maybe_reengage_following()
+            assert log.following is True
+
+    @pytest.mark.asyncio
+    async def test_maybe_reengage_does_not_disengage_when_not_at_bottom(
+        self, monkeypatch
+    ):
+        async with SelectableRichLogApp().run_test(size=(80, 24)) as pilot:
+            log = pilot.app.query_one("#log", SelectableRichLog)
+            monkeypatch.setattr(
+                type(log), "is_vertical_scroll_end", property(lambda self: False)
+            )
+            log._maybe_reengage_following()
+            assert (
+                log.following is True
+            )  # unchanged — only re-engages, never disengages
+
 
 class TestGrowingTextArea:
     @pytest.mark.asyncio
