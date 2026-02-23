@@ -98,6 +98,8 @@ max_turns = 20
 model = "sonnet"
 auto_complete = true
 interactive = false
+# max_minutes = 30
+# agent_timeout = 600
 # truncate_conversation = true
 ```
 
@@ -119,10 +121,12 @@ Sessions are stored in `.storms/` alongside `storm.toml` (add to `.gitignore`).
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `max_turns` | `20` | Turn budget. Shapes percentage-based pacing. |
+| `max_turns` | `20` | Turn budget. Shapes percentage-based pacing. Set to a higher value or omit when using `max_minutes` alone. |
+| `max_minutes` | — | Wall-clock time limit in minutes. Acts independently of `max_turns`; whichever limit is hit first stops the session. |
 | `model` | `"sonnet"` | Claude model to use (`"sonnet"`, `"opus"`, or a full model ID). |
 | `auto_complete` | `true` | Allow agents to signal `[DONE]`. Requires both agents to agree. |
 | `interactive` | `false` | Enable user nudges and `[ASK_USER]` questions. |
+| `agent_timeout` | `600` | Per-turn timeout in seconds. Increase for complex topics where agents take longer to respond. |
 | `truncate_conversation` | `true` | Truncate conversation to last ~50k chars during deliverable compilation. |
 
 ## Usage
@@ -145,6 +149,8 @@ storm start "Microservices vs monolith" --roles "Advocate" "Skeptic" --auto-comp
 
 # CLI flags override TOML values
 storm start --max-turns 6 --model opus
+storm start --max-minutes 30           # stop after 30 minutes regardless of turns
+storm start --agent-timeout 120        # shorten per-turn timeout to 2 minutes
 
 # Give agents read-only access to reference materials (repeatable)
 storm start --reference-dir ./research/notes --reference-dir ./design/specs
