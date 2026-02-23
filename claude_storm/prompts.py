@@ -397,6 +397,8 @@ def build_summary_prompt(
     )
     if config.goal:
         parts.append("5. Goal assessment — did the session achieve its stated goal?\n")
+    # Guard against agents using Write/Edit tools instead of returning
+    # the summary text directly in their response.
     parts.append(
         "Be concise but thorough. Format as markdown.\n\n"
         "IMPORTANT: Output the full summary directly in your response.\n"

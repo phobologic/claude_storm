@@ -19,7 +19,11 @@ from claude_storm.agreements import (
     format_agreements_for_prompt,
     reject_proposal,
 )
-from claude_storm.compilation import compile_deliverables, generate_summary
+from claude_storm.compilation import (
+    DRAFT_PREFIX,
+    compile_deliverables,
+    generate_summary,
+)
 from claude_storm.config import SessionConfig
 from claude_storm.debug import (
     write_debug_request,
@@ -304,18 +308,22 @@ def process_directives(
     # Save artifacts (auto-prefix with draft- so agent drafts are
     # distinct from compiled finals written by compile_deliverables)
     artifacts_dir = config.session_dir() / "artifacts"
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
     for filename, content in directives.artifacts:
         base = PurePosixPath(filename)
         draft_filename = (
-            str(base.parent / f"draft-{base.name}")
-            if not base.name.startswith("draft-")
+            str(base.parent / f"{DRAFT_PREFIX}{base.name}")
+            if not base.name.startswith(DRAFT_PREFIX)
             else filename
         )
         artifact_path = (artifacts_dir / draft_filename).resolve()
         if not artifact_path.is_relative_to(artifacts_dir.resolve()):
-            display.show_warning(f"Blocked artifact with unsafe filename: {filename!r}")
+            display.show_warning(
+                f"Blocked artifact with unsafe filename: {draft_filename!r}"
+            )
             continue
-        artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        if artifact_path.parent != artifacts_dir:
+            artifact_path.parent.mkdir(parents=True, exist_ok=True)
         artifact_path.write_text(content + "\n")
         display.show_artifact_save(draft_filename)
 

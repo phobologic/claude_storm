@@ -18,6 +18,17 @@ from claude_storm.display import DisplayProtocol
 from claude_storm.prompts import build_deliverable_prompt, build_summary_prompt
 
 MIN_WORD_OVERLAP_DIVISOR = 2
+DRAFT_PREFIX = "draft-"
+
+_RE_EXT = re.compile(r"\.[a-zA-Z]{1,5}$")
+_RE_DRAFT_PREFIX = re.compile(rf"^{re.escape(DRAFT_PREFIX)}")
+_RE_NON_WORD = re.compile(r"[^\w\s-]")
+_RE_SEPARATORS = re.compile(r"[_\-]")
+
+
+def _strip_extension(name: str) -> str:
+    """Remove a trailing file extension (up to 5 chars) from a name."""
+    return _RE_EXT.sub("", name)
 
 
 def find_matching_artifacts(
@@ -40,20 +51,20 @@ def find_matching_artifacts(
         return {}
 
     # Strip file extension before tokenizing to avoid "season_summarymd"
-    deliv_base = re.sub(r"\.[a-zA-Z]{1,5}$", "", deliverable_name)
+    deliv_base = _strip_extension(deliverable_name)
     # Normalize underscores/hyphens to spaces so "season_summary" → {season, summary}
-    deliv_words = set(
-        re.sub(r"[_\-]", " ", re.sub(r"[^\w\s-]", "", deliv_base)).lower().split()
-    )
+    cleaned = _RE_NON_WORD.sub("", deliv_base)
+    normalized = _RE_SEPARATORS.sub(" ", cleaned).lower()
+    deliv_words = set(normalized.split())
     if not deliv_words:
         return {}
 
     matches: dict[str, str] = {}
-    for path in sorted(artifacts_dir.glob("draft-*.md")):
+    for path in sorted(artifacts_dir.glob(f"{DRAFT_PREFIX}*.md")):
         # Only consider draft files (agent-produced) to avoid feeding compiled
         # output back into the compilation prompt on re-runs.
-        stem = re.sub(r"^draft-", "", path.stem)
-        stem_words = set(re.sub(r"[_\-]", " ", stem).lower().split())
+        stem = _RE_DRAFT_PREFIX.sub("", path.stem)
+        stem_words = set(_RE_SEPARATORS.sub(" ", stem).lower().split())
         overlap = deliv_words & stem_words
         if len(overlap) >= max(1, len(deliv_words) // MIN_WORD_OVERLAP_DIVISOR):
             matches[path.name] = path.read_text()
@@ -153,7 +164,7 @@ def compile_deliverables(config: SessionConfig, display: DisplayProtocol) -> Non
 
         if not response.is_error:
             # Strip file extension before sanitizing to avoid "season_summarymd.md"
-            base = re.sub(r"\.[a-zA-Z]{1,5}$", "", deliverable)
+            base = _strip_extension(deliverable)
             safe_name = slugify(base, sep="_", max_len=0)
             artifact_path = artifacts_dir / f"{safe_name}.md"
 

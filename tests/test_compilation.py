@@ -150,6 +150,7 @@ class TestCompileDeliverables:
 
         artifacts_dir = config.session_dir() / "artifacts"
         assert (artifacts_dir / "new_document.md").read_text() == "fresh content\n"
+        assert not list(artifacts_dir.glob("draft-new_document*"))
 
     def test_extension_deliverable_produces_clean_filename(
         self, make_config, capture_display
