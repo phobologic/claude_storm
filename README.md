@@ -208,6 +208,17 @@ When deliverables or a goal are defined, agents receive pacing guidance based on
 - **Early clarification pacing**: In interactive sessions, agents are encouraged to use `[ASK_USER]` in the first 20% of turns.
 - **Non-interactive**: No user input during the session; `[ASK_USER]` is not available to agents.
 
+## TUI Navigation
+
+The TUI auto-scrolls to follow new output. Scrolling up pauses auto-follow and
+shows a scroll indicator; scrolling back to the bottom (or pressing `End`) resumes it.
+
+| Key | Action |
+|-----|--------|
+| `PageUp` / `Shift+Up` | Scroll up one page |
+| `PageDown` / `Shift+Down` | Scroll down one page |
+| `End` | Jump to bottom and resume auto-follow |
+
 ## How It Works
 
 1. Two Claude Code CLI instances are launched with persistent sessions
@@ -218,7 +229,7 @@ When deliverables or a goal are defined, agents receive pacing guidance based on
 6. Pacing nudges guide agents through exploration, convergence, and deliverable production
 7. In `--auto-complete` mode, agents signal `[DONE]` when the topic is well-explored
 8. Sessions can be paused with Ctrl+C and resumed later; each session records why it stopped (visible via `storm show`)
-9. When running in a terminal, a full-screen TUI provides scrollable output, an animated thinking timer, and a persistent input bar for nudges (Shift+Enter for newlines); the header shows the session ID. Piped/non-TTY output falls back to plain Rich console
+9. When running in a terminal, a full-screen TUI provides live-streamed agent output, an animated thinking timer, and a persistent input bar for nudges (Shift+Enter for newlines); the header shows the session ID. Piped/non-TTY output falls back to plain Rich console
 
 ## Security
 
