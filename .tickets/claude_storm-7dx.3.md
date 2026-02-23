@@ -1,6 +1,6 @@
 ---
 id: claude_storm-7dx.3
-status: open
+status: closed
 deps: []
 links: []
 created: 2026-02-16T14:51:17.133039-08:00

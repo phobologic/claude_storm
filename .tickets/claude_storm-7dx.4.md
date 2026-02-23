@@ -1,6 +1,6 @@
 ---
 id: claude_storm-7dx.4
-status: open
+status: closed
 deps: []
 links: []
 created: 2026-02-16T14:51:25.084466-08:00
@@ -32,3 +32,9 @@ Alternatively, document this as intentional behavior (drafts are preserved for r
 
 
 
+
+## Notes
+
+**2026-02-23T05:28:02Z**
+
+Won't fix: draft files are intentionally preserved after compilation for reference. Coexistence of draft-* and compiled artifacts is by design.
