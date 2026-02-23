@@ -232,7 +232,7 @@ class TestBuildTurnPrompt:
             other_response="",
         )
         assert "start of the conversation" in prompt
-        assert "Turn 1 of 10" in prompt
+        assert "Turn 1/10" in prompt
 
     def test_includes_other_response(self, make_config):
         config = make_config(ensure_dirs=False, current_turn=2)
@@ -270,8 +270,7 @@ class TestBuildTurnPrompt:
             agent="a",
             other_response="response",
         )
-        assert "15%" in prompt
-        assert "Turn 3 of 20" in prompt
+        assert "Turn 3/20 (15%)" in prompt
 
     def test_turn_prompt_halfway_nudge(self, make_config):
         config = make_config(ensure_dirs=False, current_turn=9, max_turns=20)

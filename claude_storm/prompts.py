@@ -194,10 +194,17 @@ def _build_session_structure_section(config: SessionConfig) -> str:
     """Build the session structure section. Returns empty string if not applicable."""
     if not config.deliverables and not config.goal:
         return ""
-    structure_parts = [
-        f"\n# Session Structure\n"
-        f"This session has a budget of {config.max_turns} turns total."
-    ]
+    if config.max_turns is not None and config.max_minutes is not None:
+        budget_str = (
+            f"a budget of {config.max_turns} turns and {config.max_minutes} minutes"
+        )
+    elif config.max_turns is not None:
+        budget_str = f"a budget of {config.max_turns} turns"
+    elif config.max_minutes is not None:
+        budget_str = f"a time budget of {config.max_minutes} minutes"
+    else:
+        budget_str = "an open-ended budget"
+    structure_parts = [f"\n# Session Structure\nThis session has {budget_str} total."]
     if config.goal:
         structure_parts.append(f"\n**Session goal:** {config.goal}")
     if config.deliverables:
@@ -260,6 +267,7 @@ def build_turn_prompt(
     user_input: str | None = None,
     agreements_text: str = "",
     is_agent_first_turn: bool = True,
+    elapsed_s: float = 0.0,
 ) -> str:
     """Build the per-turn prompt for an agent.
 
@@ -272,6 +280,8 @@ def build_turn_prompt(
         is_agent_first_turn: Whether this is the agent's first turn.
             When False, DONE and interactive mode reminders are omitted
             (already in the system prompt).
+        elapsed_s: Elapsed session seconds (excluding interactive pauses),
+            used for time-based pacing when max_minutes is set.
 
     Returns:
         The per-turn prompt string.
@@ -303,6 +313,8 @@ def build_turn_prompt(
     pacing = format_pacing_block(
         turn=turn_number,
         max_turns=config.max_turns,
+        elapsed_s=elapsed_s,
+        max_minutes=config.max_minutes,
         deliverables=config.deliverables or None,
         session_id=config.session_id,
         interactive=config.interactive,

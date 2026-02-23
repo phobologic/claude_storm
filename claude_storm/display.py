@@ -189,6 +189,14 @@ class DisplayProtocol(Protocol):
         """
         ...
 
+    def update_progress(
+        self,
+        turn: int,
+        max_turns: int | None,
+        elapsed_s: float,
+        max_minutes: int | None,
+    ) -> None: ...
+
     def thinking_status(
         self, label: str, timeout: int = 600, **kwargs: object
     ) -> object: ...
@@ -214,7 +222,9 @@ class PlainDisplay:
             self.console.print(f"Deliverables: {', '.join(config.deliverables)}")
         agents = f"{config.agent_label('a')} vs {config.agent_label('b')}"
         self.console.print(f"Agents: {agents}")
-        mode_parts = [f"max {config.max_turns} turns"]
+        mode_parts = []
+        if config.max_turns is not None:
+            mode_parts.append(f"max {config.max_turns} turns")
         if config.max_minutes:
             mode_parts.append(f"max {config.max_minutes} min")
         if config.auto_complete:
@@ -233,9 +243,20 @@ class PlainDisplay:
         turn = config.current_turn + 1
         style = AGENT_STYLES.get(agent, AGENT_STYLES["a"])
         color = style["border"]
-        self.console.print(
-            f"\n[{color}]── Turn {turn}/{config.max_turns} · {label} ──[/{color}]"
-        )
+        if config.max_turns is not None:
+            turn_str = f"Turn {turn}/{config.max_turns}"
+        else:
+            turn_str = f"Turn {turn}"
+        self.console.print(f"\n[{color}]── {turn_str} · {label} ──[/{color}]")
+
+    def update_progress(
+        self,
+        turn: int,
+        max_turns: int | None,
+        elapsed_s: float,
+        max_minutes: int | None,
+    ) -> None:
+        """No-op for plain display (progress shown via show_turn_start)."""
 
     def show_status(self, message: str) -> None:
         """Display a status message."""
@@ -462,9 +483,11 @@ class TextualDisplay:
         turn = config.current_turn + 1
         style = AGENT_STYLES.get(agent, AGENT_STYLES["a"])
         color = style["border"]
-        self._show(
-            Text(f"\n── Turn {turn}/{config.max_turns} · {label} ──", style=color)
-        )
+        if config.max_turns is not None:
+            turn_str = f"Turn {turn}/{config.max_turns}"
+        else:
+            turn_str = f"Turn {turn}"
+        self._show(Text(f"\n── {turn_str} · {label} ──", style=color))
 
     def show_status(self, message: str) -> None:
         self._show(Text(message, style="dim"))
@@ -522,6 +545,18 @@ class TextualDisplay:
         text = _format_turn_stats(cost_usd, duration_ms, usage)
         if text:
             self._show(Text(text, style="dim"))
+
+    def update_progress(
+        self,
+        turn: int,
+        max_turns: int | None,
+        elapsed_s: float,
+        max_minutes: int | None,
+    ) -> None:
+        """Post an UpdateProgress message to the TUI."""
+        from claude_storm.messages import UpdateProgress
+
+        self._post(UpdateProgress(turn, max_turns, elapsed_s, max_minutes))
 
     def prompt_user(self, question: str) -> str:
         from claude_storm.messages import RequestUserInput

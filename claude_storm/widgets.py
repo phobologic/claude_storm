@@ -214,7 +214,7 @@ class SelectableRichLog(RichLog):
 
 
 class ThinkingBar(Widget):
-    """Animated timer bar shown while an agent is thinking."""
+    """Animated timer bar shown while an agent is thinking or waiting."""
 
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
@@ -222,15 +222,53 @@ class ThinkingBar(Widget):
         self._start_time = 0.0
         self._active = False
         self._timeout = 300
+        # Progress info for idle display
+        self._progress_turn: int = 0
+        self._progress_max_turns: int | None = None
+        self._progress_elapsed_s: float = 0.0
+        self._progress_max_minutes: int | None = None
+        self._progress_received_at: float = 0.0
 
     def on_mount(self) -> None:
-        self.update_timer = self.set_interval(1.0, self._tick, pause=True)
+        self.update_timer = self.set_interval(1.0, self._tick)
 
     def render(self) -> str:
-        if not self._active:
-            return ""
-        elapsed = int(time.monotonic() - self._start_time)
-        return f"  [bold]{self._label}... ({elapsed}s / {self._timeout}s)[/bold]"
+        progress_prefix = ""
+        if self._progress_received_at > 0:
+            live_elapsed_s = self._progress_elapsed_s + (
+                time.monotonic() - self._progress_received_at
+            )
+            progress_parts: list[str] = []
+            if self._progress_max_turns is not None:
+                turn_pct = min(
+                    100,
+                    int((self._progress_turn / self._progress_max_turns) * 100),
+                )
+                progress_parts.append(
+                    f"Turn {self._progress_turn}/"
+                    f"{self._progress_max_turns} ({turn_pct}%)"
+                )
+            if self._progress_max_minutes is not None:
+                live_min = int(live_elapsed_s / 60)
+                time_pct = min(
+                    100,
+                    int((live_elapsed_s / 60 / self._progress_max_minutes) * 100),
+                )
+                progress_parts.append(
+                    f"Time {live_min}/{self._progress_max_minutes} min ({time_pct}%)"
+                )
+            if progress_parts:
+                progress_prefix = f"[dim]{' | '.join(progress_parts)}[/dim]  "
+
+        if self._active:
+            elapsed = int(time.monotonic() - self._start_time)
+            return (
+                f"  {progress_prefix}"
+                f"[bold]{self._label}... ({elapsed}s / {self._timeout}s)[/bold]"
+            )
+        if progress_prefix:
+            return f"  {progress_prefix}[dim]Waiting...[/dim]"
+        return ""
 
     @property
     def label(self) -> str:
@@ -250,7 +288,6 @@ class ThinkingBar(Widget):
         self._timeout = timeout
         self._start_time = time.monotonic()
         self._active = True
-        self.update_timer.resume()
         self.refresh(layout=True)
 
     def stop(self) -> int:
@@ -258,7 +295,6 @@ class ThinkingBar(Widget):
         if not self._active:
             return 0
         self._active = False
-        self.update_timer.pause()
         elapsed = int(time.monotonic() - self._start_time)
         self.refresh()
         return elapsed
@@ -270,9 +306,24 @@ class ThinkingBar(Widget):
         self._label = label
         self.refresh()
 
-    def _tick(self) -> None:
-        if self._active:
+    def update_progress(
+        self,
+        turn: int,
+        max_turns: int | None,
+        elapsed_s: float,
+        max_minutes: int | None,
+    ) -> None:
+        """Store progress info for display in the idle state."""
+        self._progress_turn = turn
+        self._progress_max_turns = max_turns
+        self._progress_elapsed_s = elapsed_s
+        self._progress_max_minutes = max_minutes
+        self._progress_received_at = time.monotonic()
+        if not self._active:
             self.refresh()
+
+    def _tick(self) -> None:
+        self.refresh()
 
 
 class GrowingTextArea(TextArea):

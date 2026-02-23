@@ -98,6 +98,21 @@ class TestSessionConfig:
         assert config.status == "active"
         assert config.started_at
 
+    def test_create_defaults_to_20_turns_when_neither_limit_set(self):
+        config = SessionConfig.create(topic="Test")
+        assert config.max_turns == 20
+        assert config.max_minutes is None
+
+    def test_create_no_turn_cap_when_max_minutes_set(self):
+        config = SessionConfig.create(topic="Test", max_minutes=30)
+        assert config.max_turns is None
+        assert config.max_minutes == 30
+
+    def test_create_both_limits_when_both_set(self):
+        config = SessionConfig.create(topic="Test", max_turns=15, max_minutes=30)
+        assert config.max_turns == 15
+        assert config.max_minutes == 30
+
     def test_create_with_options(self):
         config = SessionConfig.create(
             topic="Design an API",

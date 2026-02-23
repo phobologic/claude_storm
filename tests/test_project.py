@@ -95,8 +95,7 @@ class TestScaffoldConfig:
 class TestFormatPacingBlock:
     def test_format_pacing_block_early(self):
         block = format_pacing_block(turn=3, max_turns=20)
-        assert "Turn 3 of 20" in block
-        assert "15%" in block
+        assert "Turn 3/20 (15%)" in block
         assert "Continue the brainstorm" in block
         assert "halfway" not in block
         assert "75%" not in block
@@ -104,8 +103,7 @@ class TestFormatPacingBlock:
 
     def test_format_pacing_block_halfway(self):
         block = format_pacing_block(turn=10, max_turns=20)
-        assert "Turn 10 of 20" in block
-        assert "50%" in block
+        assert "Turn 10/20 (50%)" in block
         assert "halfway" in block
         assert "[ARTIFACT]" in block
         assert "draft" in block.lower()
@@ -122,6 +120,11 @@ class TestFormatPacingBlock:
 
     def test_format_pacing_block_last_turn(self):
         block = format_pacing_block(turn=20, max_turns=20)
+        assert "final turns" in block
+
+    def test_format_pacing_block_90pct_is_final(self):
+        # 18/20 = 90% >= FINAL_PCT threshold
+        block = format_pacing_block(turn=18, max_turns=20)
         assert "final turns" in block
 
     def test_format_pacing_with_deliverables(self):
@@ -150,6 +153,30 @@ class TestFormatPacingBlock:
         block = format_pacing_block(turn=19, max_turns=20)
         assert "final turns" in block
         assert "[ARTIFACT" not in block
+
+    def test_format_pacing_block_time_only(self):
+        block = format_pacing_block(
+            turn=5, max_turns=None, elapsed_s=15 * 60, max_minutes=30
+        )
+        assert "Time 15/30 min (50%)" in block
+        assert "Turn" not in block
+        assert "halfway" in block
+
+    def test_format_pacing_block_both_constraints(self):
+        block = format_pacing_block(
+            turn=3, max_turns=20, elapsed_s=10 * 60, max_minutes=20
+        )
+        assert "Turn 3/20 (15%)" in block
+        assert "Time 10/20 min (50%)" in block
+        # effective_pct = max(15, 50) = 50 → halfway
+        assert "halfway" in block
+
+    def test_format_pacing_block_time_drives_final(self):
+        # Turn 2/20 (10%) but time 28/30 min (93%) → effective = 93% → final
+        block = format_pacing_block(
+            turn=2, max_turns=20, elapsed_s=28 * 60, max_minutes=30
+        )
+        assert "final turns" in block
 
 
 class TestMigrateConfig:

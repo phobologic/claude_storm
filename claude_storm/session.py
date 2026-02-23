@@ -91,12 +91,21 @@ def _run_turn(
     display: DisplayProtocol,
     user_input: str | None = None,
     nudge_queue: deque[str] | None = None,
+    elapsed_s: float = 0.0,
 ) -> tuple[AgentResponse, ParsedDirectives, str, str | None]:
     """Execute a single agent turn.
 
     Returns:
         Tuple of (AgentResponse, ParsedDirectives, turn_prompt, system_prompt).
     """
+    # Emit progress update so the TUI can show turn/time info while waiting.
+    display.update_progress(
+        config.current_turn + 1,
+        config.max_turns,
+        elapsed_s,
+        config.max_minutes,
+    )
+
     # Determine if this is the first turn for this agent
     is_first = (agent == "a" and config.current_turn == 0) or (
         agent == "b" and config.current_turn == 1
@@ -126,6 +135,7 @@ def _run_turn(
         user_input=merged_input,
         agreements_text=agreements_text,
         is_agent_first_turn=is_first,
+        elapsed_s=elapsed_s,
     )
     system_prompt = build_system_prompt(config, agent) if is_first else None
 
@@ -347,12 +357,18 @@ def process_directives(
     return user_input
 
 
-def check_stop(config: SessionConfig, start_time: float) -> str | None:
+def check_stop(
+    config: SessionConfig,
+    start_time: float,
+    pause_seconds: float = 0.0,
+) -> str | None:
     """Check if the session should stop.
 
     Args:
         config: The session configuration.
         start_time: Session start timestamp (from time.time()).
+        pause_seconds: Accumulated interactive pause time to exclude from
+            elapsed time when evaluating the max_minutes limit.
 
     Returns:
         Reason string if stopping, None to continue.
@@ -361,11 +377,11 @@ def check_stop(config: SessionConfig, start_time: float) -> str | None:
     if _shutdown_requested:
         return "interrupted"
 
-    if config.current_turn >= config.max_turns:
+    if config.max_turns is not None and config.current_turn >= config.max_turns:
         return "max_turns"
 
     if config.max_minutes:
-        elapsed = (time.time() - start_time) / 60
+        elapsed = (time.time() - start_time - pause_seconds) / 60
         if elapsed >= config.max_minutes:
             return "max_minutes"
 
@@ -405,6 +421,7 @@ def run_session(
         display.show_input_hint()
 
     start_time = time.time()
+    _interactive_pause_s: float = 0.0
     other_response = ""
     current_agent = "a"
     user_input: str | None = None
@@ -412,7 +429,7 @@ def run_session(
 
     try:
         while True:
-            stop_reason = check_stop(config, start_time)
+            stop_reason = check_stop(config, start_time, _interactive_pause_s)
             if stop_reason:
                 config.stop_reason = stop_reason
                 if stop_reason == "interrupted":
@@ -430,6 +447,7 @@ def run_session(
             if pending:
                 user_input = f"{user_input}\n\n{pending}" if user_input else pending
 
+            elapsed_s = time.time() - start_time - _interactive_pause_s
             response, directives, _, _ = _run_turn(
                 config=config,
                 agent=current_agent,
@@ -437,6 +455,7 @@ def run_session(
                 display=display,
                 user_input=user_input,
                 nudge_queue=nudge_queue,
+                elapsed_s=elapsed_s,
             )
 
             if response.is_error:
@@ -452,8 +471,11 @@ def run_session(
             # which may block on ASK_USER prompts and get interrupted.
             _append_conversation(config, current_agent, directives.clean_text)
 
-            # Process directives
+            # Process directives — track time spent waiting for user input so
+            # that interactive pauses don't count against the session clock.
+            _pause_start = time.time()
             user_input = process_directives(config, current_agent, directives, display)
+            _interactive_pause_s += time.time() - _pause_start
 
             # If this agent asked a question and got an answer, store it so
             # the asking agent also sees the answer on its next turn.
@@ -475,7 +497,7 @@ def run_session(
             config.save()
 
             # Check stop after processing (for done signals)
-            stop_reason = check_stop(config, start_time)
+            stop_reason = check_stop(config, start_time, _interactive_pause_s)
             if stop_reason:
                 config.stop_reason = stop_reason
                 if stop_reason == "interrupted":

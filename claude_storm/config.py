@@ -117,7 +117,7 @@ class SessionConfig:
     role_b: str | None = None
     claude_session_a: str = ""
     claude_session_b: str = ""
-    max_turns: int = 20
+    max_turns: int | None = None
     max_minutes: int | None = None
     auto_complete: bool = False
     interactive: bool = False
@@ -172,7 +172,7 @@ class SessionConfig:
         goal: str = "",
         role_a: str | None = None,
         role_b: str | None = None,
-        max_turns: int = 20,
+        max_turns: int | None = None,
         max_minutes: int | None = None,
         auto_complete: bool = False,
         interactive: bool = False,
@@ -185,6 +185,8 @@ class SessionConfig:
         storms_dir: str = "",
     ) -> SessionConfig:
         """Create a new session config with generated IDs."""
+        if max_turns is None and max_minutes is None:
+            max_turns = 20
         return cls(
             session_id=uuid4().hex[:12],
             topic=topic,

@@ -10,7 +10,7 @@ STORM_CONFIG_FILENAME = "storm.toml"
 STORMS_DIR_NAME = ".storms"
 
 # Pacing thresholds (percentage-based)
-FINAL_TURN_THRESHOLD = 2
+FINAL_PCT = 90
 HIGH_PROGRESS_PCT = 75
 MID_PROGRESS_PCT = 50
 EARLY_PHASE_PCT = 20
@@ -232,7 +232,9 @@ def _default_message() -> str:
 
 def format_pacing_block(
     turn: int,
-    max_turns: int,
+    max_turns: int | None,
+    elapsed_s: float = 0.0,
+    max_minutes: int | None = None,
     deliverables: list[str] | None = None,
     session_id: str | None = None,
     interactive: bool = False,
@@ -243,7 +245,9 @@ def format_pacing_block(
 
     Args:
         turn: Current turn number (1-based).
-        max_turns: Total turn budget.
+        max_turns: Total turn budget, or None when only time-limited.
+        elapsed_s: Elapsed wall-clock seconds (excluding interactive pauses).
+        max_minutes: Time budget in minutes, or None when only turn-limited.
         deliverables: Optional list of expected deliverables.
         session_id: Optional session identifier to display.
         interactive: Whether the session is in interactive mode.
@@ -254,21 +258,35 @@ def format_pacing_block(
     Returns:
         Formatted pacing block string.
     """
-    pct = int((turn / max_turns) * 100)
-    remaining = max_turns - turn
+    turn_pct = int((turn / max_turns) * 100) if max_turns else None
+    time_pct = int((elapsed_s / 60 / max_minutes) * 100) if max_minutes else None
+
+    active_pcts = [p for p in [turn_pct, time_pct] if p is not None]
+    effective_pct = min(max(active_pcts), 100) if active_pcts else 0
+
+    # Build progress header line
+    progress_parts: list[str] = []
+    if max_turns is not None:
+        progress_parts.append(f"Turn {turn}/{max_turns} ({turn_pct}%)")
+    if max_minutes is not None:
+        elapsed_min = int(elapsed_s / 60)
+        progress_parts.append(
+            f"Time {elapsed_min}/{max_minutes} min ({min(time_pct, 100)}%)"
+        )
+    progress_str = " | ".join(progress_parts) if progress_parts else f"Turn {turn}"
 
     if session_id:
-        parts = [f"## Session {session_id} — Turn {turn} of {max_turns} ({pct}%)"]
+        parts = [f"## Session {session_id} — {progress_str}"]
     else:
-        parts = [f"## Turn {turn} of {max_turns} ({pct}%)"]
+        parts = [f"## {progress_str}"]
 
-    if remaining < FINAL_TURN_THRESHOLD:
+    if effective_pct >= FINAL_PCT:
         parts.append(_final_turn_message(goal, deliverables))
-    elif pct >= HIGH_PROGRESS_PCT:
+    elif effective_pct >= HIGH_PROGRESS_PCT:
         parts.append(_high_progress_message(goal))
-    elif pct >= MID_PROGRESS_PCT:
+    elif effective_pct >= MID_PROGRESS_PCT:
         parts.append(_mid_progress_message(goal))
-    elif pct <= EARLY_PHASE_PCT and interactive:
+    elif effective_pct <= EARLY_PHASE_PCT and interactive:
         parts.append(_early_phase_message())
     else:
         parts.append(_default_message())

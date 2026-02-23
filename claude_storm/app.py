@@ -20,6 +20,7 @@ from claude_storm.messages import (
     StreamDelta,
     StreamEnd,
     StreamStart,
+    UpdateProgress,
     UpdateThinking,
     UpdateThinkingLabel,
 )
@@ -83,7 +84,9 @@ class StormApp(App):
     def on_mount(self) -> None:
         """Set up header and start the session worker."""
         header = self.query_one("#header-bar", Static)
-        mode_parts = [f"max {self.config.max_turns} turns"]
+        mode_parts = []
+        if self.config.max_turns is not None:
+            mode_parts.append(f"max {self.config.max_turns} turns")
         if self.config.max_minutes:
             mode_parts.append(f"max {self.config.max_minutes} min")
         if self.config.auto_complete:
@@ -142,6 +145,15 @@ class StormApp(App):
     def on_update_thinking_label(self, message: UpdateThinkingLabel) -> None:
         bar = self.query_one(ThinkingBar)
         bar.update_label(message.label)
+
+    def on_update_progress(self, message: UpdateProgress) -> None:
+        bar = self.query_one(ThinkingBar)
+        bar.update_progress(
+            message.turn,
+            message.max_turns,
+            message.elapsed_s,
+            message.max_minutes,
+        )
 
     def on_selectable_rich_log_following_changed(
         self, message: SelectableRichLog.FollowingChanged

@@ -88,3 +88,20 @@ class SessionComplete(Message):
     def __init__(self, error: str | None = None) -> None:
         super().__init__()
         self.error = error
+
+
+class UpdateProgress(Message):
+    """Worker reports current turn/time progress to the TUI."""
+
+    def __init__(
+        self,
+        turn: int,
+        max_turns: int | None,
+        elapsed_s: float,
+        max_minutes: int | None,
+    ) -> None:
+        super().__init__()
+        self.turn = turn
+        self.max_turns = max_turns
+        self.elapsed_s = elapsed_s
+        self.max_minutes = max_minutes
