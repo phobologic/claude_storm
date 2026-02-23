@@ -1,6 +1,6 @@
 ---
 id: cs-ktdo
-status: open
+status: closed
 deps: []
 links: [cs-91g8, cs-0zmc]
 created: 2026-02-23T02:37:24Z

@@ -56,6 +56,9 @@ class SelectableRichLog(RichLog):
             old: Previous scroll_y value.
             new: New scroll_y value.
         """
+        # super().watch_scroll_y drives Textual's scrollbar position update and
+        # must be called first. It relies on a RichLog internal (not public API);
+        # audit this call when upgrading Textual.
         super().watch_scroll_y(old, new)
         if not self._user_scrolling:
             return
@@ -69,6 +72,8 @@ class SelectableRichLog(RichLog):
 
     def scroll_to_bottom(self) -> None:
         """Jump to the bottom and re-engage scroll-lock."""
+        # Set following=True eagerly so the scroll indicator hides immediately;
+        # watch_scroll_y will also set it True once scroll_end resolves (benign double-fire).
         self.following = True
         self.scroll_end(animate=False)
 

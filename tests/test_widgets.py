@@ -198,6 +198,21 @@ class TestScrollLock:
             log.on_mouse_scroll_down(_make_mouse_event(MouseScrollDown, log))
             assert log._user_scrolling is True
 
+    @pytest.mark.asyncio
+    async def test_mouse_scroll_up_via_post_message_sets_user_scrolling_flag(self):
+        """Integration test: verifies scroll-up handler wiring via Textual's message pump.
+
+        Unlike the direct on_mouse_scroll_up() call above, this dispatches through
+        post_message so that Textual's event routing and handler lookup are exercised.
+        """
+        from textual.events import MouseScrollUp
+
+        async with SelectableRichLogApp().run_test(size=(80, 24)) as pilot:
+            log = pilot.app.query_one("#log", SelectableRichLog)
+            log.post_message(_make_mouse_event(MouseScrollUp, log))
+            await pilot.pause()
+            assert log._user_scrolling is True
+
     # ── watch_scroll_y guards on _user_scrolling flag ─────────────
 
     @pytest.mark.asyncio
