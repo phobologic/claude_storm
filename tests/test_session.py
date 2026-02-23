@@ -147,31 +147,6 @@ class TestRunSession:
         assert config.current_turn == 4
 
     # ------------------------------------------------------------------ #
-    # Directive processing — memory
-    # ------------------------------------------------------------------ #
-
-    @patch("claude_storm.session.generate_summary")
-    @patch("claude_storm.session.compile_deliverables")
-    @patch("claude_storm.session.invoke_agent")
-    def test_directive_memory_saved(self, mock_invoke, mock_compile, mock_summary):
-        """[MEMORY] in response → file created in agent-a/memory/."""
-        mock_invoke.side_effect = [
-            _make_response(
-                'Some text\n[MEMORY title="key-insight" tags="arch"]'
-                "This is important[/MEMORY]"
-            ),
-        ]
-        config = self.make_config(max_turns=1)
-
-        run_session(config, self.display)
-
-        memory_dir = config.session_dir() / "agent-a" / "memory"
-        memory_files = list(memory_dir.glob("*.md"))
-        assert len(memory_files) == 1
-        content = memory_files[0].read_text()
-        assert "This is important" in content
-
-    # ------------------------------------------------------------------ #
     # Watermark updates
     # ------------------------------------------------------------------ #
 

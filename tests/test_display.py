@@ -47,11 +47,6 @@ class TestDisplay:
         display.show_error("Something failed")
         assert "Something failed" in buf.getvalue()
 
-    def test_show_memory_save(self, capture_display):
-        display, buf = capture_display
-        display.show_memory_save("a", "API Design Notes")
-        assert "API Design Notes" in buf.getvalue()
-
     def test_show_artifact_save(self, capture_display):
         display, buf = capture_display
         display.show_artifact_save("api-spec.yaml")

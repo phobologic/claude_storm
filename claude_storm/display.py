@@ -130,7 +130,6 @@ class DisplayProtocol(Protocol):
     def show_status(self, message: str) -> None: ...
     def show_error(self, message: str) -> None: ...
     def show_warning(self, message: str) -> None: ...
-    def show_memory_save(self, agent: str, title: str) -> None: ...
     def show_artifact_save(self, filename: str) -> None: ...
     def show_done_signal(self, agent: str, reason: str) -> None: ...
     def show_done_disagreement(self, agent: str, other: str) -> None: ...
@@ -249,13 +248,6 @@ class PlainDisplay:
     def show_warning(self, message: str) -> None:
         """Display a warning message."""
         self.console.print(f"[bold yellow]Warning: {message}[/bold yellow]")
-
-    def show_memory_save(self, agent: str, title: str) -> None:
-        """Display a memory save notification."""
-        style = AGENT_STYLES.get(agent, AGENT_STYLES["a"])
-        self.console.print(
-            f'[{style["border"]}]  Saved memory: "{title}"[/{style["border"]}]'
-        )
 
     def show_artifact_save(self, filename: str) -> None:
         """Display an artifact save notification."""
@@ -482,10 +474,6 @@ class TextualDisplay:
 
     def show_warning(self, message: str) -> None:
         self._show(Text(f"Warning: {message}", style="bold yellow"))
-
-    def show_memory_save(self, agent: str, title: str) -> None:
-        style = AGENT_STYLES.get(agent, AGENT_STYLES["a"])
-        self._show(Text(f'  Saved memory: "{title}"', style=style["border"]))
 
     def show_artifact_save(self, filename: str) -> None:
         self._show(Text(f"  Saved artifact: {filename}", style="yellow"))

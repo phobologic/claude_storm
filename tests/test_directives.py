@@ -6,23 +6,6 @@ from claude_storm.directives import _parse_attrs, _remove_spans, parse_directive
 
 
 class TestParseDirectives:
-    def test_parse_memory(self):
-        text = (
-            'Some text [MEMORY title="API Design" tags="api,rest"]'
-            "Use REST[/MEMORY] more text"
-        )
-        result = parse_directives(text)
-        assert len(result.memories) == 1
-        assert result.memories[0] == ("API Design", ["api", "rest"], "Use REST")
-        assert "Some text" in result.clean_text
-        assert "more text" in result.clean_text
-        assert "[MEMORY" not in result.clean_text
-
-    def test_parse_memory_search(self):
-        text = 'Let me check [MEMORY_SEARCH query="auth approaches"]'
-        result = parse_directives(text)
-        assert result.memory_searches == ["auth approaches"]
-
     def test_parse_artifact(self):
         text = '[ARTIFACT filename="api.yaml"]openapi: 3.0\npaths: {}[/ARTIFACT]'
         result = parse_directives(text)
@@ -72,20 +55,10 @@ class TestParseDirectives:
     def test_no_directives(self):
         text = "Just a regular response with no special directives."
         result = parse_directives(text)
-        assert result.memories == []
-        assert result.memory_searches == []
         assert result.artifacts == []
         assert result.done is None
         assert result.ask_user is None
         assert result.clean_text == text
-
-    def test_multiple_memories(self):
-        text = (
-            '[MEMORY title="A" tags="x"]content A[/MEMORY] '
-            '[MEMORY title="B" tags="y"]content B[/MEMORY]'
-        )
-        result = parse_directives(text)
-        assert len(result.memories) == 2
 
     def test_parse_propose(self):
         text = (
@@ -150,13 +123,6 @@ class TestParseDirectives:
         assert result.artifacts[0][0] == "ch1.md"
         assert result.artifacts[0][1] == "Chapter text"
 
-    def test_memory_with_extra_attrs(self):
-        """Extra attributes on MEMORY should be silently ignored."""
-        text = '[MEMORY title="Note" tags="a,b" priority="high"]content[/MEMORY]'
-        result = parse_directives(text)
-        assert len(result.memories) == 1
-        assert result.memories[0] == ("Note", ["a", "b"], "content")
-
     def test_reject_with_extra_attrs(self):
         """Extra attributes on self-closing directives should be ignored."""
         text = '[REJECT id="x1" reason="Too slow" priority="high"]'
@@ -174,16 +140,13 @@ class TestParseDirectives:
         """Block and self-closing directives coexist in one response."""
         text = (
             "Here is my analysis.\n"
-            '[MEMORY title="Key Point" tags="design"]Important insight[/MEMORY]\n'
             '[ACCEPT id="prop1"]\n'
             '[ARTIFACT filename="out.md"]# Output[/ARTIFACT]'
         )
         result = parse_directives(text)
-        assert len(result.memories) == 1
         assert result.accepts == ["prop1"]
         assert len(result.artifacts) == 1
         assert "Here is my analysis." in result.clean_text
-        assert "[MEMORY" not in result.clean_text
         assert "[ACCEPT" not in result.clean_text
         assert "[ARTIFACT" not in result.clean_text
 

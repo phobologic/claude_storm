@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 # ---------------------------------------------------------------------------
 # Known tag names (alternation used by both block and self-closing patterns)
 # ---------------------------------------------------------------------------
-_TAGS = "MEMORY|MEMORY_SEARCH|ARTIFACT|DONE|ASK_USER|PROPOSE|ACCEPT|REJECT|REVISE"
+_TAGS = "ARTIFACT|DONE|ASK_USER|PROPOSE|ACCEPT|REJECT|REVISE"
 
 # ---------------------------------------------------------------------------
 # Generic compiled regex patterns
@@ -126,8 +126,6 @@ def _remove_spans(text: str, spans: list[tuple[int, int]]) -> str:
 class ParsedDirectives:
     """Typed container for parsed agent directives."""
 
-    memories: list[tuple[str, list[str], str]] = field(default_factory=list)
-    memory_searches: list[str] = field(default_factory=list)
     artifacts: list[tuple[str, str]] = field(default_factory=list)
     done: str | None = None
     ask_user: str | None = None
@@ -141,19 +139,6 @@ class ParsedDirectives:
 # ---------------------------------------------------------------------------
 # Handler functions — one per directive tag
 # ---------------------------------------------------------------------------
-def _handle_memory(directive: _RawDirective, result: ParsedDirectives) -> None:
-    title = directive.attrs.get("title", "")
-    raw_tags = directive.attrs.get("tags", "")
-    tags = [t.strip() for t in raw_tags.split(",") if t.strip()]
-    result.memories.append((title, tags, directive.body.strip()))
-
-
-def _handle_memory_search(directive: _RawDirective, result: ParsedDirectives) -> None:
-    query = directive.attrs.get("query", "")
-    if query:
-        result.memory_searches.append(query)
-
-
 def _handle_artifact(directive: _RawDirective, result: ParsedDirectives) -> None:
     filename = directive.attrs.get("filename", "")
     if filename:
@@ -195,8 +180,6 @@ def _handle_revise(directive: _RawDirective, result: ParsedDirectives) -> None:
 
 # Tag name -> handler mapping
 _HANDLERS: dict[str, object] = {
-    "MEMORY": _handle_memory,
-    "MEMORY_SEARCH": _handle_memory_search,
     "ARTIFACT": _handle_artifact,
     "DONE": _handle_done,
     "ASK_USER": _handle_ask_user,

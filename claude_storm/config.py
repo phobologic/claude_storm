@@ -385,11 +385,10 @@ class SessionConfig:
             agent: Which agent ('a' or 'b').
 
         Returns:
-            Dict with memory_count, agreement_count, seen_proposal_ids,
+            Dict with agreement_count, seen_proposal_ids,
             and last_turn.
         """
         defaults = {
-            "memory_count": 0,
             "agreement_count": 0,
             "seen_proposal_ids": [],
             "last_turn": -1,
@@ -425,7 +424,6 @@ class SessionConfig:
     def update_watermark(
         self,
         agent: str,
-        memory_count: int,
         usage: dict | None = None,
         cost_usd: float | None = None,
         compacted: bool = False,
@@ -434,7 +432,6 @@ class SessionConfig:
 
         Args:
             agent: Which agent ('a' or 'b').
-            memory_count: Number of memories the agent currently has.
             usage: Token usage dict from the CLI result event.
             cost_usd: Cost in USD for this turn.
             compacted: Whether compaction occurred this turn.
@@ -447,7 +444,6 @@ class SessionConfig:
             wm["total_cost_usd"] += cost_usd
         if compacted:
             wm["compaction_count"] += 1
-        wm["memory_count"] = memory_count
         wm["agreement_count"] = len(self.accepted_agreements)
         wm["seen_proposal_ids"] = [p["id"] for p in self.pending_proposals]
         wm["last_turn"] = self.current_turn

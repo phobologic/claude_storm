@@ -67,16 +67,6 @@ def _build_directives_section(config: SessionConfig) -> str:
     text = (
         "\n# Directives\n"
         "You may use these special directives in your responses:\n\n"
-        "## Private Tools\n"
-        '- `[MEMORY title="..." tags="t1,t2"]content[/MEMORY]`'
-        " — Save a note to your **private** long-term memory "
-        "(only visible to you). Use this for your own working "
-        "notes, open questions, and ideas you're still "
-        "developing.\n"
-        '- `[MEMORY_SEARCH query="..."]` — Request a search '
-        "of your saved memories. Results will appear in your "
-        "next turn.\n\n"
-        "## Shared Output\n"
         '- `[PROPOSE title="..."]content[/PROPOSE]` — Propose '
         "a shared agreement for the other agent to confirm or "
         "reject. **Make bold, specific proposals — take a "
@@ -138,10 +128,8 @@ def _build_guidelines_section(config: SessionConfig) -> str:
         "- Keep responses focused and actionable\n"
         "- Produce concrete artifacts when appropriate\n\n"
         "## Debate and Proposals\n"
-        "- Use [MEMORY] for your private working notes — things you want to track "
-        "but that don't need the other agent's sign-off.\n"
-        "- Prefer [PROPOSE] over [MEMORY] for anything that should be a session "
-        "conclusion, recommendation, or decision. Proposals are the **only** way to "
+        "- Use [PROPOSE] for session conclusions, recommendations, and decisions. "
+        "Proposals are the **only** way to "
         "create shared, confirmed output that both agents endorse.\n"
         "- Propose early and with conviction. A proposal that gets "
         "rejected sharpens the discussion and is more valuable than vague agreement.\n"
@@ -269,9 +257,6 @@ def build_turn_prompt(
     config: SessionConfig,
     agent: str,
     other_response: str,
-    memory_index: str,
-    recent_memories: str,
-    search_results: str | None = None,
     user_input: str | None = None,
     agreements_text: str = "",
     is_agent_first_turn: bool = True,
@@ -282,9 +267,6 @@ def build_turn_prompt(
         config: The session configuration.
         agent: Which agent ('a' or 'b').
         other_response: The other agent's last message.
-        memory_index: Formatted memory index string.
-        recent_memories: Formatted recent memories string.
-        search_results: Formatted search results, if any.
         user_input: User input in response to ASK_USER, if any.
         agreements_text: Formatted shared agreements text.
         is_agent_first_turn: Whether this is the agent's first turn.
@@ -304,17 +286,6 @@ def build_turn_prompt(
         sections.append("This is the start of the conversation. You go first.")
     else:
         sections.append(other_response or "(no response)")
-
-    # Memory index
-    sections.append(f"\n# Your Memory Index\n{memory_index}")
-
-    # Recent memories
-    if recent_memories:
-        sections.append(f"\n# Recent Memories\n{recent_memories}")
-
-    # Search results
-    if search_results:
-        sections.append(f"\n# Search Results\n{search_results}")
 
     # User input
     if user_input:
@@ -437,7 +408,6 @@ _TRUNCATION_THRESHOLD = 50_000
 def build_deliverable_prompt(
     config: SessionConfig,
     deliverable_name: str,
-    memories_text: str,
     conversation_text: str,
     agreements_text: str = "",
     existing_artifacts: dict[str, str] | None = None,
@@ -447,7 +417,6 @@ def build_deliverable_prompt(
     Args:
         config: The session configuration.
         deliverable_name: Name of the deliverable to compile.
-        memories_text: Combined memory contents from both agents.
         conversation_text: The full conversation log.
         agreements_text: Formatted shared agreements text.
         existing_artifacts: Dict of filename→content for draft artifacts
@@ -488,9 +457,7 @@ def build_deliverable_prompt(
         f"{goal_line}"
         f"Please compile the following deliverable from the session materials:\n\n"
         f"**Deliverable:** {deliverable_name}\n\n"
-        f"{instruction}\n\n"
-        f"---\n\n"
-        f"## Agent Memories\n\n{memories_text}",
+        f"{instruction}",
     ]
 
     if agreements_text:

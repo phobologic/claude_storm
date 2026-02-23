@@ -32,13 +32,6 @@ from claude_storm.debug import (
 )
 from claude_storm.directives import ParsedDirectives, parse_directives
 from claude_storm.display import Display, DisplayProtocol
-from claude_storm.memory import (
-    format_memory_index,
-    format_recent_memories,
-    format_search_results,
-    get_memory_index,
-    save_memory,
-)
 from claude_storm.prompts import build_system_prompt, build_turn_prompt
 
 # Graceful shutdown flag
@@ -96,7 +89,6 @@ def _run_turn(
     agent: str,
     other_response: str,
     display: DisplayProtocol,
-    search_query: str | None = None,
     user_input: str | None = None,
     nudge_queue: deque[str] | None = None,
 ) -> tuple[AgentResponse, ParsedDirectives, str, str | None]:
@@ -105,8 +97,6 @@ def _run_turn(
     Returns:
         Tuple of (AgentResponse, ParsedDirectives, turn_prompt, system_prompt).
     """
-    agent_dir = config.session_dir() / f"agent-{agent}"
-
     # Determine if this is the first turn for this agent
     is_first = (agent == "a" and config.current_turn == 0) or (
         agent == "b" and config.current_turn == 1
@@ -114,14 +104,6 @@ def _run_turn(
 
     # Get watermark for differential prompts
     watermark = config.get_watermark(agent)
-    since_count = 0 if is_first else watermark["memory_count"]
-
-    # Build memory context
-    memory_index = format_memory_index(agent_dir, since_count=since_count)
-    recent_memories = format_recent_memories(agent_dir, since_count=since_count)
-    search_results = None
-    if search_query:
-        search_results = format_search_results(agent_dir, search_query)
 
     # Build agreements context
     agreements_text = format_agreements_for_prompt(
@@ -141,9 +123,6 @@ def _run_turn(
         config=config,
         agent=agent,
         other_response=other_response,
-        memory_index=memory_index,
-        recent_memories=recent_memories,
-        search_results=search_results,
         user_input=merged_input,
         agreements_text=agreements_text,
         is_agent_first_turn=is_first,
@@ -280,7 +259,7 @@ def process_directives(
     agent: str,
     directives: ParsedDirectives,
     display: DisplayProtocol,
-) -> tuple[str | None, str | None]:
+) -> str | None:
     """Process parsed directives from an agent response.
 
     Args:
@@ -290,20 +269,9 @@ def process_directives(
         display: The display manager.
 
     Returns:
-        Tuple of (search_query for next turn, user_input if collected).
+        user_input if collected via ASK_USER, else None.
     """
-    agent_dir = config.session_dir() / f"agent-{agent}"
-    search_query = None
     user_input = None
-
-    # Save memories
-    for title, tags, content in directives.memories:
-        save_memory(agent_dir, title, tags, content)
-        display.show_memory_save(agent, title)
-
-    # Queue memory searches
-    if directives.memory_searches:
-        search_query = directives.memory_searches[0]
 
     # Save artifacts (auto-prefix with draft- so agent drafts are
     # distinct from compiled finals written by compile_deliverables)
@@ -376,7 +344,7 @@ def process_directives(
         answer = display.prompt_user(directives.ask_user)
         user_input = f"Q: {directives.ask_user}\nA: {answer}"
 
-    return search_query, user_input
+    return user_input
 
 
 def check_stop(config: SessionConfig, start_time: float) -> str | None:
@@ -439,7 +407,6 @@ def run_session(
     start_time = time.time()
     other_response = ""
     current_agent = "a"
-    search_query: str | None = None
     user_input: str | None = None
     pending_answer_for: dict[str, str] = {}
 
@@ -468,7 +435,6 @@ def run_session(
                 agent=current_agent,
                 other_response=other_response,
                 display=display,
-                search_query=search_query,
                 user_input=user_input,
                 nudge_queue=nudge_queue,
             )
@@ -487,9 +453,7 @@ def run_session(
             _append_conversation(config, current_agent, directives.clean_text)
 
             # Process directives
-            search_query, user_input = process_directives(
-                config, current_agent, directives, display
-            )
+            user_input = process_directives(config, current_agent, directives, display)
 
             # If this agent asked a question and got an answer, store it so
             # the asking agent also sees the answer on its next turn.
@@ -497,12 +461,9 @@ def run_session(
                 pending_answer_for[current_agent] = user_input
 
             # Update watermark before advancing turn
-            agent_dir = config.session_dir() / f"agent-{current_agent}"
-            memory_count = len(get_memory_index(agent_dir))
             raw = response.raw
             config.update_watermark(
                 current_agent,
-                memory_count,
                 usage=response.usage,
                 cost_usd=(raw.get("total_cost_usd") if isinstance(raw, dict) else None),
                 compacted=response.compaction_summary is not None,

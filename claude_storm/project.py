@@ -221,13 +221,13 @@ def _early_phase_message() -> str:
         "Early exploration phase — this is the best time to use [ASK_USER] to "
         "confirm the user's intent, constraints, and preferences "
         "before the session narrows. "
-        "Continue brainstorming and save important ideas with [MEMORY]."
+        "Continue brainstorming."
     )
 
 
 def _default_message() -> str:
     """Build the default pacing message."""
-    return "Continue the brainstorm. Save important ideas with [MEMORY]."
+    return "Continue the brainstorm."
 
 
 def format_pacing_block(

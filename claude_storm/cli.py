@@ -327,7 +327,8 @@ def start(
         tui.run()
         if config.status == "paused":
             console.print(
-                f"\nSession paused. Resume with: [bold]storm resume {config.session_id}[/bold]"
+                f"\nSession paused. Resume with: "
+                f"[bold]storm resume {config.session_id}[/bold]"
             )
     else:
         display = Display()
@@ -384,7 +385,8 @@ def resume(
         tui.run()
         if config.status == "paused":
             console.print(
-                f"\nSession paused. Resume with: [bold]storm resume {config.session_id}[/bold]"
+                f"\nSession paused. Resume with: "
+                f"[bold]storm resume {config.session_id}[/bold]"
             )
     else:
         display = Display()

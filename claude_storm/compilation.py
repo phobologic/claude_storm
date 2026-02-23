@@ -82,20 +82,6 @@ def compile_deliverables(config: SessionConfig, display: DisplayProtocol) -> Non
     if not config.deliverables:
         return
 
-    # Gather all memory files from both agents
-    memories_parts: list[str] = []
-    for agent in ("a", "b"):
-        mem_dir = config.session_dir() / f"agent-{agent}" / "memory"
-        if mem_dir.exists():
-            for md_file in sorted(mem_dir.glob("*.md")):
-                label = config.agent_label(agent)
-                memories_parts.append(
-                    f"### {label}: {md_file.stem}\n\n{md_file.read_text()}"
-                )
-    memories_text = (
-        "\n\n---\n\n".join(memories_parts) if memories_parts else "(no memories)"
-    )
-
     # Read conversation log
     conv_path = config.session_dir() / "conversation.md"
     conversation_text = (
@@ -121,7 +107,6 @@ def compile_deliverables(config: SessionConfig, display: DisplayProtocol) -> Non
         prompt = build_deliverable_prompt(
             config=config,
             deliverable_name=deliverable,
-            memories_text=memories_text,
             conversation_text=conversation_text,
             agreements_text=agreements_text,
             existing_artifacts=existing_artifacts or None,
