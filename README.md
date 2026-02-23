@@ -166,10 +166,6 @@ storm show <session-id>            # includes why the session stopped
 
 Agents communicate via structured directives embedded in their responses.
 
-### Private Tools
-
-| Directive | Syntax | Description |
-|-----------|--------|-------------|
 ### Shared Output
 
 | Directive | Syntax | Description |
@@ -196,7 +192,7 @@ When deliverables or a goal are defined, agents receive pacing guidance based on
 
 **Agreement nudges:** After turn 3 with no agreements, agents are nudged to use `[PROPOSE]`. If 4+ turns pass since the last accepted agreement, agents get a reminder.
 
-**Deliverable compilation:** After the session ends, each deliverable is compiled by a separate Claude instance from agent memories, agreements, conversation log, and matching draft artifacts.
+**Deliverable compilation:** After the session ends, each deliverable is compiled by a separate Claude instance from the conversation log, agreements, and matching draft artifacts.
 
 ## Interactive Mode
 
