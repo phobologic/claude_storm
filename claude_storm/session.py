@@ -30,7 +30,11 @@ from claude_storm.debug import (
     write_debug_response,
     write_debug_summary,
 )
-from claude_storm.directives import ParsedDirectives, parse_directives
+from claude_storm.directives import (
+    ArtifactDirective,
+    ParsedDirectives,
+    parse_directives,
+)
 from claude_storm.display import Display, DisplayProtocol
 from claude_storm.prompts import build_system_prompt, build_turn_prompt
 
@@ -287,12 +291,12 @@ def process_directives(
     # distinct from compiled finals written by compile_deliverables)
     artifacts_dir = config.session_dir() / "artifacts"
     artifacts_dir.mkdir(parents=True, exist_ok=True)
-    for filename, content in directives.artifacts:
-        base = PurePosixPath(filename)
+    for artifact in directives.artifacts:
+        base = PurePosixPath(artifact.filename)
         draft_filename = (
             str(base.parent / f"{DRAFT_PREFIX}{base.name}")
             if not base.name.startswith(DRAFT_PREFIX)
-            else filename
+            else artifact.filename
         )
         artifact_path = (artifacts_dir / draft_filename).resolve()
         if not artifact_path.is_relative_to(artifacts_dir.resolve()):
@@ -302,7 +306,11 @@ def process_directives(
             continue
         if artifact_path.parent != artifacts_dir:
             artifact_path.parent.mkdir(parents=True, exist_ok=True)
-        artifact_path.write_text(content + "\n")
+        if artifact.action == "append" and artifact_path.exists():
+            with artifact_path.open("a") as f:
+                f.write(artifact.content + "\n")
+        else:
+            artifact_path.write_text(artifact.content + "\n")
         display.show_artifact_save(draft_filename)
 
     # Handle done signal (consensus mechanism)

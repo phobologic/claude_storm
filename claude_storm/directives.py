@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from typing import NamedTuple
 
 # ---------------------------------------------------------------------------
 # Known tag names (alternation used by both block and self-closing patterns)
@@ -35,6 +36,17 @@ _SELF_CLOSING_PATTERN = re.compile(
 # Example: ' filename="api.yaml" title="API Spec"'
 # -> {filename: api.yaml, title: API Spec}
 _ATTR_PATTERN = re.compile(r'([a-zA-Z_]+)="([^"]*)"')
+
+
+# ---------------------------------------------------------------------------
+# Public artifact container
+# ---------------------------------------------------------------------------
+class ArtifactDirective(NamedTuple):
+    """A parsed ARTIFACT directive with write-mode metadata."""
+
+    filename: str
+    content: str
+    action: str  # "overwrite" (default) or "append"
 
 
 # ---------------------------------------------------------------------------
@@ -126,7 +138,7 @@ def _remove_spans(text: str, spans: list[tuple[int, int]]) -> str:
 class ParsedDirectives:
     """Typed container for parsed agent directives."""
 
-    artifacts: list[tuple[str, str]] = field(default_factory=list)
+    artifacts: list[ArtifactDirective] = field(default_factory=list)
     done: str | None = None
     ask_user: str | None = None
     proposals: list[tuple[str, str]] = field(default_factory=list)
@@ -142,7 +154,12 @@ class ParsedDirectives:
 def _handle_artifact(directive: _RawDirective, result: ParsedDirectives) -> None:
     filename = directive.attrs.get("filename", "")
     if filename:
-        result.artifacts.append((filename, directive.body.strip()))
+        action = directive.attrs.get("action", "overwrite")
+        result.artifacts.append(
+            ArtifactDirective(
+                filename=filename, content=directive.body.strip(), action=action
+            )
+        )
 
 
 def _handle_done(directive: _RawDirective, result: ParsedDirectives) -> None:

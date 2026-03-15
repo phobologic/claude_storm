@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from claude_storm.directives import _parse_attrs, _remove_spans, parse_directives
+from claude_storm.directives import (
+    ArtifactDirective,
+    _parse_attrs,
+    _remove_spans,
+    parse_directives,
+)
 
 
 class TestParseDirectives:
@@ -10,8 +15,8 @@ class TestParseDirectives:
         text = '[ARTIFACT filename="api.yaml"]openapi: 3.0\npaths: {}[/ARTIFACT]'
         result = parse_directives(text)
         assert len(result.artifacts) == 1
-        assert result.artifacts[0][0] == "api.yaml"
-        assert "openapi: 3.0" in result.artifacts[0][1]
+        assert result.artifacts[0].filename == "api.yaml"
+        assert "openapi: 3.0" in result.artifacts[0].content
 
     def test_parse_done_with_reason(self):
         text = 'I think we covered everything\n[DONE reason="Topic well explored"]'
@@ -112,7 +117,8 @@ class TestParseDirectives:
         text = '[ARTIFACT title="Act 1" filename="act1.md"]Scene 1 content[/ARTIFACT]'
         result = parse_directives(text)
         assert len(result.artifacts) == 1
-        assert result.artifacts[0] == ("act1.md", "Scene 1 content")
+        assert result.artifacts[0].filename == "act1.md"
+        assert result.artifacts[0].content == "Scene 1 content"
         assert "[ARTIFACT" not in result.clean_text
 
     def test_artifact_attrs_reversed_order(self):
@@ -120,8 +126,8 @@ class TestParseDirectives:
         text = '[ARTIFACT filename="ch1.md" title="Chapter 1"]Chapter text[/ARTIFACT]'
         result = parse_directives(text)
         assert len(result.artifacts) == 1
-        assert result.artifacts[0][0] == "ch1.md"
-        assert result.artifacts[0][1] == "Chapter text"
+        assert result.artifacts[0].filename == "ch1.md"
+        assert result.artifacts[0].content == "Chapter text"
 
     def test_reject_with_extra_attrs(self):
         """Extra attributes on self-closing directives should be ignored."""
@@ -149,6 +155,35 @@ class TestParseDirectives:
         assert "Here is my analysis." in result.clean_text
         assert "[ACCEPT" not in result.clean_text
         assert "[ARTIFACT" not in result.clean_text
+
+
+class TestArtifactAction:
+    def test_default_action_is_overwrite(self):
+        text = '[ARTIFACT filename="out.md"]content[/ARTIFACT]'
+        result = parse_directives(text)
+        assert result.artifacts[0].action == "overwrite"
+
+    def test_action_append_parsed(self):
+        text = '[ARTIFACT filename="story.md" action="append"]next section[/ARTIFACT]'
+        result = parse_directives(text)
+        assert result.artifacts[0].filename == "story.md"
+        assert result.artifacts[0].content == "next section"
+        assert result.artifacts[0].action == "append"
+
+    def test_unknown_action_stored_as_is(self):
+        """Parser stores unknown action values; write layer is responsible for handling them."""
+        text = '[ARTIFACT filename="x.md" action="replace"]body[/ARTIFACT]'
+        result = parse_directives(text)
+        assert result.artifacts[0].action == "replace"
+
+    def test_artifact_directive_is_named_tuple(self):
+        text = '[ARTIFACT filename="f.md"]body[/ARTIFACT]'
+        result = parse_directives(text)
+        artifact = result.artifacts[0]
+        assert isinstance(artifact, ArtifactDirective)
+        assert artifact.filename == "f.md"
+        assert artifact.content == "body"
+        assert artifact.action == "overwrite"
 
 
 class TestParseAttrs:

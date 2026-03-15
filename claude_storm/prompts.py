@@ -66,7 +66,9 @@ def _build_directives_section(config: SessionConfig) -> str:
     """Build the directives section listing available agent commands."""
     text = (
         "\n# Directives\n"
-        "You may use these special directives in your responses:\n\n"
+        "You may use these special directives in your responses. "
+        "Only the attributes listed for each directive are recognized — "
+        "unrecognized attributes are silently ignored.\n\n"
         '- `[PROPOSE title="..."]content[/PROPOSE]` — Propose '
         "a shared agreement for the other agent to confirm or "
         "reject. **Make bold, specific proposals — take a "
@@ -96,8 +98,11 @@ def _build_directives_section(config: SessionConfig) -> str:
         "When used on a pending proposal, replaces it with your "
         "revised version for the other agent to review.\n"
         '- `[ARTIFACT filename="..."]content[/ARTIFACT]`'
-        " — Produce a shared output file "
-        "(code, document, etc.).\n"
+        " — Produce a shared output file (code, document, etc.). "
+        "Valid attributes: `filename` (required); "
+        '`action` (`"overwrite"` default — replaces the file, '
+        'or `"append"` — adds content to an existing file across turns). '
+        "No other attributes are recognized.\n"
         '- `[DONE reason="..."]` — Signal that you believe '
         "the brainstorming is complete and the topic is "
         "well-explored. The other agent will be asked to "

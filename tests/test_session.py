@@ -5,7 +5,9 @@ from unittest.mock import patch
 import pytest
 
 from claude_storm.agents import AgentResponse
-from claude_storm.session import run_session
+from claude_storm.directives import ArtifactDirective, ParsedDirectives
+from claude_storm.display import Display
+from claude_storm.session import process_directives, run_session
 
 
 def _make_response(
@@ -305,3 +307,56 @@ class TestRunSession:
         assert calls[0].kwargs["agent"] == "a"
         assert calls[1].kwargs["agent"] == "b"
         assert config.current_turn == 4
+
+
+class TestProcessDirectivesArtifacts:
+    """Unit tests for artifact write behavior in process_directives()."""
+
+    @pytest.fixture(autouse=True)
+    def setup(self, make_config, capture_display):
+        self.config = make_config()
+        self.display, self.buf = capture_display
+        self.artifacts_dir = self.config.session_dir() / "artifacts"
+
+    def _directives_with(self, *artifacts):
+        """Build a ParsedDirectives containing the given ArtifactDirective entries."""
+        d = ParsedDirectives()
+        d.artifacts = list(artifacts)
+        return d
+
+    def test_overwrite_default(self):
+        """Two writes with action='overwrite' — file contains only the second content."""
+        a = ArtifactDirective(filename="out.md", content="first", action="overwrite")
+        process_directives(self.config, "a", self._directives_with(a), self.display)
+        b = ArtifactDirective(filename="out.md", content="second", action="overwrite")
+        process_directives(self.config, "a", self._directives_with(b), self.display)
+
+        artifact_file = self.artifacts_dir / "draft-out.md"
+        assert artifact_file.read_text() == "second\n"
+
+    def test_append_to_existing(self):
+        """action='append' on an existing file adds content rather than replacing it."""
+        a = ArtifactDirective(
+            filename="story.md", content="chapter one", action="overwrite"
+        )
+        process_directives(self.config, "a", self._directives_with(a), self.display)
+        b = ArtifactDirective(
+            filename="story.md", content="chapter two", action="append"
+        )
+        process_directives(self.config, "a", self._directives_with(b), self.display)
+
+        artifact_file = self.artifacts_dir / "draft-story.md"
+        text = artifact_file.read_text()
+        assert "chapter one" in text
+        assert "chapter two" in text
+
+    def test_append_creates_on_first_write(self):
+        """action='append' on a non-existent file creates it (fallback to overwrite)."""
+        a = ArtifactDirective(
+            filename="new.md", content="only content", action="append"
+        )
+        process_directives(self.config, "a", self._directives_with(a), self.display)
+
+        artifact_file = self.artifacts_dir / "draft-new.md"
+        assert artifact_file.exists()
+        assert artifact_file.read_text() == "only content\n"

@@ -194,7 +194,7 @@ Agents communicate via structured directives embedded in their responses.
 | `[ACCEPT]` | `[ACCEPT id="..."]` | Accept a pending proposal by ID. |
 | `[REJECT]` | `[REJECT id="..." reason="..."]` | Reject a pending proposal with explanation. |
 | `[REVISE]` | `[REVISE id="..."]new content[/REVISE]` | Propose a revision to an existing confirmed agreement. Creates a new pending proposal. |
-| `[ARTIFACT]` | `[ARTIFACT filename="..."]content[/ARTIFACT]` | Produce a shared output file (code, document, etc.). |
+| `[ARTIFACT]` | `[ARTIFACT filename="..."]content[/ARTIFACT]` | Produce a shared output file (code, document, etc.). Optional `action="append"` adds content to an existing file across turns instead of replacing it. Only `filename` and `action` are recognized attributes. |
 | `[DONE]` | `[DONE reason="..."]` | Signal that brainstorming is complete. The other agent must confirm; if they disagree, conversation continues. |
 | `[ASK_USER]` | `[ASK_USER]question[/ASK_USER]` | Pause to ask the human user a question (interactive mode only). |
 
