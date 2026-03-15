@@ -122,6 +122,7 @@ class SessionConfig:
     auto_complete: bool = False
     interactive: bool = False
     debug: bool = False
+    web_search: bool = False
     model: str = "sonnet"
     current_turn: int = 0
     started_at: str = ""
@@ -177,6 +178,7 @@ class SessionConfig:
         auto_complete: bool = False,
         interactive: bool = False,
         debug: bool = False,
+        web_search: bool = False,
         model: str = "sonnet",
         deliverables: list[str] | None = None,
         reference_dirs: list[str] | None = None,
@@ -200,6 +202,7 @@ class SessionConfig:
             auto_complete=auto_complete,
             interactive=interactive,
             debug=debug,
+            web_search=web_search,
             model=model,
             started_at=datetime.now(UTC).isoformat(),
             status="active",

@@ -554,6 +554,19 @@ class TestBuildAllowedTools:
         # 6 total: 3 read tools * 2 dirs
         assert len(tools) == 6
 
+    def test_web_search_disabled_excludes_web_tools(self, make_config):
+        config = make_config()
+        assert config.web_search is False
+        tools = _build_allowed_tools(config)
+        assert "WebSearch" not in tools
+        assert "WebFetch" not in tools
+
+    def test_web_search_enabled_includes_web_tools(self, make_config):
+        config = make_config(web_search=True)
+        tools = _build_allowed_tools(config)
+        assert "WebSearch" in tools
+        assert "WebFetch" in tools
+
 
 class TestStreamResult:
     """_StreamResult NamedTuple behaves as expected."""

@@ -77,6 +77,8 @@ topic = """
 # truncate_conversation = true
 # Per-turn agent timeout in seconds (default: 600)
 # agent_timeout = 600
+# Allow agents to search and fetch web pages (default: false)
+# web_search = false
 '''
 
 
@@ -311,6 +313,7 @@ _KNOWN_KEYS: list[tuple[str, str, str]] = [
     ("interactive", "options", "# interactive = false"),
     ("truncate_conversation", "options", "# truncate_conversation = true"),
     ("agent_timeout", "options", "# agent_timeout = 600"),
+    ("web_search", "options", "# web_search = false"),
 ]
 
 

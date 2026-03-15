@@ -135,6 +135,10 @@ def _build_allowed_tools(config: SessionConfig, readonly: bool = False) -> list[
         tools.append(f"Write({session_pattern})")
         tools.append(f"Edit({session_pattern})")
 
+    if config.web_search:
+        tools.append("WebSearch")
+        tools.append("WebFetch")
+
     return tools
 
 

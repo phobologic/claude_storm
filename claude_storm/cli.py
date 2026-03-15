@@ -142,6 +142,7 @@ def _resolve_start_config(
     deliverable: list[str] | None,
     reference_dir: list[Path] | None,
     agent_timeout: int | None,
+    web_search: bool | None,
     debug: bool,
     console: Console,
 ) -> SessionConfig:
@@ -184,6 +185,7 @@ def _resolve_start_config(
         "reference_dirs": [],
         "truncate_conversation": True,
         "agent_timeout": 600,
+        "web_search": False,
     }
 
     # Layer 2: TOML config (if available)
@@ -218,6 +220,8 @@ def _resolve_start_config(
         merged["reference_dirs"] = [str(p) for p in reference_dir]
     if agent_timeout is not None:
         merged["agent_timeout"] = agent_timeout
+    if web_search is not None:
+        merged["web_search"] = web_search
 
     # Validate: each reference dir must exist
     try:
@@ -252,6 +256,7 @@ def _resolve_start_config(
         reference_dirs=merged["reference_dirs"],
         truncate_conversation=merged["truncate_conversation"],
         agent_timeout=merged["agent_timeout"],
+        web_search=merged["web_search"],
         storms_dir=storms_dir,
     )
 
@@ -300,6 +305,11 @@ def start(
         "--agent-timeout",
         help="Per-turn agent timeout in seconds (default: 600)",
     ),
+    web_search: bool | None = typer.Option(
+        None,
+        "--web-search/--no-web-search",
+        help="Allow agents to search and fetch web pages",
+    ),
 ) -> None:
     """Start a new brainstorming session."""
     console = Console()
@@ -316,6 +326,7 @@ def start(
         deliverable=deliverable,
         reference_dir=reference_dir,
         agent_timeout=agent_timeout,
+        web_search=web_search,
         debug=_debug_mode,
         console=console,
     )

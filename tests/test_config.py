@@ -198,6 +198,22 @@ class TestSessionConfig:
         loaded = SessionConfig.load(config.session_id, storms_dir=str(tmp_storms))
         assert loaded.debug is True
 
+    def test_web_search_default_false(self):
+        config = SessionConfig.create(topic="Test")
+        assert config.web_search is False
+
+    def test_web_search_enabled(self):
+        config = SessionConfig.create(topic="Test", web_search=True)
+        assert config.web_search is True
+
+    def test_web_search_serializes(self, tmp_storms):
+        config = SessionConfig.create(
+            topic="Web search test", web_search=True, storms_dir=str(tmp_storms)
+        )
+        config.save()
+        loaded = SessionConfig.load(config.session_id, storms_dir=str(tmp_storms))
+        assert loaded.web_search is True
+
     def test_create_with_deliverables(self, tmp_storms):
         config = SessionConfig.create(
             topic="Test",

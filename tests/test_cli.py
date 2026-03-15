@@ -300,6 +300,7 @@ def _resolve(console, **overrides):
         "deliverable": None,
         "reference_dir": None,
         "agent_timeout": None,
+        "web_search": None,
         "debug": False,
     }
     defaults.update(overrides)
@@ -353,3 +354,10 @@ class TestResolveStartConfig:
         console = Console()
         config = _resolve(console, topic="Debug test", debug=True)
         assert config.debug is True
+
+    def test_web_search_passed_through(self, tmp_path, monkeypatch):
+        """web_search flag is passed through to SessionConfig."""
+        monkeypatch.chdir(tmp_path)
+        console = Console()
+        config = _resolve(console, topic="Web test", web_search=True)
+        assert config.web_search is True
