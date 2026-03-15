@@ -164,6 +164,7 @@ def _resolve_start_config(
         deliverable: Expected output documents from CLI flag.
         reference_dir: Reference directory paths from CLI flag.
         agent_timeout: Per-turn timeout from CLI flag.
+        web_search: Whether to enable WebSearch/WebFetch for agents.
         debug: Whether debug mode is enabled.
         console: Rich console for error messages.
 

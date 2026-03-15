@@ -101,6 +101,7 @@ interactive = false
 # max_minutes = 30
 # agent_timeout = 600
 # truncate_conversation = true
+# web_search = false
 ```
 
 Sessions are stored in `.storms/` alongside `storm.toml` (add to `.gitignore`).
@@ -128,6 +129,7 @@ Sessions are stored in `.storms/` alongside `storm.toml` (add to `.gitignore`).
 | `interactive` | `false` | Enable user nudges and `[ASK_USER]` questions. |
 | `agent_timeout` | `600` | Per-turn timeout in seconds. Increase for complex topics where agents take longer to respond. |
 | `truncate_conversation` | `true` | Truncate conversation to last ~50k chars during deliverable compilation. |
+| `web_search` | `false` | Allow agents to use WebSearch and WebFetch tools. Off by default due to prompt injection risk from untrusted web content. |
 
 ## Usage
 
@@ -162,6 +164,9 @@ storm start --reference-dir ./research/notes --reference-dir ./design/specs
 # Interactive mode — type nudges at any time to steer the conversation;
 # agents can ask you questions via [ASK_USER]
 storm start --interactive
+
+# Enable web search (agents can use WebSearch + WebFetch)
+storm start --web-search
 
 # Enable verbose debug logging (agent prompts + raw responses written to debug.log)
 storm --debug start "your topic"
