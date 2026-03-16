@@ -317,6 +317,7 @@ def invoke_agent(
     session_id: str | None = None,
     readonly: bool = False,
     on_delta: Callable[[str], None] | None = None,
+    on_pid: Callable[[int], None] | None = None,
 ) -> AgentResponse:
     """Invoke a Claude CLI session for an agent.
 
@@ -335,6 +336,8 @@ def invoke_agent(
         readonly: When True, omit Write and Edit tools.
         on_delta: Optional callback invoked with each text delta chunk
             during streaming.
+        on_pid: Optional callback invoked with the subprocess PID immediately
+            after the process spawns, before streaming begins.
 
     Returns:
         AgentResponse with the agent's text response.
@@ -383,6 +386,9 @@ def invoke_agent(
             start_new_session=True,
         )
         proc = _active_process
+
+    if on_pid is not None:
+        on_pid(proc.pid)
 
     try:
         # Write prompt to stdin and close to signal EOF

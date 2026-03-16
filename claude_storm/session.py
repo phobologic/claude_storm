@@ -223,6 +223,7 @@ def _run_turn(
         system_prompt=system_prompt,
         timeout=config.agent_timeout,
         on_delta=display.show_agent_stream_delta,
+        on_pid=lambda pid: display.show_status(f"PID: {pid}"),
     )
     display.show_agent_stream_end(error=response.is_error, text=response.text)
 
