@@ -244,15 +244,33 @@ def _read_stream(
             if event is not None and event.get("type") == "result":
                 result_event = event
 
-            # Detect compaction events
-            if (
-                event is not None
-                and event.get("type") == "stream_event"
-                and event.get("event", {}).get("type") == "content_block_delta"
-                and event["event"].get("delta", {}).get("type") == "compaction_delta"
-            ):
-                delta_obj = event["event"]["delta"]
-                compaction_summary = delta_obj.get("summary", delta_obj.get("text", ""))
+            # Detect compaction events.
+            # Multiple compaction events per turn keep the last.
+            if event is not None:
+                try:
+                    if event.get("type") == "compact":
+                        # Client-side auto-compaction: Claude Code emits this top-level
+                        # event before streaming resumes.
+                        compaction_summary = (
+                            event.get("compactionResult", {}).get("userDisplayMessage")
+                            or event.get("displayText")
+                            or "auto-compacted"
+                        )
+                        _log.debug("Compact event detected: %s", compaction_summary)
+                    elif (
+                        event.get("type") == "stream_event"
+                        and event.get("event", {}).get("type") == "content_block_delta"
+                    ):
+                        # Server-side API compaction: compaction_delta inside stream_event
+                        inner = event["event"]
+                        delta_obj = inner.get("delta", {})
+                        if delta_obj.get("type") == "compaction_delta":
+                            compaction_summary = delta_obj.get(
+                                "content",
+                                delta_obj.get("summary", delta_obj.get("text", "")),
+                            )
+                except (KeyError, TypeError, AttributeError):
+                    _log.debug("Failed to parse compaction event", exc_info=True)
     finally:
         sel.unregister(proc.stdout)
         sel.close()

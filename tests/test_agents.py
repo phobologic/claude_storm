@@ -749,6 +749,77 @@ class TestCompactionDetection:
         sr = self._run_with_events(events)
         assert sr.compaction_summary == "fallback text"
 
+    def test_compaction_delta_content_field(self):
+        """compaction_delta using 'content' key (actual CLI format)."""
+        events = [
+            {
+                "type": "stream_event",
+                "event": {
+                    "type": "content_block_delta",
+                    "index": 0,
+                    "delta": {
+                        "type": "compaction_delta",
+                        "content": "summary text",
+                    },
+                },
+            },
+            {"type": "result", "subtype": "success", "result": "ok"},
+        ]
+        sr = self._run_with_events(events)
+        assert sr.compaction_summary == "summary text"
+
+    def test_compact_event_detected(self):
+        """Top-level compact event (client-side auto-compaction) is captured."""
+        events = [
+            {
+                "type": "compact",
+                "displayText": "Compacted (ctrl+o to see full summary)",
+                "compactionResult": {
+                    "userDisplayMessage": "Auto-compaction ran",
+                },
+            },
+            {"type": "result", "subtype": "success", "result": "response text"},
+        ]
+        sr = self._run_with_events(events)
+        assert sr.compaction_summary == "Auto-compaction ran"
+        assert sr.text == "response text"
+
+    def test_compact_event_fallback_to_display_text(self):
+        """Falls back to displayText when userDisplayMessage is absent."""
+        events = [
+            {"type": "compact", "displayText": "Compacted"},
+            {"type": "result", "subtype": "success", "result": "ok"},
+        ]
+        sr = self._run_with_events(events)
+        assert sr.compaction_summary == "Compacted"
+
+    def test_compact_event_fallback_generic(self):
+        """Falls back to 'auto-compacted' when no message fields present."""
+        events = [
+            {"type": "compact"},
+            {"type": "result", "subtype": "success", "result": "ok"},
+        ]
+        sr = self._run_with_events(events)
+        assert sr.compaction_summary == "auto-compacted"
+
+    def test_compact_event_does_not_pollute_text(self):
+        """Compact event text does not appear in response text."""
+        events = [
+            {"type": "compact", "displayText": "Compacted"},
+            {
+                "type": "stream_event",
+                "event": {
+                    "type": "content_block_delta",
+                    "index": 0,
+                    "delta": {"type": "text_delta", "text": "actual response"},
+                },
+            },
+            {"type": "result", "subtype": "success", "result": "actual response"},
+        ]
+        sr = self._run_with_events(events)
+        assert "Compacted" not in sr.text
+        assert sr.compaction_summary == "Compacted"
+
 
 class TestUsageExtraction:
     """Usage data is extracted from the result event."""
