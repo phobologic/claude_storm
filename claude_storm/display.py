@@ -82,6 +82,52 @@ def _format_turn_stats(
     return f"  {' · '.join(parts)}" if parts else None
 
 
+def _format_turn_prompt_stats(
+    system_prompt: str | None,
+    turn_prompt: str,
+    agreements_text: str,
+    config: SessionConfig,
+) -> str | None:
+    """Format pre-turn prompt size and session running totals into a display string.
+
+    Args:
+        system_prompt: System prompt text if this is the agent's first turn, else None.
+        turn_prompt: The full turn prompt being sent to the agent.
+        agreements_text: The agreements block injected into the turn prompt.
+        config: Session configuration (used for accepted agreements and watermarks).
+
+    Returns:
+        Formatted stats string with leading indent, or None if no data.
+    """
+    parts: list[str] = []
+
+    prompt_chars = len(system_prompt or "") + len(turn_prompt)
+    approx_tokens = prompt_chars // 4
+    label = f"~{approx_tokens:,} tok"
+    if system_prompt is not None:
+        label += " (sys+turn)"
+    parts.append(label)
+
+    agreement_count = len(config.accepted_agreements)
+    agreements_kb = len(agreements_text.encode()) / 1024
+    parts.append(f"Agreements: {agreement_count} ({agreements_kb:.1f} KB)")
+
+    totals = config.aggregate_watermarks()
+    session_cost = totals.get("total_cost_usd", 0.0)
+    session_tokens = int(
+        totals.get("total_input_tokens", 0) + totals.get("total_output_tokens", 0)
+    )
+    session_parts: list[str] = [f"Session: ${session_cost:.4f}"]
+    if session_tokens > 0:
+        if session_tokens >= 1000:
+            session_parts.append(f"{session_tokens // 1000}K tok")
+        else:
+            session_parts.append(f"{session_tokens} tok")
+    parts.append(" ".join(session_parts))
+
+    return f"  {' · '.join(parts)}"
+
+
 def _format_compaction(agent: str, summary: str) -> list[str]:
     """Format compaction warning lines.
 
@@ -127,6 +173,13 @@ class DisplayProtocol(Protocol):
 
     def show_header(self, config: SessionConfig) -> None: ...
     def show_turn_start(self, config: SessionConfig, agent: str) -> None: ...
+    def show_turn_prompt_stats(
+        self,
+        system_prompt: str | None,
+        turn_prompt: str,
+        agreements_text: str,
+        config: SessionConfig,
+    ) -> None: ...
     def show_status(self, message: str) -> None: ...
     def show_error(self, message: str) -> None: ...
     def show_warning(self, message: str) -> None: ...
@@ -248,6 +301,20 @@ class PlainDisplay:
         else:
             turn_str = f"Turn {turn}"
         self.console.print(f"\n[{color}]── {turn_str} · {label} ──[/{color}]")
+
+    def show_turn_prompt_stats(
+        self,
+        system_prompt: str | None,
+        turn_prompt: str,
+        agreements_text: str,
+        config: SessionConfig,
+    ) -> None:
+        """Display pre-turn prompt size and session running totals."""
+        text = _format_turn_prompt_stats(
+            system_prompt, turn_prompt, agreements_text, config
+        )
+        if text:
+            self.console.print(f"[dim]{text}[/dim]")
 
     def update_progress(
         self,
@@ -533,6 +600,20 @@ class TextualDisplay:
         self._show(Text(lines[0], style="bold yellow"))
         for line in lines[1:]:
             self._show(Text(line, style="dim"))
+
+    def show_turn_prompt_stats(
+        self,
+        system_prompt: str | None,
+        turn_prompt: str,
+        agreements_text: str,
+        config: SessionConfig,
+    ) -> None:
+        """Display pre-turn prompt size and session running totals in the TUI."""
+        text = _format_turn_prompt_stats(
+            system_prompt, turn_prompt, agreements_text, config
+        )
+        if text:
+            self._show(Text(text, style="dim"))
 
     def show_turn_stats(
         self,

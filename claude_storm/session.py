@@ -144,6 +144,7 @@ def _run_turn(
 
     # Display turn start
     display.show_turn_start(config, agent)
+    display.show_turn_prompt_stats(system_prompt, turn_prompt, agreements_text, config)
 
     # Write debug request before invoking (visible even if agent hangs)
     if config.debug:
