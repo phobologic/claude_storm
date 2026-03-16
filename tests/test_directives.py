@@ -171,7 +171,7 @@ class TestArtifactAction:
         assert result.artifacts[0].action == "append"
 
     def test_unknown_action_stored_as_is(self):
-        """Parser stores unknown action values; write layer is responsible for handling them."""
+        """Parser stores unknown action values; write layer handles them."""
         text = '[ARTIFACT filename="x.md" action="replace"]body[/ARTIFACT]'
         result = parse_directives(text)
         assert result.artifacts[0].action == "replace"
