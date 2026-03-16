@@ -119,7 +119,7 @@ class SessionConfig:
     claude_session_b: str = ""
     max_turns: int | None = None
     max_minutes: int | None = None
-    auto_complete: bool = False
+    auto_complete: bool = True
     interactive: bool = False
     debug: bool = False
     web_search: bool = False
@@ -176,7 +176,7 @@ class SessionConfig:
         role_b: str | None = None,
         max_turns: int | None = None,
         max_minutes: int | None = None,
-        auto_complete: bool = False,
+        auto_complete: bool = True,
         interactive: bool = False,
         debug: bool = False,
         web_search: bool = False,

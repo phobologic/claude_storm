@@ -98,6 +98,10 @@ class TestSessionConfig:
         assert config.status == "active"
         assert config.started_at
 
+    def test_create_defaults_auto_complete_true(self):
+        config = SessionConfig.create(topic="Test")
+        assert config.auto_complete is True
+
     def test_create_defaults_to_20_turns_when_neither_limit_set(self):
         config = SessionConfig.create(topic="Test")
         assert config.max_turns == 20

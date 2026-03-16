@@ -87,6 +87,62 @@ def merge_user_input(
     )
 
 
+def _build_directive_correction_prompt(warnings: list[str]) -> str:
+    """Build a short prompt re-sent to the agent to fix malformed directives.
+
+    Args:
+        warnings: List of warning strings from ParsedDirectives.
+
+    Returns:
+        Correction prompt string to send back to the agent.
+    """
+    bullet_lines = "\n".join(f"- {w}" for w in warnings)
+    return (
+        "Your previous response contained directive errors that prevented"
+        f" processing:\n\n{bullet_lines}\n\n"
+        "Please re-send only the corrected directive block(s). "
+        "Do not repeat your full response."
+    )
+
+
+def _build_directive_correction_note(warnings: list[str]) -> str:
+    """Build a note to inject into the OTHER agent's next turn prompt.
+
+    Provides the full directive reference so the other agent doesn't
+    repeat the same mistake.
+
+    Args:
+        warnings: List of warning strings from ParsedDirectives.
+
+    Returns:
+        Correction note string for the other agent's turn prompt.
+    """
+    bullet_lines = "\n".join(f"- {w}" for w in warnings)
+    artifact_line = (
+        '[ARTIFACT filename="your_file.md" action="overwrite"]...content...[/ARTIFACT]'
+    )
+    artifact_req = (
+        '  Required: filename="..."   Optional: action="overwrite" (default) | "append"'
+    )
+    return (
+        "## Directive Correction Notice\n"
+        "On the previous turn, one or more directives were malformed"
+        " and had to be corrected.\n"
+        "The following directive formats are required — use them exactly:\n\n"
+        f"**ARTIFACT** (write a file):\n{artifact_line}\n{artifact_req}\n\n"
+        "**ACCEPT** (accept a proposal):\n"
+        '[ACCEPT id="xxxx"]\n'
+        '  Required: id="..."  (the 4-character proposal ID)\n\n'
+        "**REJECT** (reject a proposal):\n"
+        '[REJECT id="xxxx" reason="optional explanation"]\n'
+        '  Required: id="..."   Optional: reason="..."\n\n'
+        "**REVISE** (propose a revision to an accepted agreement):\n"
+        '[REVISE id="xxxx"]...revised content...[/REVISE]\n'
+        '  Required: id="..."   Body content required.\n\n'
+        f"Errors from the previous turn:\n{bullet_lines}"
+    )
+
+
 def _run_turn(
     config: SessionConfig,
     agent: str,
@@ -95,6 +151,7 @@ def _run_turn(
     user_input: str | None = None,
     nudge_queue: deque[str] | None = None,
     elapsed_s: float = 0.0,
+    correction_note: str | None = None,
 ) -> tuple[AgentResponse, ParsedDirectives, str, str | None]:
     """Execute a single agent turn.
 
@@ -139,6 +196,7 @@ def _run_turn(
         agreements_text=agreements_text,
         is_agent_first_turn=is_first,
         elapsed_s=elapsed_s,
+        correction_note=correction_note,
     )
     system_prompt = build_system_prompt(config, agent) if is_first else None
 
@@ -434,6 +492,7 @@ def run_session(
     current_agent = "a"
     user_input: str | None = None
     pending_answer_for: dict[str, str] = {}
+    correction_note: str | None = None
 
     try:
         while True:
@@ -464,7 +523,9 @@ def run_session(
                 user_input=user_input,
                 nudge_queue=nudge_queue,
                 elapsed_s=elapsed_s,
+                correction_note=correction_note,
             )
+            correction_note = None  # consumed; will be set again below if needed
 
             if response.is_error:
                 display.show_error(response.text)
@@ -474,6 +535,48 @@ def run_session(
                 )
                 config.stop_error = response.text
                 break
+
+            # Directive correction retry: if the agent used malformed directives,
+            # warn it and ask for a corrected re-send (without incrementing turn).
+            if directives.warnings:
+                original_warnings = directives.warnings[:]
+                for w in original_warnings:
+                    display.show_warning(w)
+
+                correction_prompt = _build_directive_correction_prompt(
+                    original_warnings
+                )
+                display.show_agent_stream_start(
+                    config, current_agent, label="correcting directive"
+                )
+                fix_response = invoke_agent(
+                    config=config,
+                    agent=current_agent,
+                    prompt=correction_prompt,
+                    timeout=config.agent_timeout,
+                    on_delta=display.show_agent_stream_delta,
+                )
+                display.show_agent_stream_end(
+                    error=fix_response.is_error, text=fix_response.text
+                )
+
+                if not fix_response.is_error:
+                    fixed = parse_directives(fix_response.text)
+                    if not fixed.warnings:
+                        # Merge: keep original discussion text; use corrected directives
+                        directives = ParsedDirectives(
+                            clean_text=directives.clean_text,
+                            artifacts=fixed.artifacts,
+                            done=directives.done or fixed.done,
+                            ask_user=directives.ask_user or fixed.ask_user,
+                            proposals=directives.proposals + fixed.proposals,
+                            accepts=directives.accepts + fixed.accepts,
+                            rejects=directives.rejects + fixed.rejects,
+                            revisions=directives.revisions + fixed.revisions,
+                        )
+
+                # Always notify the other agent regardless of retry success
+                correction_note = _build_directive_correction_note(original_warnings)
 
             # Append to conversation log before processing directives,
             # which may block on ASK_USER prompts and get interrupted.

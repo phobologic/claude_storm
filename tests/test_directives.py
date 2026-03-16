@@ -227,3 +227,84 @@ class TestRemoveSpans:
         text = "AABBCC"
         result = _remove_spans(text, [(2, 4), (4, 6)])
         assert result == "AA"
+
+
+class TestDirectiveWarnings:
+    """Tests for malformed directive warnings."""
+
+    def test_artifact_with_path_instead_of_filename_emits_warning(self):
+        """path= is wrong; filename= is required."""
+        text = (
+            '[ARTIFACT path="gameplay_loops.md" action="write"]some content[/ARTIFACT]'
+        )
+        result = parse_directives(text)
+        assert result.artifacts == []
+        assert len(result.warnings) == 1
+        assert "filename" in result.warnings[0]
+        assert "ARTIFACT" in result.warnings[0]
+
+    def test_artifact_with_path_span_removed_from_clean_text(self):
+        """The directive span is stripped even when filename is missing."""
+        text = 'Intro. [ARTIFACT path="x.md"]body[/ARTIFACT] Outro.'
+        result = parse_directives(text)
+        assert "ARTIFACT" not in result.clean_text
+        assert "Intro." in result.clean_text
+        assert "Outro." in result.clean_text
+
+    def test_artifact_with_filename_no_warning(self):
+        text = '[ARTIFACT filename="x.md"]content[/ARTIFACT]'
+        result = parse_directives(text)
+        assert len(result.artifacts) == 1
+        assert result.warnings == []
+
+    def test_accept_without_id_emits_warning(self):
+        text = "[ACCEPT]"
+        result = parse_directives(text)
+        assert result.accepts == []
+        assert len(result.warnings) == 1
+        assert "ACCEPT" in result.warnings[0]
+        assert "id" in result.warnings[0]
+
+    def test_accept_with_id_no_warning(self):
+        text = '[ACCEPT id="abcd"]'
+        result = parse_directives(text)
+        assert result.accepts == ["abcd"]
+        assert result.warnings == []
+
+    def test_reject_without_id_emits_warning(self):
+        text = '[REJECT reason="not useful"]'
+        result = parse_directives(text)
+        assert result.rejects == []
+        assert len(result.warnings) == 1
+        assert "REJECT" in result.warnings[0]
+        assert "id" in result.warnings[0]
+
+    def test_reject_with_id_no_warning(self):
+        text = '[REJECT id="abcd" reason="nope"]'
+        result = parse_directives(text)
+        assert result.rejects == [("abcd", "nope")]
+        assert result.warnings == []
+
+    def test_revise_without_id_emits_warning(self):
+        text = "[REVISE]revised content[/REVISE]"
+        result = parse_directives(text)
+        assert result.revisions == []
+        assert len(result.warnings) == 1
+        assert "REVISE" in result.warnings[0]
+        assert "id" in result.warnings[0]
+
+    def test_revise_with_id_no_warning(self):
+        text = '[REVISE id="abcd"]new content[/REVISE]'
+        result = parse_directives(text)
+        assert result.revisions == [("abcd", "new content")]
+        assert result.warnings == []
+
+    def test_multiple_warnings_accumulated(self):
+        text = '[ARTIFACT path="x.md"]body[/ARTIFACT]\n[ACCEPT]\n'
+        result = parse_directives(text)
+        assert len(result.warnings) == 2
+
+    def test_no_warnings_on_clean_text(self):
+        text = "Just a normal response with no directives."
+        result = parse_directives(text)
+        assert result.warnings == []

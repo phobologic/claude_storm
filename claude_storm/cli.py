@@ -179,7 +179,7 @@ def _resolve_start_config(
         "role_b": None,
         "max_turns": 20,
         "max_minutes": None,
-        "auto_complete": False,
+        "auto_complete": True,
         "interactive": False,
         "model": "sonnet",
         "deliverables": [],

@@ -279,6 +279,7 @@ def build_turn_prompt(
     agreements_text: str = "",
     is_agent_first_turn: bool = True,
     elapsed_s: float = 0.0,
+    correction_note: str | None = None,
 ) -> str:
     """Build the per-turn prompt for an agent.
 
@@ -293,6 +294,8 @@ def build_turn_prompt(
             (already in the system prompt).
         elapsed_s: Elapsed session seconds (excluding interactive pauses),
             used for time-based pacing when max_minutes is set.
+        correction_note: Optional notice about directive errors from the
+            previous agent's turn. Inserted before the other agent's response.
 
     Returns:
         The per-turn prompt string.
@@ -300,6 +303,10 @@ def build_turn_prompt(
     other_label = config.agent_label("b" if agent == "a" else "a")
 
     sections = []
+
+    # Directive correction notice (from previous agent's turn)
+    if correction_note:
+        sections.append(correction_note)
 
     # Other agent's response
     sections.append(f"# {other_label}'s Response")

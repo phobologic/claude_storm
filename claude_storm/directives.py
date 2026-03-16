@@ -146,6 +146,7 @@ class ParsedDirectives:
     rejects: list[tuple[str, str]] = field(default_factory=list)
     revisions: list[tuple[str, str]] = field(default_factory=list)
     clean_text: str = ""
+    warnings: list[str] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -159,6 +160,13 @@ def _handle_artifact(directive: _RawDirective, result: ParsedDirectives) -> None
             ArtifactDirective(
                 filename=filename, content=directive.body.strip(), action=action
             )
+        )
+    else:
+        result.warnings.append(
+            'ARTIFACT directive dropped: required attribute "filename" was not found.'
+            ' Correct format: [ARTIFACT filename="your_file.md" action="overwrite"]'
+            "...content...[/ARTIFACT]"
+            ' — valid action values: "overwrite" (default) or "append"'
         )
 
 
@@ -179,6 +187,11 @@ def _handle_accept(directive: _RawDirective, result: ParsedDirectives) -> None:
     id_ = directive.attrs.get("id", "")
     if id_:
         result.accepts.append(id_)
+    else:
+        result.warnings.append(
+            'ACCEPT directive dropped: required attribute "id" was not found.'
+            ' Correct format: [ACCEPT id="xxxx"]'
+        )
 
 
 def _handle_reject(directive: _RawDirective, result: ParsedDirectives) -> None:
@@ -186,6 +199,11 @@ def _handle_reject(directive: _RawDirective, result: ParsedDirectives) -> None:
     reason = directive.attrs.get("reason", "")
     if id_:
         result.rejects.append((id_, reason))
+    else:
+        result.warnings.append(
+            'REJECT directive dropped: required attribute "id" was not found.'
+            ' Correct format: [REJECT id="xxxx" reason="optional reason"]'
+        )
 
 
 def _handle_revise(directive: _RawDirective, result: ParsedDirectives) -> None:
@@ -193,6 +211,11 @@ def _handle_revise(directive: _RawDirective, result: ParsedDirectives) -> None:
     body = directive.body.strip()
     if id_ and body:
         result.revisions.append((id_, body))
+    elif not id_:
+        result.warnings.append(
+            'REVISE directive dropped: required attribute "id" was not found.'
+            ' Correct format: [REVISE id="xxxx"]...revised content...[/REVISE]'
+        )
 
 
 # Tag name -> handler mapping
