@@ -93,6 +93,8 @@ def compile_deliverables(config: SessionConfig, display: DisplayProtocol) -> Non
 
     artifacts_dir = config.session_dir() / "artifacts"
     artifacts_dir.mkdir(parents=True, exist_ok=True)
+    deliverables_dir = config.session_dir() / "deliverables"
+    deliverables_dir.mkdir(parents=True, exist_ok=True)
 
     if config.debug:
         debug_log = config.session_dir() / "debug.log"
@@ -151,7 +153,7 @@ def compile_deliverables(config: SessionConfig, display: DisplayProtocol) -> Non
             # Strip file extension before sanitizing to avoid "season_summarymd.md"
             base = _strip_extension(deliverable)
             safe_name = slugify(base, sep="_", max_len=0)
-            artifact_path = artifacts_dir / f"{safe_name}.md"
+            artifact_path = deliverables_dir / f"{safe_name}.md"
 
             artifact_path.write_text(response.text + "\n")
             display.show_artifact_save(f"{safe_name}.md")

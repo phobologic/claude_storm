@@ -311,6 +311,7 @@ class SessionConfig:
         (d / "agent-a" / "memory").mkdir(parents=True, exist_ok=True)
         (d / "agent-b" / "memory").mkdir(parents=True, exist_ok=True)
         (d / "artifacts").mkdir(parents=True, exist_ok=True)
+        (d / "deliverables").mkdir(parents=True, exist_ok=True)
         (d / "agreements").mkdir(parents=True, exist_ok=True)
         self._create_ref_symlinks()
 

@@ -128,12 +128,13 @@ class TestCompileDeliverables:
         with patch("claude_storm.compilation.invoke_agent", return_value=mock_response):
             compile_deliverables(config, display)
 
-        # Compiled output takes the clean name
+        # Compiled output goes to the deliverables dir
+        deliverables_dir = config.session_dir() / "deliverables"
         assert (
-            artifacts_dir / "design_document.md"
+            deliverables_dir / "design_document.md"
         ).read_text() == compiled_text + "\n"
 
-        # Draft file still exists (untouched)
+        # Draft file still exists (untouched) in artifacts dir
         assert (
             artifacts_dir / "draft-design_document.md"
         ).read_text() == "agent draft\n"
@@ -148,8 +149,9 @@ class TestCompileDeliverables:
         with patch("claude_storm.compilation.invoke_agent", return_value=mock_response):
             compile_deliverables(config, display)
 
+        deliverables_dir = config.session_dir() / "deliverables"
+        assert (deliverables_dir / "new_document.md").read_text() == "fresh content\n"
         artifacts_dir = config.session_dir() / "artifacts"
-        assert (artifacts_dir / "new_document.md").read_text() == "fresh content\n"
         assert not list(artifacts_dir.glob("draft-new_document*"))
 
     def test_extension_deliverable_produces_clean_filename(
@@ -164,9 +166,9 @@ class TestCompileDeliverables:
         with patch("claude_storm.compilation.invoke_agent", return_value=mock_response):
             compile_deliverables(config, display)
 
-        artifacts_dir = config.session_dir() / "artifacts"
-        assert (artifacts_dir / "season_summary.md").exists()
-        assert not (artifacts_dir / "season_summarymd.md").exists()
+        deliverables_dir = config.session_dir() / "deliverables"
+        assert (deliverables_dir / "season_summary.md").exists()
+        assert not (deliverables_dir / "season_summarymd.md").exists()
 
     def test_error_response_skips_write(self, make_config, capture_display):
         """Failed compilation should not write anything."""
@@ -186,7 +188,8 @@ class TestCompileDeliverables:
         assert (
             artifacts_dir / "draft-design_document.md"
         ).read_text() == "agent draft\n"
-        assert not (artifacts_dir / "design_document.md").exists()
+        deliverables_dir = config.session_dir() / "deliverables"
+        assert not (deliverables_dir / "design_document.md").exists()
 
     def test_writes_artifact_files(self, make_config, capture_display):
         config = make_config(
@@ -210,9 +213,9 @@ class TestCompileDeliverables:
         with patch("claude_storm.compilation.invoke_agent", return_value=mock_response):
             compile_deliverables(config, display)
 
-        artifacts_dir = config.session_dir() / "artifacts"
-        assert artifacts_dir.exists()
-        files = list(artifacts_dir.glob("*.md"))
+        deliverables_dir = config.session_dir() / "deliverables"
+        assert deliverables_dir.exists()
+        files = list(deliverables_dir.glob("*.md"))
         assert len(files) == 2
 
     def test_uses_distinct_session_ids(self, make_config, capture_display):
@@ -256,8 +259,8 @@ class TestCompileDeliverables:
         with patch("claude_storm.compilation.invoke_agent", return_value=mock_response):
             compile_deliverables(config, display)
 
-        artifacts_dir = config.session_dir() / "artifacts"
-        files = list(artifacts_dir.glob("*.md"))
+        deliverables_dir = config.session_dir() / "deliverables"
+        files = list(deliverables_dir.glob("*.md"))
         assert len(files) == 1
         # Should not contain colons or parens
         assert ":" not in files[0].name
