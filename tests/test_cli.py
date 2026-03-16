@@ -212,6 +212,24 @@ class TestCLICommands:
         assert str(ref1) in config.reference_dirs
         assert str(ref2) in config.reference_dirs
 
+    @patch("claude_storm.cli.run_session")
+    def test_start_toml_reference_dir_relative_to_config(
+        self, mock_run, tmp_path, monkeypatch
+    ):
+        """reference_dirs in storm.toml resolve relative to the TOML file, not CWD."""
+        subdir = tmp_path / "project"
+        subdir.mkdir()
+        ref = subdir / "docs"
+        ref.mkdir()
+        toml = subdir / STORM_CONFIG_FILENAME
+        toml.write_text('[session]\ntopic = "Test"\nreference_dirs = ["./docs"]\n')
+        # CWD is tmp_path (parent of project/) — not where the TOML lives
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(app, ["start", "--config", str(toml)])
+        assert result.exit_code == 0
+        config = mock_run.call_args[0][0]
+        assert config.reference_dirs == [str(ref)]
+
     def test_start_reference_dir_not_found(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         result = runner.invoke(

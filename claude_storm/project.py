@@ -58,7 +58,8 @@ topic = """
 
 # Read-only directories agents can browse via Read/Glob/Grep for
 # background context. Agents cannot write to these paths.
-# reference_dirs = ["/path/to/notes"]
+# Paths are relative to this config file's directory (or use absolute paths).
+# reference_dirs = ["./docs"]
 
 [options]
 # Turn budget — shapes percentage-based pacing (default: 20)
@@ -305,7 +306,7 @@ def format_pacing_block(
 # Known config keys with their section, commented default, and a pattern to detect them.
 _KNOWN_KEYS: list[tuple[str, str, str]] = [
     # (key_name, section, commented_default_line)
-    ("reference_dirs", "session", '# reference_dirs = ["/path/to/notes"]'),
+    ("reference_dirs", "session", '# reference_dirs = ["./docs"]'),
     ("max_turns", "options", "# max_turns = 20"),
     ("max_minutes", "options", "# max_minutes = 60"),
     ("model", "options", '# model = "sonnet"'),
@@ -336,7 +337,7 @@ def migrate_config(config_path: Path) -> list[str]:
         if old_val:
             replacement = f'reference_dirs = ["{old_val}"]'
         else:
-            replacement = '# reference_dirs = ["/path/to/notes"]'
+            replacement = '# reference_dirs = ["./docs"]'
         text = text[: uncommented.start()] + replacement + text[uncommented.end() :]
         messages.append("Renamed reference_dir → reference_dirs")
     else:
@@ -345,7 +346,7 @@ def migrate_config(config_path: Path) -> list[str]:
         if commented:
             text = (
                 text[: commented.start()]
-                + '# reference_dirs = ["/path/to/notes"]'
+                + '# reference_dirs = ["./docs"]'
                 + text[commented.end() :]
             )
             # Trim the rest of the old commented line
@@ -355,7 +356,7 @@ def migrate_config(config_path: Path) -> list[str]:
                 line_end = commented.start() + rest_match.end()
                 text = (
                     text[: commented.start()]
-                    + '# reference_dirs = ["/path/to/notes"]'
+                    + '# reference_dirs = ["./docs"]'
                     + text[line_end:]
                 )
             messages.append("Updated commented reference_dir → reference_dirs")

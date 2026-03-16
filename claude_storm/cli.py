@@ -195,6 +195,16 @@ def _resolve_start_config(
         if key in toml_config:
             merged[key] = toml_config[key]
 
+    # Resolve relative reference_dirs from TOML against the config file's directory.
+    # CLI paths (layer 3) are CWD-relative by convention; TOML paths should be
+    # anchored to the project directory where storm.toml lives.
+    if resolved_config_path is not None and merged["reference_dirs"]:
+        config_base = resolved_config_path.parent
+        merged["reference_dirs"] = [
+            str((config_base / p).resolve()) if not Path(p).is_absolute() else p
+            for p in merged["reference_dirs"]
+        ]
+
     # Layer 3: CLI overrides (only non-None values)
     if topic is not None:
         merged["topic"] = topic

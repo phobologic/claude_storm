@@ -91,7 +91,7 @@ deliverables = [
 ]
 
 # Optional: directories of notes/docs agents can read for context
-# reference_dirs = ["/path/to/research/notes"]
+# reference_dirs = ["./research/notes"]
 
 [options]
 max_turns = 20
