@@ -210,6 +210,36 @@ class TestRejectProposal:
         config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
         assert reject_proposal(config, "xxxx") is None
 
+    def test_stores_rejection_with_reason(self, make_config):
+        config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
+        pid = create_proposal(config, "Use SOAP", "SOAP is enterprise", "a", 4)
+        reject_proposal(config, pid, reason="Too verbose", turn=5)
+        assert len(config.rejected_proposals) == 1
+        r = config.rejected_proposals[0]
+        assert r["id"] == pid
+        assert r["title"] == "Use SOAP"
+        assert r["proposed_by"] == "a"
+        assert r["proposed_turn"] == 4
+        assert r["rejected_turn"] == 5
+        assert r["reason"] == "Too verbose"
+
+    def test_stores_rejection_without_reason(self, make_config):
+        config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
+        pid = create_proposal(config, "Use SOAP", "SOAP is enterprise", "a", 4)
+        reject_proposal(config, pid)
+        assert len(config.rejected_proposals) == 1
+        assert config.rejected_proposals[0]["reason"] == ""
+
+    def test_persists_rejection_to_disk(self, make_config):
+        config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
+        pid = create_proposal(config, "Use SOAP", "SOAP is enterprise", "a", 4)
+        reject_proposal(config, pid, reason="We decided REST", turn=5)
+        loaded = SessionConfig.load(
+            "agree-test", storms_dir=str(config.session_dir().parent)
+        )
+        assert len(loaded.rejected_proposals) == 1
+        assert loaded.rejected_proposals[0]["reason"] == "We decided REST"
+
 
 class TestSlugify:
     def test_basic_title(self):
@@ -393,6 +423,31 @@ class TestFormatAgreementIndex:
         assert "File: agreements/a3f2_use-rest.md" in text
         assert "File: agreements/b4c3_use-redis.md" in text
 
+    def test_superseded_agreement_marked(self, make_config):
+        config = make_config(session_id="agree-test", max_turns=20, current_turn=5)
+        # Original + revision: a3f2 is superseded by b4c3
+        config.accepted_agreements = [
+            _make_agreement(id="a3f2", title="Use REST"),
+            _make_agreement(
+                id="b4c3",
+                title="Use REST (revised)",
+                proposed_turn=6,
+                accepted_turn=7,
+                revises="a3f2",
+            ),
+        ]
+        text = format_agreement_index(config)
+        # Count: 1 active, 2 total
+        assert "1 active agreement(s)" in text
+        assert "2 total" in text
+        # Superseded entry marked with strikethrough
+        assert "~~[a3f2]~~" in text
+        assert "superseded by [b4c3]" in text
+        # Revision entry uses arrow notation
+        assert "[a3f2 \u2192 b4c3]" in text
+        # File path present for active agreement
+        assert "File: agreements/b4c3" in text
+
     def test_fallback_summary_extraction(self, make_config):
         """Index falls back to _extract_summary when summary key is missing."""
         config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
@@ -554,12 +609,15 @@ class TestFormatAgreementsForPrompt:
         assert '[REVISE id="c4e8"]' in text
         assert "[/REVISE]" in text
 
-    def test_pending_not_shown_to_proposer(self, make_config):
+    def test_pending_not_shown_to_proposer_as_action_item(self, make_config):
         config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
         config.pending_proposals = [_make_proposal(content="Add a GraphQL gateway.")]
-        # Agent A should NOT see their own pending proposal as awaiting response
+        # Agent A should NOT see their own proposal as something requiring their action
         text = format_agreements_for_prompt(config, "a")
-        assert "Pending Proposals" not in text
+        assert "awaiting your response" not in text
+        # But they SHOULD see it as a reminder that the other agent hasn't responded yet
+        assert "Your Pending Proposals" in text
+        assert "Add GraphQL" in text
 
     def test_both_confirmed_and_pending(self, make_config):
         config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
@@ -626,6 +684,107 @@ class TestFormatAgreementsForPrompt:
         assert "...revised content..." in text
         assert "improved content" not in text
 
+    def test_own_pending_shown_to_proposer(self, make_config):
+        """Proposer sees their own pending proposals as a reminder."""
+        config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
+        config.pending_proposals = [_make_proposal(proposed_by="a", turn=3)]
+        text = format_agreements_for_prompt(config, "a")
+        assert "Your Pending Proposals" in text
+        assert "awaiting Agent B" in text
+        assert "[c4e8]" in text
+        assert "Add GraphQL" in text
+
+    def test_own_pending_not_shown_to_other_agent(self, make_config):
+        """Other agent does not see the 'Your Pending Proposals' section."""
+        config = make_config(session_id="agree-test", max_turns=20, current_turn=3)
+        config.pending_proposals = [_make_proposal(proposed_by="a", turn=3)]
+        text = format_agreements_for_prompt(config, "b")
+        assert "Your Pending Proposals" not in text
+        # The other agent DOES see it as an action item
+        assert "awaiting your response" in text
+
+    def test_rejected_proposals_shown_in_prompt(self, make_config):
+        """Rejected proposals appear in the prompt for both agents."""
+        config = make_config(session_id="agree-test", max_turns=20, current_turn=5)
+        config.accepted_agreements = [_make_agreement()]
+        config.rejected_proposals = [
+            {
+                "id": "d1e2",
+                "title": "Use SOAP",
+                "proposed_by": "a",
+                "proposed_turn": 3,
+                "rejected_turn": 4,
+                "reason": "Too verbose",
+            }
+        ]
+        # Proposer sees it as "your proposal"
+        text_a = format_agreements_for_prompt(config, "a")
+        assert "Recent Rejections" in text_a
+        assert "[d1e2]" in text_a
+        assert "your proposal" in text_a
+        assert "Too verbose" in text_a
+
+        # Other agent sees it attributed correctly
+        text_b = format_agreements_for_prompt(config, "b")
+        assert "Recent Rejections" in text_b
+        assert "Agent A's proposal" in text_b
+
+    def test_rejected_proposals_differential_via_watermark(self, make_config):
+        """Watermark suppresses already-seen rejections."""
+        config = make_config(session_id="agree-test", max_turns=20, current_turn=5)
+        config.accepted_agreements = [_make_agreement()]
+        config.rejected_proposals = [
+            {
+                "id": "d1e2",
+                "title": "Use SOAP",
+                "proposed_by": "a",
+                "proposed_turn": 3,
+                "rejected_turn": 4,
+                "reason": "Too verbose",
+            },
+            {
+                "id": "f3a4",
+                "title": "Use XML",
+                "proposed_by": "b",
+                "proposed_turn": 5,
+                "rejected_turn": 6,
+                "reason": "Outdated",
+            },
+        ]
+        # Watermark has seen 1 rejection — only the new one should appear
+        watermark = {"agreement_count": 1, "seen_proposal_ids": [], "rejected_count": 1}
+        text = format_agreements_for_prompt(config, "a", watermark=watermark)
+        assert "Use XML" in text
+        assert "Use SOAP" not in text
+
+    def test_rejected_proposals_capped_at_five(self, make_config):
+        """At most 5 rejections are shown at once."""
+        config = make_config(session_id="agree-test", max_turns=20, current_turn=10)
+        config.accepted_agreements = [_make_agreement()]
+        for i in range(8):
+            config.rejected_proposals.append(
+                {
+                    "id": f"r{i:03d}",
+                    "title": f"Rejected Idea {i}",
+                    "proposed_by": "a",
+                    "proposed_turn": i,
+                    "rejected_turn": i + 1,
+                    "reason": f"reason {i}",
+                }
+            )
+        text = format_agreements_for_prompt(config, "a")
+        # The 5 most recent (indices 3-7) should appear; earlier ones should not
+        assert "Rejected Idea 7" in text
+        assert "Rejected Idea 3" in text
+        assert "Rejected Idea 2" not in text
+
+    def test_no_rejected_section_when_empty(self, make_config):
+        """No 'Recent Rejections' heading when rejected_proposals is empty."""
+        config = make_config(session_id="agree-test", max_turns=20, current_turn=5)
+        config.accepted_agreements = [_make_agreement()]
+        text = format_agreements_for_prompt(config, "a")
+        assert "Recent Rejections" not in text
+
 
 class TestConfigLoadSummaryBackfill:
     def test_backfills_agreement_summary(self, tmp_storms):
@@ -689,6 +848,23 @@ class TestConfigLoadSummaryBackfill:
         config = SessionConfig.load(session_id, storms_dir=str(tmp_storms))
         # Should load without error; original_content not present
         assert config.accepted_agreements[0].get("original_content") is None
+
+    def test_legacy_session_defaults_rejected_proposals(self, tmp_storms):
+        """Legacy session JSON without rejected_proposals loads with empty list."""
+        session_id = "legacy-no-rejections"
+        session_dir = tmp_storms / session_id
+        session_dir.mkdir()
+        data = {
+            "session_id": session_id,
+            "topic": "Test",
+            "storms_dir": str(tmp_storms),
+            "accepted_agreements": [],
+            "pending_proposals": [],
+            # No rejected_proposals key — simulating pre-feature session
+        }
+        (session_dir / "session.json").write_text(json.dumps(data, indent=2) + "\n")
+        config = SessionConfig.load(session_id, storms_dir=str(tmp_storms))
+        assert config.rejected_proposals == []
 
     def test_preserves_existing_summary(self, tmp_storms):
         """Agreements with existing summary are not overwritten."""

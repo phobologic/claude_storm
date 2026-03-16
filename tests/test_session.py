@@ -5,8 +5,8 @@ from unittest.mock import patch
 import pytest
 
 from claude_storm.agents import AgentResponse
+from claude_storm.agreements import create_proposal
 from claude_storm.directives import ArtifactDirective, ParsedDirectives
-from claude_storm.display import Display
 from claude_storm.session import process_directives, run_session
 
 
@@ -325,7 +325,7 @@ class TestProcessDirectivesArtifacts:
         return d
 
     def test_overwrite_default(self):
-        """Two writes with action='overwrite' — file contains only the second content."""
+        """Two writes with action='overwrite' — second write wins."""
         a = ArtifactDirective(filename="out.md", content="first", action="overwrite")
         process_directives(self.config, "a", self._directives_with(a), self.display)
         b = ArtifactDirective(filename="out.md", content="second", action="overwrite")
@@ -360,3 +360,41 @@ class TestProcessDirectivesArtifacts:
         artifact_file = self.artifacts_dir / "draft-new.md"
         assert artifact_file.exists()
         assert artifact_file.read_text() == "only content\n"
+
+
+class TestProcessDirectivesRejection:
+    """Unit tests for rejection handling in process_directives()."""
+
+    @pytest.fixture(autouse=True)
+    def setup(self, make_config, capture_display):
+        self.config = make_config()
+        self.display, self.buf = capture_display
+
+    def _directives_with_reject(self, proposal_id, reason=""):
+        d = ParsedDirectives()
+        d.rejects = [(proposal_id, reason)]
+        return d
+
+    def test_reject_persists_reason_and_turn(self):
+        """Rejecting a proposal stores reason and turn in rejected_proposals."""
+        pid = create_proposal(self.config, "Use SOAP", "SOAP is verbose", "a", 3)
+        self.config.current_turn = 3
+        process_directives(
+            self.config,
+            "b",
+            self._directives_with_reject(pid, "Too complex"),
+            self.display,
+        )
+        assert len(self.config.rejected_proposals) == 1
+        r = self.config.rejected_proposals[0]
+        assert r["id"] == pid
+        assert r["reason"] == "Too complex"
+        assert r["rejected_turn"] == 4  # current_turn + 1
+
+    def test_reject_removes_from_pending(self):
+        """Rejecting a proposal removes it from pending_proposals."""
+        pid = create_proposal(self.config, "Use SOAP", "SOAP is verbose", "a", 3)
+        process_directives(
+            self.config, "b", self._directives_with_reject(pid, "No"), self.display
+        )
+        assert len(self.config.pending_proposals) == 0

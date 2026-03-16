@@ -40,6 +40,17 @@ class AgreementDict(TypedDict):
     original_agent: NotRequired[str]
 
 
+class RejectionDict(TypedDict):
+    """Shape of a rejected proposal record."""
+
+    id: str
+    title: str
+    proposed_by: str
+    proposed_turn: int
+    rejected_turn: int
+    reason: str
+
+
 class RevisionContext(NamedTuple):
     """Context resolved for a REVISE directive target.
 
@@ -195,18 +206,32 @@ def accept_proposal(
 def reject_proposal(
     config: SessionConfig,
     proposal_id: str,
+    reason: str = "",
+    turn: int = 0,
 ) -> dict | None:
-    """Remove a pending proposal (rejected).
+    """Remove a pending proposal (rejected) and record the rejection.
 
     Args:
         config: The session configuration.
         proposal_id: The ID of the proposal to reject.
+        reason: The reason for rejection.
+        turn: The turn number when rejected.
 
     Returns:
         The removed proposal dict, or None if not found.
     """
     for i, p in enumerate(config.pending_proposals):
         if p["id"] == proposal_id:
+            rejection: dict = {
+                "id": proposal_id,
+                "title": p["title"],
+                "proposed_by": p["proposed_by"],
+                "proposed_turn": p["turn"],
+                "rejected_turn": turn,
+                "reason": reason,
+            }
+            config.rejected_proposals.append(rejection)
+            config.save()
             return config.pending_proposals.pop(i)
     return None
 
@@ -299,6 +324,8 @@ def format_agreement_index(config: SessionConfig) -> str:
 
     Each entry shows the ID, title, turn range, summary, and the
     per-agreement file path so agents can read individual files.
+    Superseded agreements (replaced by a revision) are marked as such
+    so agents know which version is current.
 
     Args:
         config: The session configuration.
@@ -309,17 +336,47 @@ def format_agreement_index(config: SessionConfig) -> str:
     if not config.accepted_agreements:
         return ""
 
-    count = len(config.accepted_agreements)
-    lines = [f"You have {count} confirmed agreement(s):"]
+    # Build set of superseded IDs (agreements replaced by a later revision)
+    superseded = {a["revises"] for a in config.accepted_agreements if a.get("revises")}
+
+    total = len(config.accepted_agreements)
+    active_count = total - len(superseded)
+    if superseded:
+        lines = [f"You have {active_count} active agreement(s) ({total} total):"]
+    else:
+        lines = [f"You have {active_count} confirmed agreement(s):"]
+
     for a in config.accepted_agreements:
         summary = a.get("summary", _extract_summary(a["content"]))
         filename = _agreement_filename(a)
-        lines.append(
-            f"- [{a['id']}] **{a['title']}** "
-            f"(Turn {a['proposed_turn']}\u2192{a['accepted_turn']}): "
-            f"{summary}"
-        )
-        lines.append(f"  File: agreements/{filename}")
+        if a["id"] in superseded:
+            # Find which agreement superseded this one
+            superseding_id = next(
+                (
+                    s["id"]
+                    for s in config.accepted_agreements
+                    if s.get("revises") == a["id"]
+                ),
+                "?",
+            )
+            lines.append(
+                f"- ~~[{a['id']}]~~ ~~**{a['title']}**~~ "
+                f"*(superseded by [{superseding_id}])*"
+            )
+        elif a.get("revises"):
+            lines.append(
+                f"- [{a['revises']} \u2192 {a['id']}] **{a['title']}** "
+                f"(revised, Turn {a['proposed_turn']}\u2192{a['accepted_turn']}): "
+                f"{summary}"
+            )
+            lines.append(f"  File: agreements/{filename}")
+        else:
+            lines.append(
+                f"- [{a['id']}] **{a['title']}** "
+                f"(Turn {a['proposed_turn']}\u2192{a['accepted_turn']}): "
+                f"{summary}"
+            )
+            lines.append(f"  File: agreements/{filename}")
     return "\n".join(lines)
 
 
@@ -404,8 +461,19 @@ def format_agreements_for_prompt(
             if index:
                 sections.append(f"## Confirmed\n{index}")
 
-    # Pending proposals awaiting the current agent's response
+    # Current agent's own pending proposals (awaiting other agent's response)
     other_agent = "b" if current_agent == "a" else "a"
+    other_label = "Agent B" if current_agent == "a" else "Agent A"
+    my_pending = [
+        p for p in config.pending_proposals if p["proposed_by"] == current_agent
+    ]
+    if my_pending:
+        lines = [f"## Your Pending Proposals (awaiting {other_label}'s response)"]
+        for p in my_pending:
+            lines.append(f"- [{p['id']}] **{p['title']}** (proposed Turn {p['turn']})")
+        sections.append("\n".join(lines))
+
+    # Pending proposals awaiting the current agent's response
     pending_for_me = [
         p for p in config.pending_proposals if p["proposed_by"] == other_agent
     ]
@@ -470,5 +538,22 @@ def format_agreements_for_prompt(
                 "If you've reached new consensus points, "
                 "formalize them with [PROPOSE].*"
             )
+
+    # Rejected proposals — differential via watermark, capped at 5
+    if config.rejected_proposals:
+        wm_rejected_count = watermark["rejected_count"] if watermark else 0
+        new_rejections = config.rejected_proposals[wm_rejected_count:]
+        if new_rejections:
+            show = new_rejections[-5:]
+            lines = ["## Recent Rejections"]
+            for r in show:
+                is_mine = r["proposed_by"] == current_agent
+                actor = "your proposal" if is_mine else f"{other_label}'s proposal"
+                reason_suffix = f': "{r["reason"]}"' if r.get("reason") else ""
+                lines.append(
+                    f"- [{r['id']}] **{r['title']}** "
+                    f"({actor}, rejected Turn {r['rejected_turn']}){reason_suffix}"
+                )
+            result += "\n\n" + "\n".join(lines)
 
     return result

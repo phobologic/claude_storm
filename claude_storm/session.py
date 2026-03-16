@@ -31,7 +31,6 @@ from claude_storm.debug import (
     write_debug_summary,
 )
 from claude_storm.directives import (
-    ArtifactDirective,
     ParsedDirectives,
     parse_directives,
 )
@@ -338,7 +337,7 @@ def process_directives(
 
     # Handle rejects
     for proposal_id, reason in directives.rejects:
-        rejected = reject_proposal(config, proposal_id)
+        rejected = reject_proposal(config, proposal_id, reason=reason, turn=turn)
         if rejected:
             display.show_agreement_rejected(proposal_id, reason)
 

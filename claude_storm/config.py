@@ -135,6 +135,7 @@ class SessionConfig:
     truncate_conversation: bool = True
     pending_proposals: list[dict] = field(default_factory=list)
     accepted_agreements: list[dict] = field(default_factory=list)
+    rejected_proposals: list[dict] = field(default_factory=list)
     storms_dir: str = ""
     stop_reason: str | None = None
     stop_error: str | None = None
@@ -283,6 +284,7 @@ class SessionConfig:
         # Ensure new agreement fields exist for legacy sessions
         data.setdefault("pending_proposals", [])
         data.setdefault("accepted_agreements", [])
+        data.setdefault("rejected_proposals", [])
         data.setdefault("stop_reason", None)
         data.setdefault("stop_error", None)
         data.setdefault("agent_watermarks", {})
@@ -397,6 +399,7 @@ class SessionConfig:
         defaults = {
             "agreement_count": 0,
             "seen_proposal_ids": [],
+            "rejected_count": 0,
             "last_turn": -1,
             "total_cost_usd": 0.0,
             "total_input_tokens": 0,
@@ -452,6 +455,7 @@ class SessionConfig:
             wm["compaction_count"] += 1
         wm["agreement_count"] = len(self.accepted_agreements)
         wm["seen_proposal_ids"] = [p["id"] for p in self.pending_proposals]
+        wm["rejected_count"] = len(self.rejected_proposals)
         wm["last_turn"] = self.current_turn
         self.agent_watermarks[agent] = wm
 
