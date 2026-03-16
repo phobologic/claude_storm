@@ -84,8 +84,10 @@ def _build_directives_section(config: SessionConfig) -> str:
         "revision. Propose early and "
         "forcefully — if the other agent disagrees, that "
         "sharpens the debate.\n"
-        '- `[ACCEPT id="..."]` — Accept a pending agreement '
-        "proposal by its ID.\n"
+        '- `[ACCEPT id="..."]` — Accept a pending proposal by its ID, '
+        "confirming it as-is. If you want to accept but with modifications, "
+        "use [REVISE] instead — inline text notes added after [ACCEPT] are "
+        "conversational only and are not captured in the formal agreement.\n"
         '- `[REJECT id="..." reason="..."]` — Reject a '
         "pending proposal with an explanation.\n"
         '- `[REVISE id="..."]revised content[/REVISE]` — Propose a '
@@ -140,11 +142,15 @@ def _build_guidelines_section(config: SessionConfig) -> str:
         "rejected sharpens the discussion and is more valuable than vague agreement.\n"
         '- Good proposals are specific and assertive: *"Use PostgreSQL for the data '
         'layer because X, Y, Z"* rather than *"We discussed database options."*\n'
-        "- Always review and respond to pending proposals from the other agent"
-        " — accepting without scrutiny is worse than rejecting with good reasons\n"
+        "- Pending proposals **require** an explicit [ACCEPT], [REJECT], or [REVISE] — "
+        "respond to every pending proposal in the same turn you receive it; "
+        "do not skip them\n"
+        "- Accepting without scrutiny is worse than rejecting with good reasons\n"
         "- When you mostly agree with a proposal but want changes, use [REVISE] to "
-        "submit your improved version rather than accepting and then proposing "
-        "separate amendments"
+        "submit your improved version rather than accepting and adding inline notes\n"
+        "- A focused, deep contribution on one or two areas per turn is more valuable "
+        "than shallow coverage of everything — pick the thread that most advances "
+        "the dialogue and develop it fully; the other agent will pick up what you leave"
     )
     if config.interactive:
         text += (

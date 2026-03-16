@@ -485,7 +485,7 @@ def format_agreements_for_prompt(
                 # Already-seen proposal: compact one-liner
                 lines.append(
                     f"- [{p['id']}] **{p['title']}** (still pending"
-                    " — ACCEPT, REJECT, or REVISE)"
+                    " — you must respond this turn: ACCEPT, REJECT, or REVISE)"
                 )
             else:
                 # New proposal: full content with instructions
