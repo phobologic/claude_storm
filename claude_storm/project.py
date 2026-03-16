@@ -231,7 +231,10 @@ def _early_phase_message() -> str:
 
 def _default_message() -> str:
     """Build the default pacing message."""
-    return "Continue the brainstorm. Go deep on one area rather than covering everything at once."
+    return (
+        "Continue the brainstorm. "
+        "Go deep on one area rather than covering everything at once."
+    )
 
 
 def format_pacing_block(

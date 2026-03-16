@@ -261,7 +261,8 @@ def _read_stream(
                         event.get("type") == "stream_event"
                         and event.get("event", {}).get("type") == "content_block_delta"
                     ):
-                        # Server-side API compaction: compaction_delta inside stream_event
+                        # Server-side API compaction:
+                        # compaction_delta inside stream_event
                         inner = event["event"]
                         delta_obj = inner.get("delta", {})
                         if delta_obj.get("type") == "compaction_delta":
