@@ -13,6 +13,7 @@ import subprocess
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import NamedTuple
 
 from claude_storm.config import SessionConfig, _validate_reference_dir
@@ -98,6 +99,40 @@ def _validate_model(model: str) -> str:
     if _ALLOWED_MODELS.match(model):
         return model
     return "sonnet"
+
+
+def _build_agent_settings(config: SessionConfig) -> str:
+    """Build an inline JSON settings string for agent subprocesses.
+
+    Suppresses CLAUDE.md auto-discovery, hooks, and auto-memory so that agents
+    receive only the instructions passed via --system-prompt and are not
+    influenced by the project's development CLAUDE.md, the user's global
+    ~/.claude/CLAUDE.md, or any configured hooks.
+
+    Authentication (OAuth/keychain) is not affected.
+
+    Args:
+        config: The session configuration.
+
+    Returns:
+        JSON string suitable for passing to ``claude --settings``.
+    """
+    project_root = config.session_dir().parent.parent
+    home = Path.home()
+    excludes = [
+        str(project_root / "CLAUDE.md"),
+        str(project_root / ".claude" / "CLAUDE.md"),
+        str(project_root / ".claude" / "rules" / "**"),
+        str(home / ".claude" / "CLAUDE.md"),
+        str(home / ".claude" / "rules" / "**"),
+    ]
+    return json.dumps(
+        {
+            "disableAllHooks": True,
+            "autoMemoryEnabled": False,
+            "claudeMdExcludes": excludes,
+        }
+    )
 
 
 def _build_allowed_tools(config: SessionConfig, readonly: bool = False) -> list[str]:
@@ -356,6 +391,10 @@ def invoke_agent(
         # --include-partial-messages emits content_block_delta stream events
         # as the model generates text, enabling real-time streaming display
         "--include-partial-messages",
+        # Suppress CLAUDE.md auto-discovery, hooks, and auto-memory so agents
+        # are not influenced by the project's dev CLAUDE.md or user preferences.
+        "--settings",
+        _build_agent_settings(config),
     ]
     validated_model = _validate_model(config.model)
 
