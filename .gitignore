@@ -16,3 +16,4 @@ tmp/
 .code-review/
 scratchpad/
 .cache/
+.DS_Store
